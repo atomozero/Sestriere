@@ -69,12 +69,12 @@ AboutWindow::_BuildLayout()
 	fVersionView->SetHighColor(100, 100, 100);
 
 	// Description
-	BRect textRect(0, 0, 340, 120);
-	fDescriptionView = new BTextView("description", textRect, B_FOLLOW_ALL);
+	fDescriptionView = new BTextView("description");
 	fDescriptionView->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	fDescriptionView->MakeEditable(false);
 	fDescriptionView->MakeSelectable(false);
 	fDescriptionView->SetStylable(true);
+	fDescriptionView->SetExplicitMinSize(BSize(340, 120));
 
 	const char* description =
 		"A native MeshCore LoRa mesh client for Haiku OS.\n\n"
