@@ -8,6 +8,7 @@
 #include "MapView.h"
 
 #include <Cursor.h>
+#include <GroupLayout.h>
 #include <Window.h>
 
 #include <cmath>
@@ -709,4 +710,78 @@ MapView::_ColorForType(uint8 type) const
 		default:
 			return (rgb_color){180, 180, 180, 255};	// Gray
 	}
+}
+
+
+// ============================================================================
+// MapWindow Implementation
+// ============================================================================
+
+MapWindow::MapWindow(BRect frame, BMessenger target)
+	: BWindow(frame, "Map View", B_TITLED_WINDOW,
+		B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS),
+	  fTarget(target)
+{
+	fMapView = new MapView("map");
+	fMapView->SetExplicitMinSize(BSize(400, 300));
+
+	SetLayout(new BGroupLayout(B_VERTICAL));
+	AddChild(fMapView);
+}
+
+
+MapWindow::~MapWindow()
+{
+}
+
+
+void
+MapWindow::MessageReceived(BMessage* message)
+{
+	switch (message->what) {
+		default:
+			BWindow::MessageReceived(message);
+			break;
+	}
+}
+
+
+bool
+MapWindow::QuitRequested()
+{
+	Hide();
+	return false;
+}
+
+
+void
+MapWindow::AddNode(uint32 nodeId, const char* name, double lat, double lon,
+	uint8 type, uint32 lastSeen, int pathLen)
+{
+	Contact contact;
+	memset(&contact, 0, sizeof(contact));
+
+	// Store nodeId in first 4 bytes of publicKey
+	contact.publicKey[0] = (nodeId >> 24) & 0xFF;
+	contact.publicKey[1] = (nodeId >> 16) & 0xFF;
+	contact.publicKey[2] = (nodeId >> 8) & 0xFF;
+	contact.publicKey[3] = nodeId & 0xFF;
+
+	strlcpy(contact.advName, name, sizeof(contact.advName));
+	contact.advLat = (int32)(lat * 1000000);
+	contact.advLon = (int32)(lon * 1000000);
+	contact.type = type;
+	contact.lastAdvert = lastSeen;
+	contact.outPathLen = pathLen;
+
+	fMapView->AddNode(contact);
+}
+
+
+void
+MapWindow::SetSelfNode(uint32 nodeId)
+{
+	// Find the node and mark it as self
+	// For now, just center on it
+	fMapView->CenterOnSelf();
 }

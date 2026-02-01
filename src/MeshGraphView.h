@@ -8,10 +8,14 @@
 #ifndef MESHGRAPHVIEW_H
 #define MESHGRAPHVIEW_H
 
+#include <Messenger.h>
 #include <View.h>
+#include <Window.h>
 #include <ObjectList.h>
 
 #include "Types.h"
+
+class MeshGraphView;
 
 // Graph node
 struct GraphNode {
@@ -99,6 +103,25 @@ private:
 			float			fAttraction;
 			float			fDamping;
 			float			fCenterPull;
+};
+
+
+// Window wrapper for MeshGraphView
+class MeshGraphWindow : public BWindow {
+public:
+						MeshGraphWindow(BRect frame, BMessenger target);
+	virtual				~MeshGraphWindow();
+
+	virtual void		MessageReceived(BMessage* message);
+	virtual bool		QuitRequested();
+
+	void				AddNode(uint32 nodeId, const char* name,
+							int pathLen, bool isSelf);
+	void				AddEdge(uint32 fromId, uint32 toId, int hops);
+
+private:
+	MeshGraphView*		fGraphView;
+	BMessenger			fTarget;
 };
 
 #endif // MESHGRAPHVIEW_H

@@ -8,12 +8,15 @@
 #ifndef MAPVIEW_H
 #define MAPVIEW_H
 
+#include <Messenger.h>
 #include <View.h>
+#include <Window.h>
 #include <ObjectList.h>
 
 #include "Types.h"
 
 class BStringView;
+class MapView;
 
 // Map node representation
 struct MapNode {
@@ -88,6 +91,26 @@ private:
 
 			MapNode*		fSelectedNode;
 			MapNode*		fHoverNode;
+};
+
+
+// Window wrapper for MapView
+class MapWindow : public BWindow {
+public:
+						MapWindow(BRect frame, BMessenger target);
+	virtual				~MapWindow();
+
+	virtual void		MessageReceived(BMessage* message);
+	virtual bool		QuitRequested();
+
+	void				AddNode(uint32 nodeId, const char* name,
+							double lat, double lon, uint8 type,
+							uint32 lastSeen, int pathLen);
+	void				SetSelfNode(uint32 nodeId);
+
+private:
+	MapView*			fMapView;
+	BMessenger			fTarget;
 };
 
 #endif // MAPVIEW_H

@@ -9,12 +9,16 @@
 #include <Window.h>
 #include <View.h>
 #include <ListView.h>
+#include <Messenger.h>
 #include <ScrollView.h>
+#include <String.h>
 #include <StringView.h>
 #include <Button.h>
 #include <TabView.h>
 #include <MessageRunner.h>
 #include <ObjectList.h>
+
+#include <cfloat>
 
 #include "Types.h"
 

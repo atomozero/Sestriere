@@ -7,6 +7,7 @@
 
 #include "MeshGraphView.h"
 
+#include <GroupLayout.h>
 #include <Window.h>
 
 #include <cmath>
@@ -783,4 +784,98 @@ MeshGraphView::_EdgeColor(const GraphEdge& edge) const
 		return (rgb_color){255, 200, 50, 200};   // 1-2 hops
 	else
 		return (rgb_color){255, 100, 50, 200};   // 3+ hops
+}
+
+
+// ============================================================================
+// MeshGraphWindow Implementation
+// ============================================================================
+
+MeshGraphWindow::MeshGraphWindow(BRect frame, BMessenger target)
+	: BWindow(frame, "Network Graph", B_TITLED_WINDOW,
+		B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS),
+	  fTarget(target)
+{
+	fGraphView = new MeshGraphView("graph");
+	fGraphView->SetExplicitMinSize(BSize(400, 300));
+
+	SetLayout(new BGroupLayout(B_VERTICAL));
+	AddChild(fGraphView);
+
+	// Enable animation
+	fGraphView->SetAnimationEnabled(true);
+}
+
+
+MeshGraphWindow::~MeshGraphWindow()
+{
+}
+
+
+void
+MeshGraphWindow::MessageReceived(BMessage* message)
+{
+	switch (message->what) {
+		default:
+			BWindow::MessageReceived(message);
+			break;
+	}
+}
+
+
+bool
+MeshGraphWindow::QuitRequested()
+{
+	Hide();
+	return false;
+}
+
+
+void
+MeshGraphWindow::AddNode(uint32 nodeId, const char* name, int pathLen, bool isSelf)
+{
+	Contact contact;
+	memset(&contact, 0, sizeof(contact));
+
+	// Store nodeId in first 4 bytes of publicKey
+	contact.publicKey[0] = (nodeId >> 24) & 0xFF;
+	contact.publicKey[1] = (nodeId >> 16) & 0xFF;
+	contact.publicKey[2] = (nodeId >> 8) & 0xFF;
+	contact.publicKey[3] = nodeId & 0xFF;
+
+	strlcpy(contact.advName, name, sizeof(contact.advName));
+	contact.outPathLen = pathLen;
+	contact.type = ADV_TYPE_CHAT;
+
+	if (isSelf) {
+		fGraphView->SetSelfNode(name, ADV_TYPE_CHAT, 20);
+	} else {
+		fGraphView->AddNode(contact);
+	}
+}
+
+
+void
+MeshGraphWindow::AddEdge(uint32 fromId, uint32 toId, int hops)
+{
+	// Find indices
+	uint8 fromKey[kPublicKeySize] = {0};
+	uint8 toKey[kPublicKeySize] = {0};
+
+	fromKey[0] = (fromId >> 24) & 0xFF;
+	fromKey[1] = (fromId >> 16) & 0xFF;
+	fromKey[2] = (fromId >> 8) & 0xFF;
+	fromKey[3] = fromId & 0xFF;
+
+	toKey[0] = (toId >> 24) & 0xFF;
+	toKey[1] = (toId >> 16) & 0xFF;
+	toKey[2] = (toId >> 8) & 0xFF;
+	toKey[3] = toId & 0xFF;
+
+	// Find node indices (fromId=0 means self node, which is at index 0)
+	int32 fromIndex = (fromId == 0) ? 0 : -1;
+	int32 toIndex = -1;
+
+	// We'll let the view handle the edge creation
+	fGraphView->AddEdge(fromIndex, toIndex, 0, hops);
 }
