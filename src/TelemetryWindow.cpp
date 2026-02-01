@@ -6,6 +6,7 @@
 #include "TelemetryWindow.h"
 #include "Constants.h"
 
+#include <Alert.h>
 #include <Application.h>
 #include <Box.h>
 #include <File.h>
@@ -158,7 +159,6 @@ TelemetryGraphView::_DrawGrid()
 	font.SetSize(9);
 	SetFont(&font);
 
-	bigtime_t now = system_time();
 	for (int i = 0; i <= numVLines; i++) {
 		float x = fGraphRect.left + i * vStep;
 		bigtime_t timeOffset = (bigtime_t)((numVLines - i) * fTimeRange / numVLines);
@@ -437,6 +437,7 @@ TelemetrySensorView::~TelemetrySensorView()
 void
 TelemetrySensorView::Draw(BRect updateRect)
 {
+	(void)updateRect;
 	BRect bounds = Bounds();
 
 	// Background
@@ -489,6 +490,7 @@ TelemetrySensorView::Draw(BRect updateRect)
 void
 TelemetrySensorView::MouseDown(BPoint where)
 {
+	(void)where;
 	// Notify parent
 	BMessage msg(MSG_TELEMETRY_SELECT_SENSOR);
 	msg.AddPointer("sensor", fSensor);
@@ -836,7 +838,6 @@ TelemetryWindow::_SelectSensor(int32 index)
 		return;
 
 	// Update selection state
-	int32 oldSelection = fSelectedSensor;
 	fSelectedSensor = index;
 
 	// Update sensor views

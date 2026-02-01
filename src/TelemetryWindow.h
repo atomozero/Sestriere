@@ -192,9 +192,9 @@ private:
 	BButton*			fClearButton;
 
 	// Data
-	BObjectList<SensorInfo, true>	fSensors;
 	int32				fSelectedSensor;
 	bigtime_t			fCurrentTimeRange;
+	BObjectList<SensorInfo, true>	fSensors;
 };
 
 
