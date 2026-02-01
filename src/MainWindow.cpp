@@ -15,6 +15,7 @@
 #include <Menu.h>
 #include <MenuBar.h>
 #include <MenuItem.h>
+#include <Roster.h>
 #include <ScrollView.h>
 #include <SplitView.h>
 #include <StringView.h>
@@ -573,7 +574,7 @@ MainWindow::MessageSent(const char* text, uint32 timestamp)
 void
 MainWindow::MessageConfirmed(uint32 ackCode, uint32 roundTripMs)
 {
-	// TODO: Update message status in chat view
+	(void)ackCode;
 	char status[64];
 	snprintf(status, sizeof(status), "Delivered (%ums)", (unsigned)roundTripMs);
 	fStatusBar->SetTemporaryStatus(status);
@@ -958,61 +959,61 @@ MainWindow::_HandleFrameReceived(BMessage* message)
 void
 MainWindow::_HandleDeviceInfo(BMessage* message)
 {
-	// Handled in _HandleFrameReceived
+	(void)message;
 }
 
 
 void
 MainWindow::_HandleSelfInfo(BMessage* message)
 {
-	// Handled in _HandleFrameReceived
+	(void)message;
 }
 
 
 void
 MainWindow::_HandleContactsStart(BMessage* message)
 {
-	// Handled in _HandleFrameReceived
+	(void)message;
 }
 
 
 void
 MainWindow::_HandleContactReceived(BMessage* message)
 {
-	// Handled in _HandleFrameReceived
+	(void)message;
 }
 
 
 void
 MainWindow::_HandleContactsEnd(BMessage* message)
 {
-	// Handled in _HandleFrameReceived
+	(void)message;
 }
 
 
 void
 MainWindow::_HandleMessageReceived(BMessage* message)
 {
-	// Handled in _HandleFrameReceived
+	(void)message;
 }
 
 
 void
 MainWindow::_HandleSendConfirmed(BMessage* message)
 {
-	// Handled in _HandleFrameReceived
+	(void)message;
 }
 
 
 void
 MainWindow::_HandleBatteryReceived(BMessage* message)
 {
-	// Handled in _HandleFrameReceived
+	(void)message;
 }
 
 
 void
 MainWindow::_HandlePushNotification(BMessage* message)
 {
-	// Handled in _HandleFrameReceived
+	(void)message;
 }
