@@ -65,6 +65,7 @@ MapView::AttachedToWindow()
 void
 MapView::Draw(BRect updateRect)
 {
+	(void)updateRect;
 	BRect bounds = Bounds();
 
 	// Background - dark blue for "sea"
@@ -135,6 +136,8 @@ MapView::MouseDown(BPoint where)
 void
 MapView::MouseMoved(BPoint where, uint32 transit, const BMessage* dragMessage)
 {
+	(void)transit;
+	(void)dragMessage;
 	if (fDragging) {
 		// Pan the map
 		float dx = where.x - fDragStart.x;
@@ -166,6 +169,7 @@ MapView::MouseMoved(BPoint where, uint32 transit, const BMessage* dragMessage)
 void
 MapView::MouseUp(BPoint where)
 {
+	(void)where;
 	fDragging = false;
 }
 
@@ -663,7 +667,9 @@ MapView::_FindNodeAt(BPoint where)
 	// Check self node first
 	if (fHasSelfPosition) {
 		BPoint pos = _LatLonToScreen(fSelfNode.latitude, fSelfNode.longitude);
-		if ((where - pos).Length() <= kSelfRadius + 5)
+		float dx = where.x - pos.x;
+		float dy = where.y - pos.y;
+		if (sqrt(dx * dx + dy * dy) <= kSelfRadius + 5)
 			return &fSelfNode;
 	}
 
@@ -671,7 +677,9 @@ MapView::_FindNodeAt(BPoint where)
 	for (int32 i = fNodes.CountItems() - 1; i >= 0; i--) {
 		MapNode* node = fNodes.ItemAt(i);
 		BPoint pos = _LatLonToScreen(node->latitude, node->longitude);
-		if ((where - pos).Length() <= radius)
+		float dx = where.x - pos.x;
+		float dy = where.y - pos.y;
+		if (sqrt(dx * dx + dy * dy) <= radius)
 			return node;
 	}
 
@@ -781,7 +789,6 @@ MapWindow::AddNode(uint32 nodeId, const char* name, double lat, double lon,
 void
 MapWindow::SetSelfNode(uint32 nodeId)
 {
-	// Find the node and mark it as self
-	// For now, just center on it
+	(void)nodeId;
 	fMapView->CenterOnSelf();
 }
