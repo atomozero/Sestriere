@@ -173,6 +173,7 @@ MessageView::_FormatTimestamp(char* buffer, size_t size) const
 float
 MessageView::_CalcTextHeight(BView* owner, float maxWidth) const
 {
+	(void)maxWidth;
 	// TODO: Calculate wrapped text height
 	font_height fh;
 	owner->GetFontHeight(&fh);

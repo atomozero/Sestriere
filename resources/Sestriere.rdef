@@ -51,6 +51,5 @@ resource vector_icon {
 resource file_types message { };
 
 /*
- * MIME type descriptions
+ * MIME type descriptions are handled by app_signature above
  */
-resource(1, "BEOS:TYPE") #'MIMS' "application/x-vnd.Sestriere";
