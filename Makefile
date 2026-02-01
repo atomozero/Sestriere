@@ -16,6 +16,7 @@ SRCS = \
 	src/ChannelItem.cpp \
 	src/ChatView.cpp \
 	src/MessageView.cpp \
+	src/MessageStore.cpp \
 	src/StatusBarView.cpp \
 	src/SettingsWindow.cpp \
 	src/PortSelectionWindow.cpp \

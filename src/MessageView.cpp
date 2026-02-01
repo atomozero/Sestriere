@@ -8,9 +8,26 @@
 #include "MessageView.h"
 
 #include <View.h>
+#include <Font.h>
 
 #include <cstdio>
 #include <ctime>
+#include <vector>
+
+
+// Modern chat bubble colors
+static const rgb_color kOutgoingBubbleColor = {66, 133, 244, 255};    // Google Blue
+static const rgb_color kOutgoingTextColor = {255, 255, 255, 255};     // White
+static const rgb_color kIncomingBubbleColor = {241, 243, 244, 255};   // Light gray
+static const rgb_color kIncomingTextColor = {32, 33, 36, 255};        // Dark gray
+static const rgb_color kMetaTextColor = {128, 134, 139, 255};         // Gray
+static const rgb_color kDirectColor = {52, 168, 83, 255};             // Green
+static const rgb_color kHopsColor = {251, 188, 4, 255};               // Yellow/Orange
+
+static const float kBubblePadding = 10.0f;
+static const float kBubbleRadius = 12.0f;
+static const float kBubbleMaxWidthRatio = 0.75f;
+static const float kBubbleMargin = 8.0f;
 
 
 MessageView::MessageView(const ReceivedMessage& message, bool outgoing,
@@ -41,94 +58,145 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	rgb_color lowColor = owner->LowColor();
 	rgb_color highColor = owner->HighColor();
 
-	// Background
-	rgb_color bgColor;
-	if (fOutgoing) {
-		// Outgoing messages - light blue background
-		bgColor.red = 220;
-		bgColor.green = 235;
-		bgColor.blue = 250;
-		bgColor.alpha = 255;
-	} else {
-		// Incoming messages - light gray background
-		bgColor.red = 240;
-		bgColor.green = 240;
-		bgColor.blue = 240;
-		bgColor.alpha = 255;
-	}
-
-	owner->SetLowColor(bgColor);
-	owner->SetHighColor(0, 0, 0);  // Black text
-
-	// Draw message bubble
-	BRect bubbleRect = frame;
-	bubbleRect.InsetBy(4, 2);
-
-	if (fOutgoing) {
-		// Right-align outgoing messages
-		bubbleRect.left = bubbleRect.right - (bubbleRect.Width() * 0.75);
-	} else {
-		// Left-align incoming messages
-		bubbleRect.right = bubbleRect.left + (bubbleRect.Width() * 0.75);
-	}
-
-	owner->FillRoundRect(bubbleRect, 4, 4, B_SOLID_LOW);
-
-	// Draw border
-	owner->SetHighColor(tint_color(bgColor, B_DARKEN_2_TINT));
-	owner->StrokeRoundRect(bubbleRect, 4, 4);
-
-	// Draw timestamp and sender
-	owner->SetHighColor(100, 100, 100);  // Gray for metadata
-
-	char timeStr[16];
-	_FormatTimestamp(timeStr, sizeof(timeStr));
-
-	BPoint metaPos(bubbleRect.left + 6, bubbleRect.top + fBaselineOffset);
-
-	if (!fOutgoing && fSenderName.Length() > 0) {
-		BString meta;
-		meta.SetToFormat("[%s] %s:", timeStr, fSenderName.String());
-		owner->DrawString(meta.String(), metaPos);
-	} else {
-		BString meta;
-		meta.SetToFormat("[%s]", timeStr);
-		owner->DrawString(meta.String(), metaPos);
-	}
-
-	// Draw message text
-	owner->SetHighColor(0, 0, 0);  // Black text
+	// Clear background
+	owner->SetLowColor(ui_color(B_LIST_BACKGROUND_COLOR));
+	owner->FillRect(frame, B_SOLID_LOW);
 
 	font_height fh;
 	owner->GetFontHeight(&fh);
 	float lineHeight = fh.ascent + fh.descent + fh.leading;
 
-	BPoint textPos(bubbleRect.left + 6, metaPos.y + lineHeight);
-	owner->DrawString(fText.String(), textPos);
+	// Calculate bubble dimensions
+	float maxBubbleWidth = frame.Width() * kBubbleMaxWidthRatio;
+	float textWidth = owner->StringWidth(fText.String());
+	float bubbleContentWidth = std::min(textWidth, maxBubbleWidth - kBubblePadding * 2);
 
-	// Draw path/SNR info for incoming messages
-	if (!fOutgoing) {
-		owner->SetHighColor(128, 128, 128);
+	// Wrap text if needed
+	std::vector<BString> lines;
+	_WrapText(owner, fText, maxBubbleWidth - kBubblePadding * 2, lines);
 
-		BString info;
-		if (fPathLen == 0xFF) {
-			info = "direct";
-		} else {
-			info.SetToFormat("%d hops", fPathLen);
-		}
-
-		if (fSnr > 0) {
-			float snrDb = fSnr / 4.0f;
-			BString snrStr;
-			snrStr.SetToFormat(" SNR:%.1fdB", snrDb);
-			info.Append(snrStr);
-		}
-
-		float infoWidth = owner->StringWidth(info.String());
-		BPoint infoPos(bubbleRect.right - infoWidth - 6,
-			bubbleRect.bottom - 4);
-		owner->DrawString(info.String(), infoPos);
+	// Calculate actual bubble width based on longest line
+	float maxLineWidth = 0;
+	for (const auto& line : lines) {
+		float w = owner->StringWidth(line.String());
+		if (w > maxLineWidth)
+			maxLineWidth = w;
 	}
+
+	// Include sender name in width calculation for incoming messages
+	float headerWidth = 0;
+	if (!fOutgoing && fSenderName.Length() > 0) {
+		headerWidth = owner->StringWidth(fSenderName.String());
+	}
+
+	bubbleContentWidth = std::max(maxLineWidth, headerWidth);
+	float bubbleWidth = bubbleContentWidth + kBubblePadding * 2;
+
+	// Calculate bubble height
+	float textHeight = lines.size() * lineHeight;
+	float headerHeight = (!fOutgoing && fSenderName.Length() > 0) ? lineHeight : 0;
+	float metaHeight = lineHeight * 0.8f;  // Smaller font for time/info
+	float bubbleHeight = headerHeight + textHeight + metaHeight + kBubblePadding * 2;
+
+	// Position bubble
+	BRect bubbleRect;
+	if (fOutgoing) {
+		// Right-align outgoing messages
+		bubbleRect.left = frame.right - bubbleWidth - kBubbleMargin;
+		bubbleRect.right = frame.right - kBubbleMargin;
+	} else {
+		// Left-align incoming messages
+		bubbleRect.left = frame.left + kBubbleMargin;
+		bubbleRect.right = frame.left + kBubbleMargin + bubbleWidth;
+	}
+	bubbleRect.top = frame.top + kBubbleMargin / 2;
+	bubbleRect.bottom = bubbleRect.top + bubbleHeight;
+
+	// Draw bubble background
+	rgb_color bubbleColor = fOutgoing ? kOutgoingBubbleColor : kIncomingBubbleColor;
+	owner->SetHighColor(bubbleColor);
+	owner->FillRoundRect(bubbleRect, kBubbleRadius, kBubbleRadius);
+
+	// Draw bubble tail (small triangle)
+	BPoint tail[3];
+	if (fOutgoing) {
+		tail[0] = BPoint(bubbleRect.right - kBubbleRadius, bubbleRect.bottom - 8);
+		tail[1] = BPoint(bubbleRect.right + 6, bubbleRect.bottom - 4);
+		tail[2] = BPoint(bubbleRect.right - kBubbleRadius, bubbleRect.bottom);
+	} else {
+		tail[0] = BPoint(bubbleRect.left + kBubbleRadius, bubbleRect.bottom - 8);
+		tail[1] = BPoint(bubbleRect.left - 6, bubbleRect.bottom - 4);
+		tail[2] = BPoint(bubbleRect.left + kBubbleRadius, bubbleRect.bottom);
+	}
+	owner->FillPolygon(tail, 3);
+
+	// Draw content
+	float yPos = bubbleRect.top + kBubblePadding + fh.ascent;
+
+	// Draw sender name for incoming messages
+	if (!fOutgoing && fSenderName.Length() > 0) {
+		owner->SetHighColor(tint_color(kIncomingTextColor, B_DARKEN_1_TINT));
+		BFont boldFont;
+		owner->GetFont(&boldFont);
+		boldFont.SetFace(B_BOLD_FACE);
+		owner->SetFont(&boldFont);
+
+		owner->DrawString(fSenderName.String(),
+			BPoint(bubbleRect.left + kBubblePadding, yPos));
+
+		boldFont.SetFace(B_REGULAR_FACE);
+		owner->SetFont(&boldFont);
+		yPos += lineHeight;
+	}
+
+	// Draw message text
+	rgb_color textColor = fOutgoing ? kOutgoingTextColor : kIncomingTextColor;
+	owner->SetHighColor(textColor);
+
+	for (const auto& line : lines) {
+		owner->DrawString(line.String(),
+			BPoint(bubbleRect.left + kBubblePadding, yPos));
+		yPos += lineHeight;
+	}
+
+	// Draw timestamp and delivery info
+	char timeStr[16];
+	_FormatTimestamp(timeStr, sizeof(timeStr));
+
+	BString metaStr;
+	if (!fOutgoing) {
+		if (fPathLen == 0 || fPathLen == 0xFF) {
+			metaStr.SetToFormat("%s \xE2\x9C\x93", timeStr);  // Direct checkmark
+		} else {
+			metaStr.SetToFormat("%s \xC2\xB7 %d hops", timeStr, fPathLen);
+		}
+	} else {
+		metaStr.SetToFormat("%s \xE2\x9C\x93\xE2\x9C\x93", timeStr);  // Double check for sent
+	}
+
+	// Use smaller font for meta
+	BFont smallFont;
+	owner->GetFont(&smallFont);
+	float originalSize = smallFont.Size();
+	smallFont.SetSize(originalSize * 0.85f);
+	owner->SetFont(&smallFont);
+
+	rgb_color metaColor;
+	if (fOutgoing) {
+		metaColor = {255, 255, 255, 180};  // Semi-transparent white
+	} else {
+		metaColor = kMetaTextColor;
+	}
+	owner->SetHighColor(metaColor);
+
+	float metaWidth = owner->StringWidth(metaStr.String());
+	owner->DrawString(metaStr.String(),
+		BPoint(bubbleRect.right - kBubblePadding - metaWidth,
+			bubbleRect.bottom - kBubblePadding / 2));
+
+	// Restore font size
+	smallFont.SetSize(originalSize);
+	owner->SetFont(&smallFont);
 
 	// Restore colors
 	owner->SetLowColor(lowColor);
@@ -149,9 +217,21 @@ MessageView::Update(BView* owner, const BFont* font)
 	float lineHeight = fontHeight.ascent + fontHeight.descent +
 		fontHeight.leading;
 
-	// Calculate height based on text lines
-	// For now, assume single line + metadata line + padding
-	float height = lineHeight * 2 + 16;
+	// Calculate max bubble width
+	BRect ownerBounds = owner->Bounds();
+	float maxBubbleWidth = ownerBounds.Width() * kBubbleMaxWidthRatio;
+
+	// Wrap text to calculate actual height
+	std::vector<BString> lines;
+	_WrapText(owner, fText, maxBubbleWidth - kBubblePadding * 2, lines);
+
+	// Calculate total height
+	float textHeight = lines.size() * lineHeight;
+	float headerHeight = (!fOutgoing && fSenderName.Length() > 0) ? lineHeight : 0;
+	float metaHeight = lineHeight * 0.8f;
+
+	float height = headerHeight + textHeight + metaHeight +
+		kBubblePadding * 2 + kBubbleMargin;
 
 	SetHeight(height);
 }
@@ -173,9 +253,91 @@ MessageView::_FormatTimestamp(char* buffer, size_t size) const
 float
 MessageView::_CalcTextHeight(BView* owner, float maxWidth) const
 {
-	(void)maxWidth;
-	// TODO: Calculate wrapped text height
+	std::vector<BString> lines;
+	_WrapText(owner, fText, maxWidth, lines);
+
 	font_height fh;
 	owner->GetFontHeight(&fh);
-	return fh.ascent + fh.descent + fh.leading;
+	float lineHeight = fh.ascent + fh.descent + fh.leading;
+
+	return lines.size() * lineHeight;
+}
+
+
+void
+MessageView::_WrapText(BView* owner, const BString& text, float maxWidth,
+	std::vector<BString>& outLines) const
+{
+	outLines.clear();
+
+	if (text.Length() == 0) {
+		outLines.push_back("");
+		return;
+	}
+
+	// Check if text fits on one line
+	if (owner->StringWidth(text.String()) <= maxWidth) {
+		outLines.push_back(text);
+		return;
+	}
+
+	// Need to wrap - split by words
+	BString remaining = text;
+	BString currentLine;
+
+	while (remaining.Length() > 0) {
+		// Find next word
+		int32 spacePos = remaining.FindFirst(' ');
+		BString word;
+
+		if (spacePos < 0) {
+			word = remaining;
+			remaining = "";
+		} else {
+			remaining.CopyInto(word, 0, spacePos);
+			remaining.Remove(0, spacePos + 1);
+		}
+
+		// Try adding word to current line
+		BString testLine = currentLine;
+		if (testLine.Length() > 0)
+			testLine.Append(" ");
+		testLine.Append(word);
+
+		if (owner->StringWidth(testLine.String()) <= maxWidth) {
+			currentLine = testLine;
+		} else {
+			// Word doesn't fit - start new line
+			if (currentLine.Length() > 0) {
+				outLines.push_back(currentLine);
+				currentLine = word;
+			} else {
+				// Word alone is too long - need to break it
+				BString partial;
+				for (int32 i = 0; i < word.Length(); i++) {
+					char c = word.ByteAt(i);
+					BString test = partial;
+					test.Append(c, 1);
+					if (owner->StringWidth(test.String()) > maxWidth) {
+						if (partial.Length() > 0) {
+							outLines.push_back(partial);
+							partial = "";
+							partial.Append(c, 1);
+						}
+					} else {
+						partial.Append(c, 1);
+					}
+				}
+				currentLine = partial;
+			}
+		}
+	}
+
+	// Don't forget the last line
+	if (currentLine.Length() > 0)
+		outLines.push_back(currentLine);
+
+	// Ensure at least one line
+	if (outLines.empty())
+		outLines.push_back("");
 }

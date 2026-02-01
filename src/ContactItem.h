@@ -30,13 +30,28 @@ public:
 			uint8			Type() const { return fContact.type; }
 			bool			HasPath() const { return fContact.outPathLen >= 0; }
 
+			void			SetUnreadCount(int32 count);
+			int32			UnreadCount() const { return fUnreadCount; }
+
+			void			SetLastMessage(const char* text, uint32 timestamp);
+			const char*		LastMessagePreview() const { return fLastMessage.String(); }
+			uint32			LastMessageTime() const { return fLastMessageTime; }
+
+			void			RefreshMessageInfo();
+
 private:
 			const char*		_GetTypeIcon() const;
 			void			_GetStatusColor(rgb_color& outColor) const;
+			void			_FormatRelativeTime(uint32 timestamp, char* buffer,
+								size_t size) const;
 
 			Contact			fContact;
 			float			fBaselineOffset;
 			float			fIconSize;
+
+			int32			fUnreadCount;
+			BString			fLastMessage;
+			uint32			fLastMessageTime;
 };
 
 #endif // CONTACTITEM_H

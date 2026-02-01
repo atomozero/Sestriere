@@ -7,6 +7,7 @@
 
 #include "MainWindow.h"
 
+#include <Alert.h>
 #include <Application.h>
 #include <Box.h>
 #include <Button.h>
@@ -113,8 +114,11 @@ MainWindow::MessageReceived(BMessage* message)
 		{
 			const char* error;
 			if (message->FindString(kFieldError, &error) == B_OK) {
-				// TODO: Show error alert
-				fprintf(stderr, "Serial error: %s\n", error);
+				BString message("Serial communication error:\n\n");
+				message.Append(error);
+				BAlert* alert = new BAlert("Serial Error", message.String(),
+					"OK", NULL, NULL, B_WIDTH_AS_USUAL, B_STOP_ALERT);
+				alert->Go(NULL);  // Async, won't block
 			}
 			SetConnected(false);
 			break;
@@ -178,8 +182,14 @@ MainWindow::MessageReceived(BMessage* message)
 				if (app != NULL && app->GetSerialHandler() != NULL) {
 					status_t status = app->GetSerialHandler()->Connect(port);
 					if (status != B_OK) {
-						fprintf(stderr, "Failed to connect to %s: %s\n",
-							port, strerror(status));
+						BString errMsg("Failed to connect to ");
+						errMsg.Append(port);
+						errMsg.Append(":\n\n");
+						errMsg.Append(strerror(status));
+						BAlert* alert = new BAlert("Connection Error",
+							errMsg.String(), "OK", NULL, NULL,
+							B_WIDTH_AS_USUAL, B_STOP_ALERT);
+						alert->Go(NULL);
 					}
 				}
 			}
@@ -612,10 +622,10 @@ MainWindow::_BuildMenu()
 	contactMenu->AddItem(fTracePathItem);
 	contactMenu->AddSeparatorItem();
 	fExportContactItem = new BMenuItem(B_TRANSLATE(TR_MENU_EXPORT_CONTACT),
-		new BMessage(MSG_EXPORT_CONTACT));
+		new BMessage(MSG_EXPORT_CONTACT), 'E');
 	contactMenu->AddItem(fExportContactItem);
 	contactMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_IMPORT_CONTACT),
-		new BMessage(MSG_IMPORT_CONTACT)));
+		new BMessage(MSG_IMPORT_CONTACT), 'I', B_SHIFT_KEY));
 	fMenuBar->AddItem(contactMenu);
 
 	// Device menu
@@ -624,7 +634,7 @@ MainWindow::_BuildMenu()
 		new BMessage(MSG_REFRESH_CONTACTS), 'R');
 	deviceMenu->AddItem(fRefreshContactsItem);
 	fSendAdvertItem = new BMenuItem(B_TRANSLATE(TR_MENU_SEND_ADVERT),
-		new BMessage(MSG_SEND_ADVERT));
+		new BMessage(MSG_SEND_ADVERT), 'A');
 	deviceMenu->AddItem(fSendAdvertItem);
 	deviceMenu->AddSeparatorItem();
 	deviceMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_PUBLIC_CHANNEL),
@@ -643,7 +653,7 @@ MainWindow::_BuildMenu()
 	viewMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_MESH_GRAPH),
 		new BMessage(MSG_SHOW_MESH_GRAPH), 'G'));
 	viewMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_TELEMETRY),
-		new BMessage(MSG_SHOW_TELEMETRY)));
+		new BMessage(MSG_SHOW_TELEMETRY), 'S'));
 	fMenuBar->AddItem(viewMenu);
 
 	// Help menu
@@ -910,8 +920,12 @@ MainWindow::_HandleFrameReceived(BMessage* message)
 
 			case RESP_CODE_ERR:
 				if (size >= 2) {
-					fprintf(stderr, "Device error: %s\n",
-						Protocol::GetErrorName(payload[1]));
+					BString errMsg("Device error:\n\n");
+					errMsg.Append(Protocol::GetErrorName(payload[1]));
+					BAlert* alert = new BAlert("Device Error",
+						errMsg.String(), "OK", NULL, NULL,
+						B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+					alert->Go(NULL);
 				}
 				break;
 		}

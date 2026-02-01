@@ -7,6 +7,8 @@
 
 #include "ContactListView.h"
 
+#include <MenuItem.h>
+#include <PopUpMenu.h>
 #include <Window.h>
 
 #include <cstring>
@@ -55,6 +57,54 @@ void
 ContactListView::MessageReceived(BMessage* message)
 {
 	BListView::MessageReceived(message);
+}
+
+
+void
+ContactListView::MouseDown(BPoint where)
+{
+	// Check for right-click
+	BMessage* currentMsg = Window()->CurrentMessage();
+	int32 buttons = 0;
+	if (currentMsg != NULL)
+		currentMsg->FindInt32("buttons", &buttons);
+
+	if (buttons & B_SECONDARY_MOUSE_BUTTON) {
+		// Find which item was clicked
+		int32 index = IndexOf(where);
+		if (index >= 0) {
+			// Select the item
+			Select(index);
+
+			// Show context menu
+			BPopUpMenu* menu = new BPopUpMenu("ContactMenu", false, false);
+
+			menu->AddItem(new BMenuItem("Send Message",
+				new BMessage(MSG_CONTACT_SELECTED)));
+			menu->AddSeparatorItem();
+			menu->AddItem(new BMenuItem("Login to Repeater/Room",
+				new BMessage(MSG_SHOW_LOGIN)));
+			menu->AddItem(new BMenuItem("Trace Path",
+				new BMessage(MSG_SHOW_TRACE_PATH)));
+			menu->AddSeparatorItem();
+			menu->AddItem(new BMenuItem("Export Contact",
+				new BMessage(MSG_EXPORT_CONTACT)));
+
+			// Convert to screen coordinates
+			ConvertToScreen(&where);
+			menu->SetTargetForItems(Window());
+
+			BMenuItem* selected = menu->Go(where, false, true);
+			if (selected != NULL) {
+				// Item was selected, message already sent
+			}
+
+			delete menu;
+		}
+		return;
+	}
+
+	BListView::MouseDown(where);
 }
 
 

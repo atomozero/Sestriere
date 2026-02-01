@@ -13,6 +13,7 @@
 #include <cstring>
 
 #include "Constants.h"
+#include "MessageStore.h"
 #include "MessageView.h"
 
 
@@ -62,6 +63,12 @@ ChatView::AddMessage(const ReceivedMessage& message, bool outgoing)
 	MessageView* item = new MessageView(message, outgoing, senderName);
 	AddItem(item);
 
+	// Save message to persistent storage
+	if (fCurrentContact != NULL) {
+		MessageStore::Instance()->SaveMessage(
+			fCurrentContact->publicKey, message, outgoing, senderName);
+	}
+
 	_ScrollToBottom();
 }
 
@@ -85,8 +92,27 @@ ChatView::SetCurrentContact(const Contact* contact)
 	else
 		fCurrentContactName = "";
 
-	// TODO: Load message history for this contact
 	ClearMessages();
+
+	// Load message history for this contact
+	if (contact != NULL) {
+		BObjectList<StoredMessage> messages(true);
+		if (MessageStore::Instance()->LoadMessages(contact->publicKey, messages) == B_OK) {
+			for (int32 i = 0; i < messages.CountItems(); i++) {
+				StoredMessage* stored = messages.ItemAt(i);
+				MessageView* item = new MessageView(
+					stored->message,
+					stored->outgoing,
+					stored->senderName.String());
+				AddItem(item);
+			}
+		}
+
+		// Mark as read when viewing
+		MessageStore::Instance()->MarkAsRead(contact->publicKey);
+
+		_ScrollToBottom();
+	}
 }
 
 

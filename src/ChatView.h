@@ -9,6 +9,7 @@
 #define CHATVIEW_H
 
 #include <ListView.h>
+#include <ObjectList.h>
 #include <String.h>
 
 #include "Types.h"

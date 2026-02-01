@@ -22,6 +22,7 @@ public:
 
 	virtual void			SelectionChanged();
 	virtual void			MessageReceived(BMessage* message);
+	virtual void			MouseDown(BPoint where);
 
 			void			AddContact(const Contact& contact);
 			void			UpdateContact(const Contact& contact);

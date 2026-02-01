@@ -11,6 +11,8 @@
 #include <ListItem.h>
 #include <String.h>
 
+#include <vector>
+
 #include "Types.h"
 
 class MessageView : public BListItem {
@@ -31,6 +33,9 @@ public:
 private:
 			void			_FormatTimestamp(char* buffer, size_t size) const;
 			float			_CalcTextHeight(BView* owner, float maxWidth) const;
+			void			_WrapText(BView* owner, const BString& text,
+								float maxWidth,
+								std::vector<BString>& outLines) const;
 
 			BString			fText;
 			BString			fSenderName;
