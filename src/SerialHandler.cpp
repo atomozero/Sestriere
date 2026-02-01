@@ -7,6 +7,7 @@
 
 #include "SerialHandler.h"
 
+#include <Autolock.h>
 #include <Directory.h>
 #include <Entry.h>
 #include <OS.h>
