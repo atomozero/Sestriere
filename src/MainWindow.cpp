@@ -1,0 +1,780 @@
+/*
+ * Copyright 2025, Sestriere Authors
+ * All rights reserved. Distributed under the terms of the MIT license.
+ *
+ * MainWindow.cpp — Main application window implementation
+ */
+
+#include "MainWindow.h"
+
+#include <Application.h>
+#include <Box.h>
+#include <Button.h>
+#include <Catalog.h>
+#include <LayoutBuilder.h>
+#include <Menu.h>
+#include <MenuBar.h>
+#include <MenuItem.h>
+#include <ScrollView.h>
+#include <SplitView.h>
+#include <StringView.h>
+#include <TextControl.h>
+
+#include <cstring>
+#include <cstdio>
+
+#include "ChatView.h"
+#include "Constants.h"
+#include "ContactListView.h"
+#include "PortSelectionWindow.h"
+#include "Protocol.h"
+#include "Sestriere.h"
+#include "SerialHandler.h"
+#include "SettingsWindow.h"
+#include "StatusBarView.h"
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "MainWindow"
+
+
+MainWindow::MainWindow(BRect frame)
+	:
+	BWindow(frame, B_TRANSLATE_SYSTEM_NAME(kAppName),
+		B_TITLED_WINDOW,
+		B_AUTO_UPDATE_SIZE_LIMITS | B_QUIT_ON_WINDOW_CLOSE),
+	fMenuBar(NULL),
+	fConnectItem(NULL),
+	fDisconnectItem(NULL),
+	fRefreshContactsItem(NULL),
+	fSendAdvertItem(NULL),
+	fSplitView(NULL),
+	fStatusBar(NULL),
+	fContactList(NULL),
+	fChatView(NULL),
+	fMessageInput(NULL),
+	fSendButton(NULL),
+	fPlaceholderLabel(NULL),
+	fConnected(false),
+	fHandshakeComplete(false),
+	fExpectedContactCount(0),
+	fReceivedContactCount(0),
+	fBatteryTimer(NULL)
+{
+	memset(&fDeviceInfo, 0, sizeof(fDeviceInfo));
+	memset(&fSelfInfo, 0, sizeof(fSelfInfo));
+
+	_BuildMenu();
+	_BuildLayout();
+	_UpdateConnectionUI();
+
+	SetSizeLimits(kMinWindowWidth, B_SIZE_UNLIMITED,
+		kMinWindowHeight, B_SIZE_UNLIMITED);
+}
+
+
+MainWindow::~MainWindow()
+{
+	_StopPolling();
+}
+
+
+void
+MainWindow::MessageReceived(BMessage* message)
+{
+	switch (message->what) {
+		// Serial events
+		case MSG_SERIAL_CONNECTED:
+			SetConnected(true);
+			break;
+
+		case MSG_SERIAL_DISCONNECTED:
+			SetConnected(false);
+			break;
+
+		case MSG_SERIAL_ERROR:
+		{
+			const char* error;
+			if (message->FindString(kFieldError, &error) == B_OK) {
+				// TODO: Show error alert
+				fprintf(stderr, "Serial error: %s\n", error);
+			}
+			SetConnected(false);
+			break;
+		}
+
+		// Protocol events
+		case MSG_FRAME_RECEIVED:
+			_HandleFrameReceived(message);
+			break;
+
+		case MSG_DEVICE_INFO_RECEIVED:
+			_HandleDeviceInfo(message);
+			break;
+
+		case MSG_SELF_INFO_RECEIVED:
+			_HandleSelfInfo(message);
+			break;
+
+		case MSG_CONTACTS_START:
+			_HandleContactsStart(message);
+			break;
+
+		case MSG_CONTACT_RECEIVED:
+			_HandleContactReceived(message);
+			break;
+
+		case MSG_CONTACTS_END:
+			_HandleContactsEnd(message);
+			break;
+
+		case MSG_MESSAGE_RECEIVED:
+			_HandleMessageReceived(message);
+			break;
+
+		case MSG_SEND_CONFIRMED:
+			_HandleSendConfirmed(message);
+			break;
+
+		case MSG_BATTERY_RECEIVED:
+			_HandleBatteryReceived(message);
+			break;
+
+		case MSG_PUSH_NOTIFICATION:
+			_HandlePushNotification(message);
+			break;
+
+		// UI actions
+		case MSG_SERIAL_CONNECT:
+		case MSG_SHOW_PORT_SELECTION:
+		{
+			PortSelectionWindow* portWindow = new PortSelectionWindow(this);
+			portWindow->Show();
+			break;
+		}
+
+		case MSG_SERIAL_PORT_SELECTED:
+		{
+			const char* port;
+			if (message->FindString(kFieldPort, &port) == B_OK) {
+				Sestriere* app = dynamic_cast<Sestriere*>(be_app);
+				if (app != NULL && app->GetSerialHandler() != NULL) {
+					status_t status = app->GetSerialHandler()->Connect(port);
+					if (status != B_OK) {
+						fprintf(stderr, "Failed to connect to %s: %s\n",
+							port, strerror(status));
+					}
+				}
+			}
+			break;
+		}
+
+		case MSG_SERIAL_DISCONNECT:
+		{
+			Sestriere* app = dynamic_cast<Sestriere*>(be_app);
+			if (app != NULL && app->GetSerialHandler() != NULL)
+				app->GetSerialHandler()->Disconnect();
+			break;
+		}
+
+		case MSG_CONTACT_SELECTED:
+		{
+			int32 index;
+			if (message->FindInt32("index", &index) == B_OK) {
+				// Enable message input when a contact is selected
+				if (index >= 0) {
+					fMessageInput->SetEnabled(true);
+					fSendButton->SetEnabled(true);
+					if (fPlaceholderLabel != NULL)
+						fPlaceholderLabel->Hide();
+					if (fChatView != NULL)
+						fChatView->Show();
+				}
+			}
+			break;
+		}
+
+		case MSG_SEND_MESSAGE:
+			_SendCurrentMessage();
+			break;
+
+		case MSG_REFRESH_CONTACTS:
+		{
+			Sestriere* app = dynamic_cast<Sestriere*>(be_app);
+			if (app != NULL && app->GetSerialHandler() != NULL
+				&& app->GetSerialHandler()->IsConnected()) {
+				uint8 buffer[64];
+				size_t len = Protocol::BuildGetContacts(0, buffer);
+				app->GetSerialHandler()->SendFrame(buffer, len);
+			}
+			break;
+		}
+
+		case MSG_SEND_ADVERT:
+		{
+			Sestriere* app = dynamic_cast<Sestriere*>(be_app);
+			if (app != NULL && app->GetSerialHandler() != NULL
+				&& app->GetSerialHandler()->IsConnected()) {
+				uint8 buffer[64];
+				size_t len = Protocol::BuildSendAdvert(false, buffer);
+				app->GetSerialHandler()->SendFrame(buffer, len);
+			}
+			break;
+		}
+
+		case MSG_SHOW_SETTINGS:
+		{
+			SettingsWindow* settingsWindow = new SettingsWindow(this);
+			settingsWindow->Show();
+			break;
+		}
+
+		case MSG_SHOW_ABOUT:
+			be_app->PostMessage(B_ABOUT_REQUESTED);
+			break;
+
+		case MSG_BATTERY_TIMER:
+		{
+			Sestriere* app = dynamic_cast<Sestriere*>(be_app);
+			if (app != NULL && app->GetSerialHandler() != NULL
+				&& app->GetSerialHandler()->IsConnected()) {
+				uint8 buffer[64];
+				size_t len = Protocol::BuildGetBatteryAndStorage(buffer);
+				app->GetSerialHandler()->SendFrame(buffer, len);
+			}
+			break;
+		}
+
+		default:
+			BWindow::MessageReceived(message);
+			break;
+	}
+}
+
+
+bool
+MainWindow::QuitRequested()
+{
+	be_app->PostMessage(B_QUIT_REQUESTED);
+	return true;
+}
+
+
+void
+MainWindow::SetConnected(bool connected)
+{
+	fConnected = connected;
+	_UpdateConnectionUI();
+
+	if (connected) {
+		fHandshakeComplete = false;
+		// Send DEVICE_QUERY to start handshake
+		Sestriere* app = dynamic_cast<Sestriere*>(be_app);
+		if (app != NULL && app->GetSerialHandler() != NULL) {
+			uint8 buffer[64];
+			size_t len = Protocol::BuildDeviceQuery(kAppProtocolVersion, buffer);
+			app->GetSerialHandler()->SendFrame(buffer, len);
+		}
+	} else {
+		fHandshakeComplete = false;
+		_StopPolling();
+		fStatusBar->SetConnectionStatus(TR_STATUS_DISCONNECTED);
+	}
+}
+
+
+void
+MainWindow::SetDeviceInfo(const DeviceInfo& info)
+{
+	fDeviceInfo = info;
+	// After receiving device info, send APP_START
+	Sestriere* app = dynamic_cast<Sestriere*>(be_app);
+	if (app != NULL && app->GetSerialHandler() != NULL) {
+		uint8 buffer[64];
+		size_t len = Protocol::BuildAppStart(kAppProtocolVersion,
+			kAppIdentifier, buffer);
+		app->GetSerialHandler()->SendFrame(buffer, len);
+	}
+}
+
+
+void
+MainWindow::SetSelfInfo(const SelfInfo& info)
+{
+	fSelfInfo = info;
+	fHandshakeComplete = true;
+	fStatusBar->SetNodeName(info.name);
+	fStatusBar->SetConnectionStatus(TR_STATUS_CONNECTED);
+
+	char radioInfo[64];
+	snprintf(radioInfo, sizeof(radioInfo), "SF%d %.3fMHz",
+		info.radioSf, info.radioFreq / 1000000.0f);
+	fStatusBar->SetRadioInfo(radioInfo);
+
+	// Request contacts
+	Sestriere* app = dynamic_cast<Sestriere*>(be_app);
+	if (app != NULL && app->GetSerialHandler() != NULL) {
+		uint8 buffer[64];
+		size_t len = Protocol::BuildGetContacts(0, buffer);
+		app->GetSerialHandler()->SendFrame(buffer, len);
+
+		// Also request battery status
+		len = Protocol::BuildGetBatteryAndStorage(buffer);
+		app->GetSerialHandler()->SendFrame(buffer, len);
+	}
+
+	// Start battery polling timer
+	_StartPolling();
+}
+
+
+void
+MainWindow::SetBatteryInfo(const BatteryAndStorage& info)
+{
+	fStatusBar->SetBatteryInfo(info.milliVolts);
+}
+
+
+void
+MainWindow::AddContact(const Contact& contact)
+{
+	fContactList->AddContact(contact);
+	fReceivedContactCount++;
+}
+
+
+void
+MainWindow::ClearContacts()
+{
+	fContactList->ClearContacts();
+	fReceivedContactCount = 0;
+}
+
+
+void
+MainWindow::UpdateContactCount(int32 count)
+{
+	fExpectedContactCount = count;
+}
+
+
+void
+MainWindow::AddMessage(const ReceivedMessage& message, bool outgoing)
+{
+	fChatView->AddMessage(message, outgoing);
+}
+
+
+void
+MainWindow::MessageSent(const char* text, uint32 timestamp)
+{
+	ReceivedMessage msg;
+	memset(&msg, 0, sizeof(msg));
+	strlcpy(msg.text, text, sizeof(msg.text));
+	msg.senderTimestamp = timestamp;
+	msg.txtType = TXT_TYPE_PLAIN;
+	fChatView->AddMessage(msg, true);
+}
+
+
+void
+MainWindow::MessageConfirmed(uint32 ackCode, uint32 roundTripMs)
+{
+	// TODO: Update message status in chat view
+	char status[64];
+	snprintf(status, sizeof(status), "Delivered (%ums)", (unsigned)roundTripMs);
+	fStatusBar->SetTemporaryStatus(status);
+}
+
+
+void
+MainWindow::_BuildMenu()
+{
+	fMenuBar = new BMenuBar("menubar");
+
+	// File menu
+	BMenu* fileMenu = new BMenu(B_TRANSLATE(TR_MENU_FILE));
+	fConnectItem = new BMenuItem(B_TRANSLATE(TR_MENU_CONNECT),
+		new BMessage(MSG_SHOW_PORT_SELECTION), 'O');
+	fileMenu->AddItem(fConnectItem);
+	fDisconnectItem = new BMenuItem(B_TRANSLATE(TR_MENU_DISCONNECT),
+		new BMessage(MSG_SERIAL_DISCONNECT), 'D');
+	fileMenu->AddItem(fDisconnectItem);
+	fileMenu->AddSeparatorItem();
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_SETTINGS),
+		new BMessage(MSG_SHOW_SETTINGS), ','));
+	fileMenu->AddSeparatorItem();
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_QUIT),
+		new BMessage(B_QUIT_REQUESTED), 'Q'));
+	fMenuBar->AddItem(fileMenu);
+
+	// Device menu
+	BMenu* deviceMenu = new BMenu(B_TRANSLATE(TR_MENU_DEVICE));
+	fRefreshContactsItem = new BMenuItem(B_TRANSLATE(TR_MENU_REFRESH_CONTACTS),
+		new BMessage(MSG_REFRESH_CONTACTS), 'R');
+	deviceMenu->AddItem(fRefreshContactsItem);
+	fSendAdvertItem = new BMenuItem(B_TRANSLATE(TR_MENU_SEND_ADVERT),
+		new BMessage(MSG_SEND_ADVERT));
+	deviceMenu->AddItem(fSendAdvertItem);
+	deviceMenu->AddSeparatorItem();
+	deviceMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_REBOOT_DEVICE),
+		new BMessage(CMD_REBOOT)));
+	fMenuBar->AddItem(deviceMenu);
+
+	// Help menu
+	BMenu* helpMenu = new BMenu(B_TRANSLATE(TR_MENU_HELP));
+	helpMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_ABOUT),
+		new BMessage(MSG_SHOW_ABOUT)));
+	fMenuBar->AddItem(helpMenu);
+}
+
+
+void
+MainWindow::_BuildLayout()
+{
+	// Status bar at top
+	fStatusBar = new StatusBarView("statusbar");
+
+	// Contact list on left
+	fContactList = new ContactListView("contacts");
+	BScrollView* contactScroll = new BScrollView("contact_scroll",
+		fContactList, 0, false, true, B_PLAIN_BORDER);
+
+	// Chat view on right
+	fChatView = new ChatView("chat");
+	BScrollView* chatScroll = new BScrollView("chat_scroll",
+		fChatView, 0, false, true, B_PLAIN_BORDER);
+
+	// Placeholder for when no contact selected
+	fPlaceholderLabel = new BStringView("placeholder",
+		B_TRANSLATE(TR_LABEL_NO_SELECTION));
+	fPlaceholderLabel->SetAlignment(B_ALIGN_CENTER);
+
+	// Message input area
+	fMessageInput = new BTextControl("message_input", NULL, "",
+		new BMessage(MSG_SEND_MESSAGE));
+	fMessageInput->SetEnabled(false);
+
+	fSendButton = new BButton("send_button", B_TRANSLATE(TR_BUTTON_SEND),
+		new BMessage(MSG_SEND_MESSAGE));
+	fSendButton->SetEnabled(false);
+	fSendButton->MakeDefault(true);
+
+	// Right side panel with chat and input
+	BView* chatPanel = new BView("chat_panel", 0);
+	BLayoutBuilder::Group<>(chatPanel, B_VERTICAL, 0)
+		.Add(chatScroll, 1.0)
+		.AddGroup(B_HORIZONTAL, B_USE_SMALL_SPACING)
+			.SetInsets(B_USE_SMALL_SPACING)
+			.Add(fMessageInput, 1.0)
+			.Add(fSendButton)
+		.End()
+	.End();
+
+	// Split view for contacts and chat
+	fSplitView = new BSplitView(B_HORIZONTAL);
+	fSplitView->AddChild(contactScroll, 0.25);
+	fSplitView->AddChild(chatPanel, 0.75);
+	fSplitView->SetCollapsible(0, false);
+	fSplitView->SetCollapsible(1, false);
+
+	// Main layout
+	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
+		.Add(fMenuBar)
+		.Add(fStatusBar)
+		.Add(fSplitView, 1.0)
+	.End();
+}
+
+
+void
+MainWindow::_UpdateConnectionUI()
+{
+	fConnectItem->SetEnabled(!fConnected);
+	fDisconnectItem->SetEnabled(fConnected);
+	fRefreshContactsItem->SetEnabled(fConnected);
+	fSendAdvertItem->SetEnabled(fConnected);
+
+	if (!fConnected) {
+		fMessageInput->SetEnabled(false);
+		fSendButton->SetEnabled(false);
+	}
+}
+
+
+void
+MainWindow::_SendCurrentMessage()
+{
+	const char* text = fMessageInput->Text();
+	if (text == NULL || text[0] == '\0')
+		return;
+
+	int32 selectedIndex = fContactList->CurrentSelection();
+	if (selectedIndex < 0)
+		return;
+
+	Contact* contact = fContactList->ContactAt(selectedIndex);
+	if (contact == NULL)
+		return;
+
+	Sestriere* app = dynamic_cast<Sestriere*>(be_app);
+	if (app == NULL || app->GetSerialHandler() == NULL)
+		return;
+
+	uint32 timestamp = (uint32)real_time_clock();
+	uint8 buffer[256];
+	size_t len = Protocol::BuildSendTextMessage(
+		contact->publicKey, text, timestamp, buffer);
+
+	if (app->GetSerialHandler()->SendFrame(buffer, len) == B_OK) {
+		MessageSent(text, timestamp);
+		fMessageInput->SetText("");
+	}
+}
+
+
+void
+MainWindow::_StartPolling()
+{
+	if (fBatteryTimer == NULL) {
+		BMessage timerMsg(MSG_BATTERY_TIMER);
+		fBatteryTimer = new BMessageRunner(this, &timerMsg,
+			kBatteryPollInterval);
+	}
+}
+
+
+void
+MainWindow::_StopPolling()
+{
+	delete fBatteryTimer;
+	fBatteryTimer = NULL;
+}
+
+
+void
+MainWindow::_HandleFrameReceived(BMessage* message)
+{
+	const void* data;
+	ssize_t size;
+	if (message->FindData(kFieldData, B_RAW_TYPE, &data, &size) != B_OK)
+		return;
+
+	if (size < 1)
+		return;
+
+	const uint8* payload = static_cast<const uint8*>(data);
+	uint8 code = payload[0];
+
+	// Handle response codes
+	if (code < 0x80) {
+		switch (code) {
+			case RESP_CODE_DEVICE_INFO:
+			{
+				DeviceInfo info;
+				if (Protocol::ParseDeviceInfo(payload, size, info))
+					SetDeviceInfo(info);
+				break;
+			}
+
+			case RESP_CODE_SELF_INFO:
+			{
+				SelfInfo info;
+				if (Protocol::ParseSelfInfo(payload, size, info))
+					SetSelfInfo(info);
+				break;
+			}
+
+			case RESP_CODE_CONTACTS_START:
+			{
+				if (size >= 2) {
+					ClearContacts();
+					UpdateContactCount(payload[1]);
+				}
+				break;
+			}
+
+			case RESP_CODE_CONTACT:
+			{
+				Contact contact;
+				if (Protocol::ParseContact(payload, size, contact))
+					AddContact(contact);
+				break;
+			}
+
+			case RESP_CODE_END_OF_CONTACTS:
+				// Contacts sync complete, now sync messages
+				{
+					Sestriere* app = dynamic_cast<Sestriere*>(be_app);
+					if (app != NULL && app->GetSerialHandler() != NULL) {
+						uint8 buffer[64];
+						size_t len = Protocol::BuildSyncNextMessage(buffer);
+						app->GetSerialHandler()->SendFrame(buffer, len);
+					}
+				}
+				break;
+
+			case RESP_CODE_CONTACT_MSG_RECV:
+			case RESP_CODE_CONTACT_MSG_RECV_V3:
+			{
+				ReceivedMessage msg;
+				if (Protocol::ParseReceivedMessage(payload, size, msg)) {
+					msg.isChannel = false;
+					AddMessage(msg, false);
+					// Request next message
+					Sestriere* app = dynamic_cast<Sestriere*>(be_app);
+					if (app != NULL && app->GetSerialHandler() != NULL) {
+						uint8 buffer[64];
+						size_t len = Protocol::BuildSyncNextMessage(buffer);
+						app->GetSerialHandler()->SendFrame(buffer, len);
+					}
+				}
+				break;
+			}
+
+			case RESP_CODE_CHANNEL_MSG_RECV:
+			case RESP_CODE_CHANNEL_MSG_RECV_V3:
+			{
+				ReceivedMessage msg;
+				if (Protocol::ParseReceivedMessage(payload, size, msg)) {
+					msg.isChannel = true;
+					AddMessage(msg, false);
+					// Request next message
+					Sestriere* app = dynamic_cast<Sestriere*>(be_app);
+					if (app != NULL && app->GetSerialHandler() != NULL) {
+						uint8 buffer[64];
+						size_t len = Protocol::BuildSyncNextMessage(buffer);
+						app->GetSerialHandler()->SendFrame(buffer, len);
+					}
+				}
+				break;
+			}
+
+			case RESP_CODE_NO_MORE_MESSAGES:
+				// Message sync complete
+				break;
+
+			case RESP_CODE_BATT_AND_STORAGE:
+			{
+				BatteryAndStorage info;
+				if (Protocol::ParseBatteryAndStorage(payload, size, info))
+					SetBatteryInfo(info);
+				break;
+			}
+
+			case RESP_CODE_SENT:
+				// Message sent, waiting for ACK
+				break;
+
+			case RESP_CODE_OK:
+				// Generic OK
+				break;
+
+			case RESP_CODE_ERR:
+				if (size >= 2) {
+					fprintf(stderr, "Device error: %s\n",
+						Protocol::GetErrorName(payload[1]));
+				}
+				break;
+		}
+	} else {
+		// Handle push notifications
+		switch (code) {
+			case PUSH_CODE_MSG_WAITING:
+			{
+				// New message available, fetch it
+				Sestriere* app = dynamic_cast<Sestriere*>(be_app);
+				if (app != NULL && app->GetSerialHandler() != NULL) {
+					uint8 buffer[64];
+					size_t len = Protocol::BuildSyncNextMessage(buffer);
+					app->GetSerialHandler()->SendFrame(buffer, len);
+				}
+				break;
+			}
+
+			case PUSH_CODE_SEND_CONFIRMED:
+			{
+				SendConfirmed confirm;
+				if (Protocol::ParseSendConfirmed(payload, size, confirm))
+					MessageConfirmed(confirm.ackCode, confirm.roundTripMs);
+				break;
+			}
+
+			case PUSH_CODE_ADVERT:
+			case PUSH_CODE_NEW_ADVERT:
+				// New advertisement received, refresh contacts
+				PostMessage(MSG_REFRESH_CONTACTS);
+				break;
+
+			case PUSH_CODE_PATH_UPDATED:
+				// Path updated, could refresh contacts
+				break;
+
+			default:
+				fprintf(stderr, "Unhandled push code: 0x%02X\n", code);
+				break;
+		}
+	}
+}
+
+
+void
+MainWindow::_HandleDeviceInfo(BMessage* message)
+{
+	// Handled in _HandleFrameReceived
+}
+
+
+void
+MainWindow::_HandleSelfInfo(BMessage* message)
+{
+	// Handled in _HandleFrameReceived
+}
+
+
+void
+MainWindow::_HandleContactsStart(BMessage* message)
+{
+	// Handled in _HandleFrameReceived
+}
+
+
+void
+MainWindow::_HandleContactReceived(BMessage* message)
+{
+	// Handled in _HandleFrameReceived
+}
+
+
+void
+MainWindow::_HandleContactsEnd(BMessage* message)
+{
+	// Handled in _HandleFrameReceived
+}
+
+
+void
+MainWindow::_HandleMessageReceived(BMessage* message)
+{
+	// Handled in _HandleFrameReceived
+}
+
+
+void
+MainWindow::_HandleSendConfirmed(BMessage* message)
+{
+	// Handled in _HandleFrameReceived
+}
+
+
+void
+MainWindow::_HandleBatteryReceived(BMessage* message)
+{
+	// Handled in _HandleFrameReceived
+}
+
+
+void
+MainWindow::_HandlePushNotification(BMessage* message)
+{
+	// Handled in _HandleFrameReceived
+}

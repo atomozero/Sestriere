@@ -1,0 +1,32 @@
+## Jamfile for Sestriere — MeshCore Client for Haiku OS
+
+SubDir HAIKU_TOP src apps sestriere ;
+
+UsePrivateHeaders interface ;
+
+SEARCH_SOURCE += [ FDirName $(SUBDIR) src ] ;
+
+Application Sestriere :
+	Sestriere.cpp
+	MainWindow.cpp
+	SerialHandler.cpp
+	Protocol.cpp
+	ContactListView.cpp
+	ContactItem.cpp
+	ChatView.cpp
+	MessageView.cpp
+	StatusBarView.cpp
+	SettingsWindow.cpp
+	PortSelectionWindow.cpp
+	: be device tracker localestub $(TARGET_LIBSUPC++)
+	: Sestriere.rdef
+;
+
+DoCatalogs Sestriere :
+	x-vnd.Sestriere
+	:
+	Sestriere.cpp
+	MainWindow.cpp
+	SettingsWindow.cpp
+	PortSelectionWindow.cpp
+;

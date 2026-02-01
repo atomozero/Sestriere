@@ -1,0 +1,413 @@
+/*
+ * Copyright 2025, Sestriere Authors
+ * All rights reserved. Distributed under the terms of the MIT license.
+ *
+ * SerialHandler.cpp — Serial communication handler implementation
+ */
+
+#include "SerialHandler.h"
+
+#include <Directory.h>
+#include <Entry.h>
+#include <OS.h>
+#include <Path.h>
+
+#include <cstdio>
+#include <cstring>
+
+#include "Constants.h"
+
+
+SerialHandler::SerialHandler(BHandler* target)
+	:
+	BLooper("SerialHandler"),
+	fTarget(target),
+	fPortName(""),
+	fReadThread(-1),
+	fRunning(false),
+	fConnected(false),
+	fBufferPos(0),
+	fBufferLen(0),
+	fFramePos(0),
+	fInFrame(false),
+	fExpectedFrameLen(0),
+	fLock("serial_lock"),
+	fWriteLock("write_lock")
+{
+	memset(fReadBuffer, 0, sizeof(fReadBuffer));
+	memset(fFrameBuffer, 0, sizeof(fFrameBuffer));
+}
+
+
+SerialHandler::~SerialHandler()
+{
+	Disconnect();
+}
+
+
+void
+SerialHandler::MessageReceived(BMessage* message)
+{
+	switch (message->what) {
+		case MSG_SERIAL_CONNECT:
+		{
+			const char* port;
+			if (message->FindString(kFieldPort, &port) == B_OK)
+				Connect(port);
+			break;
+		}
+
+		case MSG_SERIAL_DISCONNECT:
+			Disconnect();
+			break;
+
+		default:
+			BLooper::MessageReceived(message);
+			break;
+	}
+}
+
+
+void
+SerialHandler::SetTarget(BHandler* target)
+{
+	BAutolock lock(fLock);
+	fTarget = target;
+}
+
+
+status_t
+SerialHandler::Connect(const char* portName)
+{
+	BAutolock lock(fLock);
+
+	if (fConnected)
+		Disconnect();
+
+	// Open serial port
+	status_t status = fSerialPort.Open(portName);
+	if (status != B_OK) {
+		_NotifyError(status, "Failed to open serial port");
+		return status;
+	}
+
+	// Configure port: 115200 8N1, no flow control
+	fSerialPort.SetDataRate(B_115200_BPS);
+	fSerialPort.SetDataBits(B_DATA_BITS_8);
+	fSerialPort.SetStopBits(B_STOP_BITS_1);
+	fSerialPort.SetParityMode(B_NO_PARITY);
+	fSerialPort.SetFlowControl(B_NOFLOW_CONTROL);
+
+	// Set blocking mode with timeout
+	fSerialPort.SetBlocking(true);
+	fSerialPort.SetTimeout(kSerialReadTimeout);
+
+	fPortName = portName;
+	fConnected = true;
+	fRunning = true;
+
+	// Reset buffers
+	fBufferPos = 0;
+	fBufferLen = 0;
+	fFramePos = 0;
+	fInFrame = false;
+
+	// Start read thread
+	fReadThread = spawn_thread(_ReadThreadEntry, "serial_reader",
+		B_NORMAL_PRIORITY, this);
+	if (fReadThread < 0) {
+		fSerialPort.Close();
+		fConnected = false;
+		_NotifyError(fReadThread, "Failed to create read thread");
+		return fReadThread;
+	}
+
+	resume_thread(fReadThread);
+	_NotifyConnected();
+
+	return B_OK;
+}
+
+
+void
+SerialHandler::Disconnect()
+{
+	{
+		BAutolock lock(fLock);
+		if (!fConnected)
+			return;
+
+		fRunning = false;
+	}
+
+	// Wait for read thread to finish
+	if (fReadThread >= 0) {
+		status_t exitValue;
+		wait_for_thread(fReadThread, &exitValue);
+		fReadThread = -1;
+	}
+
+	{
+		BAutolock lock(fLock);
+		fSerialPort.Close();
+		fConnected = false;
+		fPortName = "";
+	}
+
+	_NotifyDisconnected();
+}
+
+
+bool
+SerialHandler::IsConnected() const
+{
+	return fConnected;
+}
+
+
+status_t
+SerialHandler::SendFrame(const uint8* payload, size_t length)
+{
+	BAutolock lock(fWriteLock);
+
+	if (!fConnected)
+		return B_NOT_INITIALIZED;
+
+	if (length > kMaxFramePayload)
+		return B_BAD_VALUE;
+
+	// Build frame: '<' + len_lo + len_hi + payload
+	uint8 frame[kMaxFrameSize];
+	frame[0] = kFrameMarkerInbound;
+	frame[1] = length & 0xFF;
+	frame[2] = (length >> 8) & 0xFF;
+	memcpy(frame + kFrameHeaderSize, payload, length);
+
+	size_t totalLen = kFrameHeaderSize + length;
+	ssize_t written = fSerialPort.Write(frame, totalLen);
+
+	if (written < 0)
+		return (status_t)written;
+
+	if ((size_t)written != totalLen)
+		return B_IO_ERROR;
+
+	return B_OK;
+}
+
+
+status_t
+SerialHandler::ListPorts(BMessage* outPorts)
+{
+	if (outPorts == NULL)
+		return B_BAD_VALUE;
+
+	// Scan /dev/ports for USB serial devices
+	BDirectory dir("/dev/ports");
+	if (dir.InitCheck() != B_OK)
+		return dir.InitCheck();
+
+	BEntry entry;
+	while (dir.GetNextEntry(&entry) == B_OK) {
+		BPath path;
+		if (entry.GetPath(&path) == B_OK) {
+			// Filter for USB ports (typically usb*)
+			const char* name = path.Leaf();
+			if (strncmp(name, "usb", 3) == 0) {
+				outPorts->AddString(kFieldPort, path.Path());
+			}
+		}
+	}
+
+	// Also check /dev/serial for virtual serial ports
+	BDirectory serialDir("/dev/serial");
+	if (serialDir.InitCheck() == B_OK) {
+		while (serialDir.GetNextEntry(&entry) == B_OK) {
+			BPath path;
+			if (entry.GetPath(&path) == B_OK) {
+				outPorts->AddString(kFieldPort, path.Path());
+			}
+		}
+	}
+
+	return B_OK;
+}
+
+
+void
+SerialHandler::_ReadLoop()
+{
+	while (fRunning) {
+		// Read available data
+		ssize_t bytesRead = fSerialPort.Read(fReadBuffer + fBufferLen,
+			sizeof(fReadBuffer) - fBufferLen);
+
+		if (bytesRead > 0) {
+			fBufferLen += bytesRead;
+			_ProcessBuffer();
+		} else if (bytesRead < 0 && bytesRead != B_TIMED_OUT) {
+			// Read error
+			if (fRunning) {
+				_NotifyError((status_t)bytesRead, "Serial read error");
+			}
+			break;
+		}
+
+		// Small delay to prevent busy-waiting
+		if (bytesRead == 0 || bytesRead == B_TIMED_OUT)
+			snooze(10000);  // 10ms
+	}
+}
+
+
+int32
+SerialHandler::_ReadThreadEntry(void* data)
+{
+	SerialHandler* handler = static_cast<SerialHandler*>(data);
+	handler->_ReadLoop();
+	return 0;
+}
+
+
+void
+SerialHandler::_ProcessBuffer()
+{
+	while (fBufferPos < fBufferLen) {
+		uint8 byte = fReadBuffer[fBufferPos];
+
+		if (!fInFrame) {
+			// Looking for frame start marker '>'
+			if (byte == kFrameMarkerOutbound) {
+				fInFrame = true;
+				fFramePos = 0;
+				fExpectedFrameLen = 0;
+			}
+			fBufferPos++;
+		} else {
+			// In frame, collecting data
+			if (fFramePos < kFrameHeaderSize) {
+				// Still reading header
+				fFrameBuffer[fFramePos++] = byte;
+				fBufferPos++;
+
+				if (fFramePos == kFrameHeaderSize) {
+					// Header complete, calculate expected length
+					fExpectedFrameLen = fFrameBuffer[1] |
+						(fFrameBuffer[2] << 8);
+
+					if (fExpectedFrameLen > kMaxFramePayload) {
+						// Invalid frame length, reset
+						fprintf(stderr, "Invalid frame length: %zu\n",
+							fExpectedFrameLen);
+						fInFrame = false;
+						fFramePos = 0;
+					}
+				}
+			} else {
+				// Reading payload
+				size_t payloadPos = fFramePos - kFrameHeaderSize;
+				if (payloadPos < fExpectedFrameLen) {
+					fFrameBuffer[fFramePos++] = byte;
+					fBufferPos++;
+
+					if (payloadPos + 1 == fExpectedFrameLen) {
+						// Frame complete
+						_HandleCompleteFrame(
+							fFrameBuffer + kFrameHeaderSize,
+							fExpectedFrameLen);
+						fInFrame = false;
+						fFramePos = 0;
+					}
+				} else {
+					// Shouldn't happen, reset
+					fInFrame = false;
+					fFramePos = 0;
+				}
+			}
+		}
+	}
+
+	// Compact buffer if we've consumed data
+	if (fBufferPos > 0) {
+		if (fBufferPos < fBufferLen) {
+			memmove(fReadBuffer, fReadBuffer + fBufferPos,
+				fBufferLen - fBufferPos);
+			fBufferLen -= fBufferPos;
+		} else {
+			fBufferLen = 0;
+		}
+		fBufferPos = 0;
+	}
+}
+
+
+void
+SerialHandler::_HandleCompleteFrame(const uint8* data, size_t length)
+{
+	_NotifyFrameReceived(data, length);
+}
+
+
+void
+SerialHandler::_NotifyFrameReceived(const uint8* data, size_t length)
+{
+	BAutolock lock(fLock);
+	if (fTarget == NULL)
+		return;
+
+	BMessage msg(MSG_FRAME_RECEIVED);
+	msg.AddData(kFieldData, B_RAW_TYPE, data, length);
+	msg.AddInt32(kFieldSize, length);
+
+	BLooper* looper = fTarget->Looper();
+	if (looper != NULL)
+		looper->PostMessage(&msg, fTarget);
+}
+
+
+void
+SerialHandler::_NotifyError(status_t error, const char* message)
+{
+	BAutolock lock(fLock);
+	if (fTarget == NULL)
+		return;
+
+	BMessage msg(MSG_SERIAL_ERROR);
+	msg.AddInt32(kFieldErrorCode, error);
+	msg.AddString(kFieldError, message);
+
+	BLooper* looper = fTarget->Looper();
+	if (looper != NULL)
+		looper->PostMessage(&msg, fTarget);
+}
+
+
+void
+SerialHandler::_NotifyConnected()
+{
+	BAutolock lock(fLock);
+	if (fTarget == NULL)
+		return;
+
+	BMessage msg(MSG_SERIAL_CONNECTED);
+	msg.AddString(kFieldPort, fPortName.String());
+
+	BLooper* looper = fTarget->Looper();
+	if (looper != NULL)
+		looper->PostMessage(&msg, fTarget);
+}
+
+
+void
+SerialHandler::_NotifyDisconnected()
+{
+	BAutolock lock(fLock);
+	if (fTarget == NULL)
+		return;
+
+	BMessage msg(MSG_SERIAL_DISCONNECTED);
+
+	BLooper* looper = fTarget->Looper();
+	if (looper != NULL)
+		looper->PostMessage(&msg, fTarget);
+}
