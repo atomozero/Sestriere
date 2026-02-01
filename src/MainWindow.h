@@ -71,6 +71,9 @@ private:
 			BMenuItem*		fDisconnectItem;
 			BMenuItem*		fRefreshContactsItem;
 			BMenuItem*		fSendAdvertItem;
+			BMenuItem*		fLoginItem;
+			BMenuItem*		fTracePathItem;
+			BMenuItem*		fExportContactItem;
 
 			BSplitView*		fSplitView;
 			StatusBarView*	fStatusBar;
@@ -84,6 +87,7 @@ private:
 			SelfInfo		fSelfInfo;
 			bool			fConnected;
 			bool			fHandshakeComplete;
+			bool			fSendingToChannel;
 			int32			fExpectedContactCount;
 			int32			fReceivedContactCount;
 

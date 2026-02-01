@@ -12,11 +12,16 @@ SRCS = \
 	src/Protocol.cpp \
 	src/ContactListView.cpp \
 	src/ContactItem.cpp \
+	src/ChannelItem.cpp \
 	src/ChatView.cpp \
 	src/MessageView.cpp \
 	src/StatusBarView.cpp \
 	src/SettingsWindow.cpp \
-	src/PortSelectionWindow.cpp
+	src/PortSelectionWindow.cpp \
+	src/LoginWindow.cpp \
+	src/TracePathWindow.cpp \
+	src/ContactExportWindow.cpp \
+	src/NotificationManager.cpp
 
 RDEFS = resources/Sestriere.rdef
 

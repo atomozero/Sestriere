@@ -13,11 +13,16 @@ Application Sestriere :
 	Protocol.cpp
 	ContactListView.cpp
 	ContactItem.cpp
+	ChannelItem.cpp
 	ChatView.cpp
 	MessageView.cpp
 	StatusBarView.cpp
 	SettingsWindow.cpp
 	PortSelectionWindow.cpp
+	LoginWindow.cpp
+	TracePathWindow.cpp
+	ContactExportWindow.cpp
+	NotificationManager.cpp
 	: be device tracker localestub $(TARGET_LIBSUPC++)
 	: Sestriere.rdef
 ;
@@ -29,4 +34,7 @@ DoCatalogs Sestriere :
 	MainWindow.cpp
 	SettingsWindow.cpp
 	PortSelectionWindow.cpp
+	LoginWindow.cpp
+	TracePathWindow.cpp
+	ContactExportWindow.cpp
 ;

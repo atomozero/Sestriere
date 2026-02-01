@@ -64,7 +64,18 @@ enum {
 
 	// Timer/periodic
 	MSG_POLL_TIMER				= 'pltm',
-	MSG_BATTERY_TIMER			= 'bttm'
+	MSG_BATTERY_TIMER			= 'bttm',
+
+	// Contact actions
+	MSG_SHOW_LOGIN				= 'shlg',
+	MSG_SHOW_TRACE_PATH			= 'shtp',
+	MSG_EXPORT_CONTACT			= 'exct',
+	MSG_IMPORT_CONTACT			= 'imct',
+	MSG_SEND_CHANNEL_MESSAGE	= 'scms',
+
+	// Channel
+	MSG_CHANNEL_SELECTED		= 'chsl',
+	MSG_PUBLIC_CHANNEL			= 'pbch'
 };
 
 // =============================================================================
@@ -140,6 +151,12 @@ static const char* kSettingsFieldLastContactSync = "last_contact_sync";
 #define TR_MENU_REFRESH_CONTACTS	"Refresh Contacts"
 #define TR_MENU_SEND_ADVERT			"Send Advertisement"
 #define TR_MENU_REBOOT_DEVICE		"Reboot Device"
+#define TR_MENU_CONTACT				"Contact"
+#define TR_MENU_LOGIN				"Login" B_UTF8_ELLIPSIS
+#define TR_MENU_TRACE_PATH			"Trace Path" B_UTF8_ELLIPSIS
+#define TR_MENU_EXPORT_CONTACT		"Export Contact" B_UTF8_ELLIPSIS
+#define TR_MENU_IMPORT_CONTACT		"Import Contact" B_UTF8_ELLIPSIS
+#define TR_MENU_PUBLIC_CHANNEL		"Public Channel"
 
 #define TR_STATUS_DISCONNECTED		"Disconnected"
 #define TR_STATUS_CONNECTING		"Connecting..."

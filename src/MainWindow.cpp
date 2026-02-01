@@ -23,15 +23,20 @@
 #include <cstring>
 #include <cstdio>
 
+#include "ChannelItem.h"
 #include "ChatView.h"
 #include "Constants.h"
+#include "ContactExportWindow.h"
 #include "ContactListView.h"
+#include "LoginWindow.h"
+#include "NotificationManager.h"
 #include "PortSelectionWindow.h"
 #include "Protocol.h"
 #include "Sestriere.h"
 #include "SerialHandler.h"
 #include "SettingsWindow.h"
 #include "StatusBarView.h"
+#include "TracePathWindow.h"
 
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "MainWindow"
@@ -47,6 +52,9 @@ MainWindow::MainWindow(BRect frame)
 	fDisconnectItem(NULL),
 	fRefreshContactsItem(NULL),
 	fSendAdvertItem(NULL),
+	fLoginItem(NULL),
+	fTracePathItem(NULL),
+	fExportContactItem(NULL),
 	fSplitView(NULL),
 	fStatusBar(NULL),
 	fContactList(NULL),
@@ -56,6 +64,7 @@ MainWindow::MainWindow(BRect frame)
 	fPlaceholderLabel(NULL),
 	fConnected(false),
 	fHandshakeComplete(false),
+	fSendingToChannel(false),
 	fExpectedContactCount(0),
 	fReceivedContactCount(0),
 	fBatteryTimer(NULL)
@@ -182,12 +191,22 @@ MainWindow::MessageReceived(BMessage* message)
 			if (message->FindInt32("index", &index) == B_OK) {
 				// Enable message input when a contact is selected
 				if (index >= 0) {
+					fSendingToChannel = false;
 					fMessageInput->SetEnabled(true);
 					fSendButton->SetEnabled(true);
 					if (fPlaceholderLabel != NULL)
 						fPlaceholderLabel->Hide();
 					if (fChatView != NULL)
 						fChatView->Show();
+
+					// Update contact menu items
+					Contact* contact = fContactList->ContactAt(index);
+					bool isRepeaterOrRoom = (contact != NULL &&
+						(contact->type == ADV_TYPE_REPEATER ||
+						 contact->type == ADV_TYPE_ROOM));
+					fLoginItem->SetEnabled(isRepeaterOrRoom);
+					fTracePathItem->SetEnabled(contact != NULL);
+					fExportContactItem->SetEnabled(contact != NULL);
 				}
 			}
 			break;
@@ -231,6 +250,67 @@ MainWindow::MessageReceived(BMessage* message)
 		case MSG_SHOW_ABOUT:
 			be_app->PostMessage(B_ABOUT_REQUESTED);
 			break;
+
+		case MSG_SHOW_LOGIN:
+		{
+			int32 selectedIndex = fContactList->CurrentSelection();
+			if (selectedIndex >= 0) {
+				Contact* contact = fContactList->ContactAt(selectedIndex);
+				if (contact != NULL && (contact->type == ADV_TYPE_REPEATER ||
+					contact->type == ADV_TYPE_ROOM)) {
+					LoginWindow* loginWindow = new LoginWindow(this, contact);
+					loginWindow->Show();
+				}
+			}
+			break;
+		}
+
+		case MSG_SHOW_TRACE_PATH:
+		{
+			int32 selectedIndex = fContactList->CurrentSelection();
+			if (selectedIndex >= 0) {
+				Contact* contact = fContactList->ContactAt(selectedIndex);
+				if (contact != NULL) {
+					TracePathWindow* traceWindow = new TracePathWindow(this, contact);
+					traceWindow->Show();
+				}
+			}
+			break;
+		}
+
+		case MSG_EXPORT_CONTACT:
+		{
+			int32 selectedIndex = fContactList->CurrentSelection();
+			if (selectedIndex >= 0) {
+				Contact* contact = fContactList->ContactAt(selectedIndex);
+				if (contact != NULL) {
+					ContactExportWindow* exportWindow =
+						new ContactExportWindow(this, true, contact);
+					exportWindow->Show();
+				}
+			}
+			break;
+		}
+
+		case MSG_IMPORT_CONTACT:
+		{
+			ContactExportWindow* importWindow =
+				new ContactExportWindow(this, false, NULL);
+			importWindow->Show();
+			break;
+		}
+
+		case MSG_PUBLIC_CHANNEL:
+		{
+			// Switch to public channel mode
+			fContactList->DeselectAll();
+			fMessageInput->SetEnabled(fConnected);
+			fSendButton->SetEnabled(fConnected);
+			fChatView->SetCurrentContact(NULL);
+			fStatusBar->SetTemporaryStatus("Public Channel selected");
+			fSendingToChannel = true;
+			break;
+		}
 
 		case MSG_BATTERY_TIMER:
 		{
@@ -407,6 +487,22 @@ MainWindow::_BuildMenu()
 		new BMessage(B_QUIT_REQUESTED), 'Q'));
 	fMenuBar->AddItem(fileMenu);
 
+	// Contact menu
+	BMenu* contactMenu = new BMenu(B_TRANSLATE(TR_MENU_CONTACT));
+	fLoginItem = new BMenuItem(B_TRANSLATE(TR_MENU_LOGIN),
+		new BMessage(MSG_SHOW_LOGIN), 'L');
+	contactMenu->AddItem(fLoginItem);
+	fTracePathItem = new BMenuItem(B_TRANSLATE(TR_MENU_TRACE_PATH),
+		new BMessage(MSG_SHOW_TRACE_PATH), 'T');
+	contactMenu->AddItem(fTracePathItem);
+	contactMenu->AddSeparatorItem();
+	fExportContactItem = new BMenuItem(B_TRANSLATE(TR_MENU_EXPORT_CONTACT),
+		new BMessage(MSG_EXPORT_CONTACT));
+	contactMenu->AddItem(fExportContactItem);
+	contactMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_IMPORT_CONTACT),
+		new BMessage(MSG_IMPORT_CONTACT)));
+	fMenuBar->AddItem(contactMenu);
+
 	// Device menu
 	BMenu* deviceMenu = new BMenu(B_TRANSLATE(TR_MENU_DEVICE));
 	fRefreshContactsItem = new BMenuItem(B_TRANSLATE(TR_MENU_REFRESH_CONTACTS),
@@ -415,6 +511,9 @@ MainWindow::_BuildMenu()
 	fSendAdvertItem = new BMenuItem(B_TRANSLATE(TR_MENU_SEND_ADVERT),
 		new BMessage(MSG_SEND_ADVERT));
 	deviceMenu->AddItem(fSendAdvertItem);
+	deviceMenu->AddSeparatorItem();
+	deviceMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_PUBLIC_CHANNEL),
+		new BMessage(MSG_PUBLIC_CHANNEL), 'P'));
 	deviceMenu->AddSeparatorItem();
 	deviceMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_REBOOT_DEVICE),
 		new BMessage(CMD_REBOOT)));
@@ -508,22 +607,30 @@ MainWindow::_SendCurrentMessage()
 	if (text == NULL || text[0] == '\0')
 		return;
 
-	int32 selectedIndex = fContactList->CurrentSelection();
-	if (selectedIndex < 0)
-		return;
-
-	Contact* contact = fContactList->ContactAt(selectedIndex);
-	if (contact == NULL)
-		return;
-
 	Sestriere* app = dynamic_cast<Sestriere*>(be_app);
 	if (app == NULL || app->GetSerialHandler() == NULL)
 		return;
 
 	uint32 timestamp = (uint32)real_time_clock();
 	uint8 buffer[256];
-	size_t len = Protocol::BuildSendTextMessage(
-		contact->publicKey, text, timestamp, buffer);
+	size_t len;
+
+	if (fSendingToChannel) {
+		// Send to public channel
+		len = Protocol::BuildSendChannelMessage(text, timestamp, buffer);
+	} else {
+		// Send to selected contact
+		int32 selectedIndex = fContactList->CurrentSelection();
+		if (selectedIndex < 0)
+			return;
+
+		Contact* contact = fContactList->ContactAt(selectedIndex);
+		if (contact == NULL)
+			return;
+
+		len = Protocol::BuildSendTextMessage(
+			contact->publicKey, text, timestamp, buffer);
+	}
 
 	if (app->GetSerialHandler()->SendFrame(buffer, len) == B_OK) {
 		MessageSent(text, timestamp);

@@ -1,0 +1,39 @@
+1	Italian	x-vnd.Sestriere	1958505575
+Sestriere	MainWindow		Sestriere
+File	MainWindow		File
+Edit	MainWindow		Modifica
+Device	MainWindow		Dispositivo
+Help	MainWindow		Aiuto
+Connect…	MainWindow		Connetti…
+Disconnect	MainWindow		Disconnetti
+Settings…	MainWindow		Impostazioni…
+Quit	MainWindow		Esci
+About Sestriere…	MainWindow		Informazioni su Sestriere…
+Refresh Contacts	MainWindow		Aggiorna Contatti
+Send Advertisement	MainWindow		Invia Advertisement
+Reboot Device	MainWindow		Riavvia Dispositivo
+Contact	MainWindow		Contatto
+Login…	MainWindow		Accedi…
+Trace Path…	MainWindow		Traccia Percorso…
+Export Contact…	MainWindow		Esporta Contatto…
+Import Contact…	MainWindow		Importa Contatto…
+Public Channel	MainWindow		Canale Pubblico
+Disconnected	MainWindow		Disconnesso
+Connecting...	MainWindow		Connessione...
+Connected	MainWindow		Connesso
+Error	MainWindow		Errore
+Send	MainWindow		Invia
+Connect	PortSelectionWindow		Connetti
+Cancel	PortSelectionWindow		Annulla
+OK	SettingsWindow		OK
+Refresh	PortSelectionWindow		Aggiorna
+Port:	PortSelectionWindow		Porta:
+No serial ports found	PortSelectionWindow		Nessuna porta seriale trovata
+Select a serial port:	PortSelectionWindow		Seleziona una porta seriale:
+Message:	MainWindow		Messaggio:
+Contacts	MainWindow		Contatti
+No contacts	MainWindow		Nessun contatto
+Select a contact to start chatting	MainWindow		Seleziona un contatto per iniziare a chattare
+Select Serial Port	PortSelectionWindow		Seleziona Porta Seriale
+Settings	SettingsWindow		Impostazioni
+About Sestriere	MainWindow		Informazioni su Sestriere
