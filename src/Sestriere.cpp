@@ -7,7 +7,6 @@
 
 #include "Sestriere.h"
 
-#include <AboutWindow.h>
 #include <Alert.h>
 #include <Catalog.h>
 #include <Directory.h>
@@ -98,22 +97,19 @@ Sestriere::QuitRequested()
 void
 Sestriere::AboutRequested()
 {
-	const char* authors[] = {
-		"Sestriere Authors",
-		NULL
-	};
-
-	BAboutWindow* aboutWindow = new BAboutWindow(
-		B_TRANSLATE_SYSTEM_NAME(kAppName),
-		kAppSignature);
-
-	aboutWindow->AddDescription(
+	BAlert* alert = new BAlert(
+		B_TRANSLATE("About Sestriere"),
+		"Sestriere\n\n"
 		"A native MeshCore LoRa mesh client for Haiku OS.\n\n"
 		"The name recalls the Venetian 'sestieri' - interconnected "
-		"districts like nodes in a mesh network.");
-	aboutWindow->AddCopyright(2025, "Sestriere Authors");
-	aboutWindow->AddAuthors(authors);
-	aboutWindow->Show();
+		"districts like nodes in a mesh network.\n\n"
+		"Copyright 2025 Sestriere Authors\n"
+		"Distributed under the MIT license.",
+		B_TRANSLATE("OK"),
+		NULL, NULL,
+		B_WIDTH_AS_USUAL,
+		B_INFO_ALERT);
+	alert->Go();
 }
 
 
