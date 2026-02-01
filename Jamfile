@@ -28,7 +28,7 @@ Application Sestriere :
 	MapView.cpp
 	MeshGraphView.cpp
 	TelemetryWindow.cpp
-	: be device tracker localestub $(TARGET_LIBSUPC++)
+	: be device tracker shared localestub $(TARGET_LIBSUPC++)
 	: Sestriere.rdef
 ;
 

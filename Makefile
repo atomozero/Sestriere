@@ -30,7 +30,7 @@ SRCS = \
 
 RDEFS = resources/Sestriere.rdef
 
-LIBS = be device tracker localestub $(STDCPPLIBS)
+LIBS = be device tracker shared localestub $(STDCPPLIBS)
 
 LIBPATHS =
 
