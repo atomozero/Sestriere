@@ -14,8 +14,8 @@
 // Application Signature
 // =============================================================================
 
-static const char* kAppSignature = "application/x-vnd.Sestriere";
-static const char* kAppName = "Sestriere";
+inline const char* kAppSignature = "application/x-vnd.Sestriere";
+inline const char* kAppName = "Sestriere";
 
 // =============================================================================
 // Internal BMessage Codes
@@ -78,7 +78,7 @@ enum {
 	MSG_PUBLIC_CHANNEL			= 'pbch',
 
 	// Statistics
-	MSG_SHOW_STATS				= 'shst',
+	MSG_SHOW_STATS				= 'shss',
 
 	// Deskbar
 	MSG_INSTALL_DESKBAR			= 'idkb',
@@ -94,57 +94,57 @@ enum {
 // BMessage Field Names
 // =============================================================================
 
-static const char* kFieldPort		= "port";
-static const char* kFieldData		= "data";
-static const char* kFieldSize		= "size";
-static const char* kFieldError		= "error";
-static const char* kFieldErrorCode	= "error_code";
-static const char* kFieldContact	= "contact";
-static const char* kFieldMessage	= "message";
-static const char* kFieldTimestamp	= "timestamp";
-static const char* kFieldText		= "text";
-static const char* kFieldPubKey		= "pubkey";
-static const char* kFieldName		= "name";
-static const char* kFieldType		= "type";
-static const char* kFieldCode		= "code";
-static const char* kFieldCount		= "count";
-static const char* kFieldBattery	= "battery";
-static const char* kFieldUsedKb		= "used_kb";
-static const char* kFieldTotalKb	= "total_kb";
-static const char* kFieldRoundTrip	= "round_trip";
-static const char* kFieldSnr		= "snr";
-static const char* kFieldPathLen	= "path_len";
+inline const char* kFieldPort		= "port";
+inline const char* kFieldData		= "data";
+inline const char* kFieldSize		= "size";
+inline const char* kFieldError		= "error";
+inline const char* kFieldErrorCode	= "error_code";
+inline const char* kFieldContact	= "contact";
+inline const char* kFieldMessage	= "message";
+inline const char* kFieldTimestamp	= "timestamp";
+inline const char* kFieldText		= "text";
+inline const char* kFieldPubKey		= "pubkey";
+inline const char* kFieldName		= "name";
+inline const char* kFieldType		= "type";
+inline const char* kFieldCode		= "code";
+inline const char* kFieldCount		= "count";
+inline const char* kFieldBattery	= "battery";
+inline const char* kFieldUsedKb		= "used_kb";
+inline const char* kFieldTotalKb	= "total_kb";
+inline const char* kFieldRoundTrip	= "round_trip";
+inline const char* kFieldSnr		= "snr";
+inline const char* kFieldPathLen	= "path_len";
 
 // =============================================================================
 // Default Settings
 // =============================================================================
 
-static const uint32 kDefaultBaudRate		= 115200;
-static const uint8 kDefaultDataBits			= 8;
-static const uint8 kDefaultStopBits			= 1;
-static const int32 kDefaultWindowWidth		= 800;
-static const int32 kDefaultWindowHeight		= 600;
-static const int32 kMinWindowWidth			= 640;
-static const int32 kMinWindowHeight			= 480;
-static const int32 kContactListWidth		= 200;
+inline constexpr uint32 kDefaultBaudRate		= 115200;
+inline constexpr uint8 kDefaultDataBits			= 8;
+inline constexpr uint8 kDefaultStopBits			= 1;
+inline constexpr int32 kDefaultWindowWidth		= 800;
+inline constexpr int32 kDefaultWindowHeight		= 600;
+inline constexpr int32 kMinWindowWidth			= 640;
+inline constexpr int32 kMinWindowHeight			= 480;
+inline constexpr int32 kContactListWidth		= 200;
 
 // Timing constants (microseconds)
-static const bigtime_t kSerialReadTimeout	= 100000;		// 100ms
-static const bigtime_t kBatteryPollInterval	= 60000000;		// 60s
-static const bigtime_t kMessagePollInterval	= 1000000;		// 1s
+inline constexpr bigtime_t kSerialReadTimeout	= 100000;		// 100ms
+inline constexpr bigtime_t kBatteryPollInterval	= 60000000;		// 60s
+inline constexpr bigtime_t kMessagePollInterval	= 1000000;		// 1s
 
 // Protocol constants
-static const uint8 kAppProtocolVersion		= 1;
-static const char* kAppIdentifier			= "Sestriere";
+inline constexpr uint8 kAppProtocolVersion		= 1;
+inline const char* kAppIdentifier				= "Sestriere";
 
 // =============================================================================
 // Settings File
 // =============================================================================
 
-static const char* kSettingsFileName = "Sestriere_settings";
-static const char* kSettingsFieldLastPort = "last_port";
-static const char* kSettingsFieldWindowFrame = "window_frame";
-static const char* kSettingsFieldLastContactSync = "last_contact_sync";
+inline const char* kSettingsFileName = "Sestriere_settings";
+inline const char* kSettingsFieldLastPort = "last_port";
+inline const char* kSettingsFieldWindowFrame = "window_frame";
+inline const char* kSettingsFieldLastContactSync = "last_contact_sync";
 
 // =============================================================================
 // UI Strings (for localization)
