@@ -42,7 +42,7 @@ TracePathWindow::TracePathWindow(BWindow* parent, const Contact* contact)
 	fTraceButton(NULL),
 	fCloseButton(NULL),
 	fStatusLabel(NULL),
-	fHops(10, true),
+	fHops(10),
 	fTracing(false)
 {
 	if (contact != NULL)

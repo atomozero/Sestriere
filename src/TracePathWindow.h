@@ -49,7 +49,7 @@ private:
 			BButton*		fCloseButton;
 			BStringView*	fStatusLabel;
 
-			BObjectList<TraceHop> fHops;
+			BObjectList<TraceHop, true> fHops;
 			bool			fTracing;
 };
 
