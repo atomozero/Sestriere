@@ -90,8 +90,8 @@ private:
 			rgb_color		_NodeColor(const GraphNode& node) const;
 			rgb_color		_EdgeColor(const GraphEdge& edge) const;
 
-			BObjectList<GraphNode>	fNodes;
-			BObjectList<GraphEdge>	fEdges;
+			BObjectList<GraphNode, true>	fNodes;
+			BObjectList<GraphEdge, true>	fEdges;
 			int32			fSelfIndex;
 
 			bool			fAnimationEnabled;

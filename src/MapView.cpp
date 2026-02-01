@@ -31,7 +31,7 @@ static const float kSelfRadius = 10.0f;
 MapView::MapView(const char* name)
 	:
 	BView(name, B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE | B_FRAME_EVENTS),
-	fNodes(20, true),
+	fNodes(20),
 	fHasSelfPosition(false),
 	fCenterLat(45.0f),		// Default: northern Italy
 	fCenterLon(7.0f),

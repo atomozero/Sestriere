@@ -34,8 +34,8 @@ static const float kMinVelocity = 0.1f;
 MeshGraphView::MeshGraphView(const char* name)
 	:
 	BView(name, B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE | B_PULSE_NEEDED),
-	fNodes(20, true),
-	fEdges(50, true),
+	fNodes(20),
+	fEdges(50),
 	fSelfIndex(-1),
 	fAnimationEnabled(true),
 	fDraggedNode(NULL),

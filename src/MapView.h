@@ -76,7 +76,7 @@ private:
 			rgb_color		_ColorForSnr(int8 snr) const;
 			rgb_color		_ColorForType(uint8 type) const;
 
-			BObjectList<MapNode>	fNodes;
+			BObjectList<MapNode, true>	fNodes;
 			MapNode			fSelfNode;
 			bool			fHasSelfPosition;
 

@@ -64,7 +64,7 @@ struct SensorInfo {
 	float		maxValue;
 	float		avgValue;
 	rgb_color	color;
-	BObjectList<TelemetryDataPoint>	history;
+	BObjectList<TelemetryDataPoint, true>	history;
 
 	SensorInfo()
 		: type(SENSOR_CUSTOM),
@@ -192,7 +192,7 @@ private:
 	BButton*			fClearButton;
 
 	// Data
-	BObjectList<SensorInfo>	fSensors;
+	BObjectList<SensorInfo, true>	fSensors;
 	int32				fSelectedSensor;
 	bigtime_t			fCurrentTimeRange;
 };

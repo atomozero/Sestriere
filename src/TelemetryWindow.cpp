@@ -524,7 +524,7 @@ TelemetryWindow::TelemetryWindow(BRect frame, BMessenger target)
 	  fRefreshRunner(NULL),
 	  fSelectedSensor(-1),
 	  fCurrentTimeRange(60 * 1000000LL),	// 1 minute
-	  fSensors(20, true)					// owns items
+	  fSensors(20)
 {
 	_BuildLayout();
 
