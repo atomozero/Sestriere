@@ -60,6 +60,11 @@ public:
 	static float		LatLonFromInt(int32 value);
 	static int32		LatLonToInt(float value);
 
+	// Byte reading utilities (public for stats parsing)
+	static uint16		ReadU16LE(const uint8* data);
+	static uint32		ReadU32LE(const uint8* data);
+	static int32		ReadI32LE(const uint8* data);
+
 private:
 	static uint16		_ReadU16LE(const uint8* data);
 	static uint32		_ReadU32LE(const uint8* data);

@@ -23,11 +23,14 @@
 #include <cstring>
 #include <cstdio>
 
+#include <Deskbar.h>
+
 #include "ChannelItem.h"
 #include "ChatView.h"
 #include "Constants.h"
 #include "ContactExportWindow.h"
 #include "ContactListView.h"
+#include "DeskbarReplicant.h"
 #include "LoginWindow.h"
 #include "NotificationManager.h"
 #include "PortSelectionWindow.h"
@@ -35,6 +38,7 @@
 #include "Sestriere.h"
 #include "SerialHandler.h"
 #include "SettingsWindow.h"
+#include "StatsWindow.h"
 #include "StatusBarView.h"
 #include "TracePathWindow.h"
 
@@ -312,6 +316,36 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_SHOW_STATS:
+		{
+			StatsWindow* statsWindow = new StatsWindow(this);
+			statsWindow->Show();
+			break;
+		}
+
+		case MSG_INSTALL_DESKBAR:
+		{
+			BDeskbar deskbar;
+			if (!deskbar.HasItem("Sestriere")) {
+				entry_ref ref;
+				if (be_roster->FindApp(kAppSignature, &ref) == B_OK) {
+					deskbar.AddItem(&ref);
+					fStatusBar->SetTemporaryStatus("Added to Deskbar");
+				}
+			}
+			break;
+		}
+
+		case MSG_REMOVE_DESKBAR:
+		{
+			BDeskbar deskbar;
+			if (deskbar.HasItem("Sestriere")) {
+				deskbar.RemoveItem("Sestriere");
+				fStatusBar->SetTemporaryStatus("Removed from Deskbar");
+			}
+			break;
+		}
+
 		case MSG_BATTERY_TIMER:
 		{
 			Sestriere* app = dynamic_cast<Sestriere*>(be_app);
@@ -514,6 +548,8 @@ MainWindow::_BuildMenu()
 	deviceMenu->AddSeparatorItem();
 	deviceMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_PUBLIC_CHANNEL),
 		new BMessage(MSG_PUBLIC_CHANNEL), 'P'));
+	deviceMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_STATISTICS),
+		new BMessage(MSG_SHOW_STATS), 'I'));
 	deviceMenu->AddSeparatorItem();
 	deviceMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_REBOOT_DEVICE),
 		new BMessage(CMD_REBOOT)));
@@ -523,6 +559,11 @@ MainWindow::_BuildMenu()
 	BMenu* helpMenu = new BMenu(B_TRANSLATE(TR_MENU_HELP));
 	helpMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_ABOUT),
 		new BMessage(MSG_SHOW_ABOUT)));
+	helpMenu->AddSeparatorItem();
+	helpMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_INSTALL_DESKBAR),
+		new BMessage(MSG_INSTALL_DESKBAR)));
+	helpMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_REMOVE_DESKBAR),
+		new BMessage(MSG_REMOVE_DESKBAR)));
 	fMenuBar->AddItem(helpMenu);
 }
 

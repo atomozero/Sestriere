@@ -23,6 +23,8 @@ Application Sestriere :
 	TracePathWindow.cpp
 	ContactExportWindow.cpp
 	NotificationManager.cpp
+	StatsWindow.cpp
+	DeskbarReplicant.cpp
 	: be device tracker localestub $(TARGET_LIBSUPC++)
 	: Sestriere.rdef
 ;
@@ -37,4 +39,5 @@ DoCatalogs Sestriere :
 	LoginWindow.cpp
 	TracePathWindow.cpp
 	ContactExportWindow.cpp
+	StatsWindow.cpp
 ;

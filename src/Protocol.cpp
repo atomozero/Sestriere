@@ -599,6 +599,31 @@ Protocol::LatLonToInt(float value)
 
 
 // =============================================================================
+// Public Byte Reading Utilities
+// =============================================================================
+
+uint16
+Protocol::ReadU16LE(const uint8* data)
+{
+	return data[0] | (data[1] << 8);
+}
+
+
+uint32
+Protocol::ReadU32LE(const uint8* data)
+{
+	return data[0] | (data[1] << 8) | (data[2] << 16) | (data[3] << 24);
+}
+
+
+int32
+Protocol::ReadI32LE(const uint8* data)
+{
+	return (int32)ReadU32LE(data);
+}
+
+
+// =============================================================================
 // Private Helper Functions
 // =============================================================================
 

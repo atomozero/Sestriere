@@ -75,7 +75,14 @@ enum {
 
 	// Channel
 	MSG_CHANNEL_SELECTED		= 'chsl',
-	MSG_PUBLIC_CHANNEL			= 'pbch'
+	MSG_PUBLIC_CHANNEL			= 'pbch',
+
+	// Statistics
+	MSG_SHOW_STATS				= 'shst',
+
+	// Deskbar
+	MSG_INSTALL_DESKBAR			= 'idkb',
+	MSG_REMOVE_DESKBAR			= 'rdkb'
 };
 
 // =============================================================================
@@ -157,6 +164,9 @@ static const char* kSettingsFieldLastContactSync = "last_contact_sync";
 #define TR_MENU_EXPORT_CONTACT		"Export Contact" B_UTF8_ELLIPSIS
 #define TR_MENU_IMPORT_CONTACT		"Import Contact" B_UTF8_ELLIPSIS
 #define TR_MENU_PUBLIC_CHANNEL		"Public Channel"
+#define TR_MENU_STATISTICS			"Statistics" B_UTF8_ELLIPSIS
+#define TR_MENU_INSTALL_DESKBAR		"Show in Deskbar"
+#define TR_MENU_REMOVE_DESKBAR		"Remove from Deskbar"
 
 #define TR_STATUS_DISCONNECTED		"Disconnected"
 #define TR_STATUS_CONNECTING		"Connecting..."

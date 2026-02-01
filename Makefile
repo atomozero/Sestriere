@@ -21,7 +21,9 @@ SRCS = \
 	src/LoginWindow.cpp \
 	src/TracePathWindow.cpp \
 	src/ContactExportWindow.cpp \
-	src/NotificationManager.cpp
+	src/NotificationManager.cpp \
+	src/StatsWindow.cpp \
+	src/DeskbarReplicant.cpp
 
 RDEFS = resources/Sestriere.rdef
 
