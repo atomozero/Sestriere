@@ -15,6 +15,7 @@
 #include <Path.h>
 #include <Screen.h>
 
+#include "AboutWindow.h"
 #include "Constants.h"
 #include "MainWindow.h"
 #include "SerialHandler.h"
@@ -97,19 +98,8 @@ Sestriere::QuitRequested()
 void
 Sestriere::AboutRequested()
 {
-	BAlert* alert = new BAlert(
-		B_TRANSLATE("About Sestriere"),
-		"Sestriere\n\n"
-		"A native MeshCore LoRa mesh client for Haiku OS.\n\n"
-		"The name recalls the Venetian 'sestieri' - interconnected "
-		"districts like nodes in a mesh network.\n\n"
-		"Copyright 2025 Sestriere Authors\n"
-		"Distributed under the MIT license.",
-		B_TRANSLATE("OK"),
-		NULL, NULL,
-		B_WIDTH_AS_USUAL,
-		B_INFO_ALERT);
-	alert->Go();
+	AboutWindow* aboutWindow = new AboutWindow();
+	aboutWindow->Show();
 }
 
 

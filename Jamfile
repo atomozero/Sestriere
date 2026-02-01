@@ -8,6 +8,7 @@ SEARCH_SOURCE += [ FDirName $(SUBDIR) src ] ;
 
 Application Sestriere :
 	Sestriere.cpp
+	AboutWindow.cpp
 	MainWindow.cpp
 	SerialHandler.cpp
 	Protocol.cpp

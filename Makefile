@@ -7,6 +7,7 @@ APP_MIME_SIG = application/x-vnd.Sestriere
 
 SRCS = \
 	src/Sestriere.cpp \
+	src/AboutWindow.cpp \
 	src/MainWindow.cpp \
 	src/SerialHandler.cpp \
 	src/Protocol.cpp \
