@@ -23,7 +23,10 @@ SRCS = \
 	src/ContactExportWindow.cpp \
 	src/NotificationManager.cpp \
 	src/StatsWindow.cpp \
-	src/DeskbarReplicant.cpp
+	src/DeskbarReplicant.cpp \
+	src/MapView.cpp \
+	src/MeshGraphView.cpp \
+	src/TelemetryWindow.cpp
 
 RDEFS = resources/Sestriere.rdef
 

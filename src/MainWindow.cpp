@@ -22,6 +22,7 @@
 
 #include <cstring>
 #include <cstdio>
+#include <ctime>
 
 #include <Deskbar.h>
 
@@ -40,7 +41,10 @@
 #include "SettingsWindow.h"
 #include "StatsWindow.h"
 #include "StatusBarView.h"
+#include "TelemetryWindow.h"
 #include "TracePathWindow.h"
+#include "MapView.h"
+#include "MeshGraphView.h"
 
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "MainWindow"
@@ -358,6 +362,82 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_SHOW_MAP:
+		{
+			// Create map window with contacts
+			BRect mapFrame(100, 100, 700, 550);
+			MapWindow* mapWindow = new MapWindow(mapFrame, BMessenger(this));
+
+			// Add contacts with coordinates to the map
+			for (int32 i = 0; i < fContactList->CountItems(); i++) {
+				Contact* contact = fContactList->ContactAt(i);
+				if (contact != NULL && (contact->advLat != 0 || contact->advLon != 0)) {
+					// Use first 4 bytes of public key as ID
+					uint32 nodeId = (contact->publicKey[0] << 24) |
+						(contact->publicKey[1] << 16) |
+						(contact->publicKey[2] << 8) |
+						contact->publicKey[3];
+					mapWindow->AddNode(nodeId, contact->advName,
+						contact->advLat / 1000000.0, contact->advLon / 1000000.0,
+						contact->type, contact->lastAdvert,
+						contact->outPathLen >= 0 ? contact->outPathLen : 0);
+				}
+			}
+			// Add self node if we have location
+			if (fSelfInfo.advLat != 0 || fSelfInfo.advLon != 0) {
+				mapWindow->AddNode(0, fSelfInfo.name,
+					fSelfInfo.advLat / 1000000.0, fSelfInfo.advLon / 1000000.0,
+					ADV_TYPE_CHAT, (uint32)time(NULL), 0);
+				mapWindow->SetSelfNode(0);
+			}
+
+			mapWindow->Show();
+			break;
+		}
+
+		case MSG_SHOW_MESH_GRAPH:
+		{
+			// Create mesh graph window
+			BRect graphFrame(120, 120, 720, 570);
+			MeshGraphWindow* graphWindow = new MeshGraphWindow(graphFrame, BMessenger(this));
+
+			// Add self as center node
+			graphWindow->AddNode(0, fSelfInfo.name, 0, true);
+
+			// Add contacts as nodes
+			for (int32 i = 0; i < fContactList->CountItems(); i++) {
+				Contact* contact = fContactList->ContactAt(i);
+				if (contact != NULL) {
+					// Use first 4 bytes of public key as ID
+					uint32 nodeId = (contact->publicKey[0] << 24) |
+						(contact->publicKey[1] << 16) |
+						(contact->publicKey[2] << 8) |
+						contact->publicKey[3];
+					int pathLen = contact->outPathLen >= 0 ? contact->outPathLen : 0;
+					graphWindow->AddNode(nodeId, contact->advName, pathLen, false);
+					// Add edge from self to contact
+					graphWindow->AddEdge(0, nodeId, pathLen);
+				}
+			}
+
+			graphWindow->Show();
+			break;
+		}
+
+		case MSG_SHOW_TELEMETRY:
+		{
+			// Create telemetry window
+			BRect telemetryFrame(140, 140, 840, 590);
+			TelemetryWindow* telemetryWindow = new TelemetryWindow(telemetryFrame,
+				BMessenger(this));
+
+			// Add some sample sensor data (in real use, this would come from devices)
+			// The window will update as telemetry data arrives from the mesh network
+
+			telemetryWindow->Show();
+			break;
+		}
+
 		default:
 			BWindow::MessageReceived(message);
 			break;
@@ -554,6 +634,16 @@ MainWindow::_BuildMenu()
 	deviceMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_REBOOT_DEVICE),
 		new BMessage(CMD_REBOOT)));
 	fMenuBar->AddItem(deviceMenu);
+
+	// View menu
+	BMenu* viewMenu = new BMenu(B_TRANSLATE(TR_MENU_VIEW));
+	viewMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_MAP_VIEW),
+		new BMessage(MSG_SHOW_MAP), 'M'));
+	viewMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_MESH_GRAPH),
+		new BMessage(MSG_SHOW_MESH_GRAPH), 'G'));
+	viewMenu->AddItem(new BMenuItem(B_TRANSLATE(TR_MENU_TELEMETRY),
+		new BMessage(MSG_SHOW_TELEMETRY)));
+	fMenuBar->AddItem(viewMenu);
 
 	// Help menu
 	BMenu* helpMenu = new BMenu(B_TRANSLATE(TR_MENU_HELP));

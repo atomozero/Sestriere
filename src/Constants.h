@@ -82,7 +82,12 @@ enum {
 
 	// Deskbar
 	MSG_INSTALL_DESKBAR			= 'idkb',
-	MSG_REMOVE_DESKBAR			= 'rdkb'
+	MSG_REMOVE_DESKBAR			= 'rdkb',
+
+	// View windows
+	MSG_SHOW_MAP				= 'shmp',
+	MSG_SHOW_MESH_GRAPH			= 'shmg',
+	MSG_SHOW_TELEMETRY			= 'shtl'
 };
 
 // =============================================================================
@@ -167,6 +172,11 @@ static const char* kSettingsFieldLastContactSync = "last_contact_sync";
 #define TR_MENU_STATISTICS			"Statistics" B_UTF8_ELLIPSIS
 #define TR_MENU_INSTALL_DESKBAR		"Show in Deskbar"
 #define TR_MENU_REMOVE_DESKBAR		"Remove from Deskbar"
+
+#define TR_MENU_VIEW				"View"
+#define TR_MENU_MAP_VIEW			"Map View"
+#define TR_MENU_MESH_GRAPH			"Network Graph"
+#define TR_MENU_TELEMETRY			"Sensor Telemetry"
 
 #define TR_STATUS_DISCONNECTED		"Disconnected"
 #define TR_STATUS_CONNECTING		"Connecting..."

@@ -40,3 +40,7 @@ Select a contact to start chatting	MainWindow		Seleziona un contatto per iniziar
 Select Serial Port	PortSelectionWindow		Seleziona Porta Seriale
 Settings	SettingsWindow		Impostazioni
 About Sestriere	MainWindow		Informazioni su Sestriere
+View	MainWindow		Visualizza
+Map View	MainWindow		Vista Mappa
+Network Graph	MainWindow		Grafo di Rete
+Sensor Telemetry	MainWindow		Telemetria Sensori

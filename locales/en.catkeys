@@ -40,3 +40,7 @@ Select a contact to start chatting	MainWindow		Select a contact to start chattin
 Select Serial Port	PortSelectionWindow		Select Serial Port
 Settings	SettingsWindow		Settings
 About Sestriere	MainWindow		About Sestriere
+View	MainWindow		View
+Map View	MainWindow		Map View
+Network Graph	MainWindow		Network Graph
+Sensor Telemetry	MainWindow		Sensor Telemetry
