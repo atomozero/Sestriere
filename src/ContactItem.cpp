@@ -30,6 +30,7 @@ ContactItem::~ContactItem()
 void
 ContactItem::DrawItem(BView* owner, BRect frame, bool complete)
 {
+	(void)complete;
 	rgb_color lowColor = owner->LowColor();
 	rgb_color highColor = owner->HighColor();
 
