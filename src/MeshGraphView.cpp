@@ -71,7 +71,7 @@ MeshGraphView::DetachedFromWindow()
 
 
 void
-MeshGraphView::Draw(BRect updateRect)
+MeshGraphView::Draw(BRect /*updateRect*/)
 {
 	BRect bounds = Bounds();
 
@@ -121,7 +121,7 @@ MeshGraphView::MouseDown(BPoint where)
 
 
 void
-MeshGraphView::MouseMoved(BPoint where, uint32 transit, const BMessage* dragMessage)
+MeshGraphView::MouseMoved(BPoint where, uint32 /*transit*/, const BMessage* /*dragMessage*/)
 {
 	if (fDraggedNode != NULL) {
 		fDraggedNode->x = where.x + fDragOffset.x;
@@ -134,7 +134,7 @@ MeshGraphView::MouseMoved(BPoint where, uint32 transit, const BMessage* dragMess
 
 
 void
-MeshGraphView::MouseUp(BPoint where)
+MeshGraphView::MouseUp(BPoint /*where*/)
 {
 	if (fDraggedNode != NULL) {
 		fDraggedNode->isDragging = false;
@@ -858,19 +858,7 @@ MeshGraphWindow::AddNode(uint32 nodeId, const char* name, int pathLen, bool isSe
 void
 MeshGraphWindow::AddEdge(uint32 fromId, uint32 toId, int hops)
 {
-	// Find indices
-	uint8 fromKey[kPublicKeySize] = {0};
-	uint8 toKey[kPublicKeySize] = {0};
-
-	fromKey[0] = (fromId >> 24) & 0xFF;
-	fromKey[1] = (fromId >> 16) & 0xFF;
-	fromKey[2] = (fromId >> 8) & 0xFF;
-	fromKey[3] = fromId & 0xFF;
-
-	toKey[0] = (toId >> 24) & 0xFF;
-	toKey[1] = (toId >> 16) & 0xFF;
-	toKey[2] = (toId >> 8) & 0xFF;
-	toKey[3] = toId & 0xFF;
+	(void)toId;  // Reserved for future use
 
 	// Find node indices (fromId=0 means self node, which is at index 0)
 	int32 fromIndex = (fromId == 0) ? 0 : -1;

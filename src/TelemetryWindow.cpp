@@ -45,7 +45,7 @@ TelemetryGraphView::~TelemetryGraphView()
 
 
 void
-TelemetryGraphView::Draw(BRect updateRect)
+TelemetryGraphView::Draw(BRect /*updateRect*/)
 {
 	BRect bounds = Bounds();
 
@@ -96,7 +96,7 @@ TelemetryGraphView::MouseDown(BPoint where)
 
 
 void
-TelemetryGraphView::MouseMoved(BPoint where, uint32 transit, const BMessage* dragMessage)
+TelemetryGraphView::MouseMoved(BPoint where, uint32 transit, const BMessage* /*dragMessage*/)
 {
 	if (fShowCursor) {
 		if (transit == B_EXITED_VIEW) {

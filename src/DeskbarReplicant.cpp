@@ -21,8 +21,8 @@
 #include "Constants.h"
 
 
-// Replicant signature
-static const char* kReplicantSignature = "application/x-vnd.Sestriere-DeskbarReplicant";
+// Replicant signature (used in Archive for add_on identification)
+// Note: kAppSignature from Constants.h is used instead
 
 // Simple mesh icon (16x16 RGBA)
 static const uint8 kIconConnectedData[] = {
@@ -131,7 +131,7 @@ DeskbarReplicant::DetachedFromWindow()
 
 
 void
-DeskbarReplicant::Draw(BRect updateRect)
+DeskbarReplicant::Draw(BRect /*updateRect*/)
 {
 	BRect bounds = Bounds();
 	_DrawIcon(bounds);
@@ -143,11 +143,11 @@ DeskbarReplicant::Draw(BRect updateRect)
 		FillEllipse(badge);
 
 		SetHighColor(255, 255, 255);
-		char countStr[4];
+		char countStr[16];
 		if (fUnreadCount > 9)
 			snprintf(countStr, sizeof(countStr), "+");
 		else
-			snprintf(countStr, sizeof(countStr), "%d", (int)fUnreadCount);
+			snprintf(countStr, sizeof(countStr), "%d", fUnreadCount);
 
 		BFont font;
 		GetFont(&font);
