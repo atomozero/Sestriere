@@ -81,7 +81,7 @@ MqttClient::MessageReceived(BMessage* message)
 		case MSG_MQTT_RECONNECT_TIMER:
 			if (!fConnected && fSettings.enabled && !fManualDisconnect) {
 				fprintf(stderr, "[MQTT] Reconnect timer fired, attempting...\n");
-				_SendLogEntry("Auto-reconnecting...");
+				_SendLogEntry(MQTT_LOG_RECONN, "Auto-reconnecting...");
 				_DoConnect();
 			}
 			break;
@@ -175,7 +175,7 @@ MqttClient::_DoConnect()
 	{
 		BString logEntry;
 		logEntry.SetToFormat("Connecting to %s:%d...", fSettings.broker, fSettings.port);
-		_SendLogEntry(logEntry.String());
+		_SendLogEntry(MQTT_LOG_CONN, logEntry.String());
 	}
 
 	// Connect (non-blocking)
@@ -184,7 +184,7 @@ MqttClient::_DoConnect()
 		fprintf(stderr, "[MQTT] Connect failed: %s\n", mosquitto_strerror(rc));
 		BString logEntry;
 		logEntry.SetToFormat("Connect failed: %s", mosquitto_strerror(rc));
-		_SendLogEntry(logEntry.String());
+		_SendLogEntry(MQTT_LOG_ERR, logEntry.String());
 		if (fTarget != NULL) {
 			BMessage error(MSG_MQTT_ERROR);
 			error.AddString("error", mosquitto_strerror(rc));
@@ -355,21 +355,22 @@ MqttClient::_Publish(const char* topic, const char* json)
 		fprintf(stderr, "[MQTT] Publish error: %s\n", mosquitto_strerror(rc));
 		BString logEntry;
 		logEntry.SetToFormat("Publish error: %s (topic: %s)", mosquitto_strerror(rc), topic);
-		_SendLogEntry(logEntry.String());
+		_SendLogEntry(MQTT_LOG_ERR, logEntry.String());
 	} else {
 		fprintf(stderr, "[MQTT] Publish queued OK\n");
 		BString logEntry;
-		logEntry.SetToFormat("Published to %s (%zu bytes)", topic, strlen(json));
-		_SendLogEntry(logEntry.String());
+		logEntry.SetToFormat("→ %s (%zu B)", topic, strlen(json));
+		_SendLogEntry(MQTT_LOG_PUB, logEntry.String());
 	}
 }
 
 
 void
-MqttClient::_SendLogEntry(const char* text)
+MqttClient::_SendLogEntry(int32 type, const char* text)
 {
 	if (fLogTarget != NULL && text != NULL) {
 		BMessage logMsg(MSG_MQTT_LOG_ENTRY);
+		logMsg.AddInt32("type", type);
 		logMsg.AddString("text", text);
 		BMessenger(fLogTarget).SendMessage(&logMsg);
 	}
@@ -386,7 +387,7 @@ MqttClient::_StartReconnectTimer()
 
 	BString logEntry;
 	logEntry.SetToFormat("Reconnecting in %d seconds...", delaySecs);
-	_SendLogEntry(logEntry.String());
+	_SendLogEntry(MQTT_LOG_RECONN, logEntry.String());
 
 	BMessage timerMsg(MSG_MQTT_RECONNECT_TIMER);
 	fReconnectTimer = new BMessageRunner(this, &timerMsg,
@@ -473,8 +474,8 @@ MqttClient::_OnDisconnectCallback(struct mosquitto* mosq, void* obj, int rc)
 	// Auto-reconnect on unexpected disconnect (rc != 0)
 	if (rc != 0 && !client->fManualDisconnect && client->fSettings.enabled) {
 		BString logEntry;
-		logEntry.SetToFormat("Unexpected disconnect (rc=%d), will reconnect...", rc);
-		client->_SendLogEntry(logEntry.String());
+		logEntry.SetToFormat("Unexpected disconnect (rc=%d)", rc);
+		client->_SendLogEntry(MQTT_LOG_ERR, logEntry.String());
 		client->_StartReconnectTimer();
 	}
 }

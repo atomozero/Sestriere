@@ -65,7 +65,15 @@ private:
 		BRect			fMqttToggleRect;
 		BRect			fMqttLogRect;
 
+		// Status indicator hit areas
+		BRect			fConnectionDotRect;
+		BRect			fBatteryRect;
+		BRect			fRssiRect;
+		BRect			fTxRxRect;
+		BRect			fUptimeRect;
+
 		int32			fHoverArea;
+		mutable BString	fToolTipText;
 };
 
 #endif // TOPBARVIEW_H

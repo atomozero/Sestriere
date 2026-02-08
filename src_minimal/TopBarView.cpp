@@ -33,6 +33,11 @@ enum {
 	kAreaDebugLog,
 	kAreaMqttToggle,
 	kAreaMqttLog,
+	kAreaConnectionDot,
+	kAreaBattery,
+	kAreaRssi,
+	kAreaTxRx,
+	kAreaUptime,
 };
 
 // Battery color by voltage
@@ -394,6 +399,13 @@ TopBarView::Draw(BRect updateRect)
 	StrokeLine(BPoint(x, 4), BPoint(x, bounds.bottom - 4));
 	x += kIconSpacing;
 
+	// Reset status indicator rects (may not be drawn if window too narrow)
+	fConnectionDotRect = BRect();
+	fBatteryRect = BRect();
+	fRssiRect = BRect();
+	fTxRxRect = BRect();
+	fUptimeRect = BRect();
+
 	// Connection status dot
 	if (fConnected) {
 		SetHighColor(80, 180, 80, 255);
@@ -402,6 +414,7 @@ TopBarView::Draw(BRect updateRect)
 	}
 	BRect dotRect(x, iconY - 3, x + 6, iconY + 3);
 	FillEllipse(dotRect);
+	fConnectionDotRect.Set(x - 2, 0, x + 8, bounds.bottom);
 	x += 10;
 
 	// === RIGHT: Status indicators (drawn right-to-left) ===
@@ -417,6 +430,7 @@ TopBarView::Draw(BRect updateRect)
 
 		float w = StringWidth(uptimeStr) + 4 + StringWidth("Up ") + kPadding;
 		if (rx - w > leftEdge) {
+			float rxStart = rx;
 			float uw = StringWidth(uptimeStr);
 			rx -= uw;
 			SetHighColor(dimColor);
@@ -427,6 +441,7 @@ TopBarView::Draw(BRect updateRect)
 			rx -= lw;
 			SetHighColor(dimColor);
 			DrawString("Up ", BPoint(rx, textY));
+			fUptimeRect.Set(rx - 2, 0, rxStart, bounds.bottom);
 			rx -= kPadding;
 		}
 	}
@@ -463,9 +478,11 @@ TopBarView::Draw(BRect updateRect)
 			(unsigned)fTxPackets, (unsigned)fRxPackets);
 		float w = StringWidth(pktStr);
 		if (rx - w - kPadding > leftEdge) {
+			float rxStart = rx;
 			rx -= w;
 			SetHighColor(dimColor);
 			DrawString(pktStr, BPoint(rx, textY));
+			fTxRxRect.Set(rx - 2, 0, rxStart, bounds.bottom);
 			rx -= kPadding;
 		}
 	}
@@ -476,15 +493,18 @@ TopBarView::Draw(BRect updateRect)
 		snprintf(rssiStr, sizeof(rssiStr), "%ddBm", fRssi);
 		float w = StringWidth(rssiStr);
 		if (rx - w - kPadding > leftEdge) {
+			float rxStart = rx;
 			rx -= w;
 			SetHighColor(SignalColor(fRssi));
 			DrawString(rssiStr, BPoint(rx, textY));
+			fRssiRect.Set(rx - 2, 0, rxStart, bounds.bottom);
 			rx -= kPadding;
 		}
 	}
 
 	// Battery — only if space permits
 	if (fBatteryMv > 0 && rx > leftEdge + 40) {
+		float rxStart = rx;
 		char battStr[16];
 		snprintf(battStr, sizeof(battStr), "%umV", (unsigned)fBatteryMv);
 		float w = StringWidth(battStr);
@@ -509,6 +529,7 @@ TopBarView::Draw(BRect updateRect)
 		FillRect(fillRect);
 		BRect tipRect(battRect.right, iconY - 2, battRect.right + 2, iconY + 2);
 		FillRect(tipRect);
+		fBatteryRect.Set(rx - 2, 0, rxStart, bounds.bottom);
 		rx -= kPadding;
 	}
 }
@@ -651,6 +672,16 @@ TopBarView::_HitArea(BPoint where) const
 		return kAreaMqttToggle;
 	if (fMqttLogRect.Contains(where))
 		return kAreaMqttLog;
+	if (fConnectionDotRect.IsValid() && fConnectionDotRect.Contains(where))
+		return kAreaConnectionDot;
+	if (fBatteryRect.IsValid() && fBatteryRect.Contains(where))
+		return kAreaBattery;
+	if (fRssiRect.IsValid() && fRssiRect.Contains(where))
+		return kAreaRssi;
+	if (fTxRxRect.IsValid() && fTxRxRect.Contains(where))
+		return kAreaTxRx;
+	if (fUptimeRect.IsValid() && fUptimeRect.Contains(where))
+		return kAreaUptime;
 	return kAreaNone;
 }
 
@@ -680,6 +711,63 @@ TopBarView::_ToolTipForArea(int32 area) const
 				return "MQTT: Disabled (click to configure)";
 		case kAreaMqttLog:
 			return "MQTT Log";
+		case kAreaConnectionDot:
+		{
+			if (fConnected) {
+				fToolTipText.SetToFormat("Serial: Connected\nPort: %s",
+					fPortName.Length() > 0 ? fPortName.String() : "unknown");
+			} else {
+				fToolTipText = "Serial: Disconnected";
+			}
+			return fToolTipText.String();
+		}
+		case kAreaBattery:
+		{
+			int32 pct = 0;
+			if (fBatteryMv >= 4200)
+				pct = 100;
+			else if (fBatteryMv >= 3300)
+				pct = (int32)((fBatteryMv - 3300) / 9.0f);
+			const char* state = "Critical";
+			if (fBatteryMv >= 3900) state = "Good";
+			else if (fBatteryMv >= 3600) state = "OK";
+			else if (fBatteryMv >= 3400) state = "Low";
+			fToolTipText.SetToFormat("Battery: %u mV (~%d%%)\n"
+				"State: %s\n"
+				"Range: 3300 mV (empty) \xe2\x80\x93 4200 mV (full)",
+				(unsigned)fBatteryMv, (int)pct, state);
+			return fToolTipText.String();
+		}
+		case kAreaRssi:
+		{
+			const char* quality = "Bad";
+			if (fRssi >= -60) quality = "Excellent";
+			else if (fRssi >= -70) quality = "Good";
+			else if (fRssi >= -80) quality = "Fair";
+			else if (fRssi >= -90) quality = "Poor";
+			fToolTipText.SetToFormat("RSSI: %d dBm\n"
+				"SNR: %d dB\n"
+				"Signal quality: %s",
+				(int)fRssi, (int)fSnr, quality);
+			return fToolTipText.String();
+		}
+		case kAreaTxRx:
+		{
+			fToolTipText.SetToFormat("Transmitted: %u packets\n"
+				"Received: %u packets",
+				(unsigned)fTxPackets, (unsigned)fRxPackets);
+			return fToolTipText.String();
+		}
+		case kAreaUptime:
+		{
+			uint32 h = fUptime / 3600;
+			uint32 m = (fUptime % 3600) / 60;
+			uint32 s = fUptime % 60;
+			fToolTipText.SetToFormat("Device uptime: %uh %02um %02us\n"
+				"(%u seconds total)",
+				(unsigned)h, (unsigned)m, (unsigned)s, (unsigned)fUptime);
+			return fToolTipText.String();
+		}
 		default:
 			return NULL;
 	}

@@ -14,6 +14,15 @@
 
 struct mosquitto;
 
+// MQTT log entry types
+enum MqttLogType {
+	MQTT_LOG_CONN   = 0,
+	MQTT_LOG_PUB    = 1,
+	MQTT_LOG_ERR    = 2,
+	MQTT_LOG_RECONN = 3,
+	MQTT_LOG_INFO   = 4
+};
+
 // MQTT Settings structure
 struct MqttSettings {
 	bool		enabled;
@@ -95,7 +104,7 @@ private:
 	static void				_OnPublishCallback(struct mosquitto* mosq,
 								void* obj, int mid);
 
-			void			_SendLogEntry(const char* text);
+			void			_SendLogEntry(int32 type, const char* text);
 
 			struct mosquitto*	fMosquitto;
 			MqttSettings	fSettings;

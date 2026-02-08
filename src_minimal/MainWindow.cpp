@@ -179,6 +179,9 @@ MainWindow::MainWindow()
 	fSerialHandler = new SerialHandler(this);
 	fSerialHandler->Run();
 
+	// Create MQTT log window (hidden) so it collects entries from the start
+	fMqttLogWindow = new MqttLogWindow();
+
 	// MQTT client is created lazily when needed
 	fprintf(stderr, "[MainWindow] MQTT will be initialized on demand\n");
 	fMqttClient = NULL;
@@ -759,7 +762,8 @@ MainWindow::MessageReceived(BMessage* message)
 			fTopBar->SetMqttStatus(true);
 			fTopBar->SetMqttEnabled(fMqttSettings.enabled);
 			if (fMqttLogWindow != NULL && fMqttLogWindow->LockLooper()) {
-				fMqttLogWindow->AddLogEntry("Connected to broker");
+				fMqttLogWindow->AddLogEntry(MQTT_LOG_CONN,
+					"Connected to broker");
 				fMqttLogWindow->SetMqttStatus(true);
 				fMqttLogWindow->UnlockLooper();
 			}
@@ -778,7 +782,8 @@ MainWindow::MessageReceived(BMessage* message)
 			fTopBar->SetMqttStatus(false);
 			fTopBar->SetMqttEnabled(fMqttSettings.enabled);
 			if (fMqttLogWindow != NULL && fMqttLogWindow->LockLooper()) {
-				fMqttLogWindow->AddLogEntry("Disconnected from broker");
+				fMqttLogWindow->AddLogEntry(MQTT_LOG_CONN,
+					"Disconnected from broker");
 				fMqttLogWindow->SetMqttStatus(false);
 				fMqttLogWindow->UnlockLooper();
 			}
@@ -792,7 +797,7 @@ MainWindow::MessageReceived(BMessage* message)
 			if (fMqttLogWindow != NULL && fMqttLogWindow->LockLooper()) {
 				BString entry;
 				entry.SetToFormat("Error: %s", error);
-				fMqttLogWindow->AddLogEntry(entry.String());
+				fMqttLogWindow->AddLogEntry(MQTT_LOG_ERR, entry.String());
 				fMqttLogWindow->UnlockLooper();
 			}
 			break;
@@ -833,22 +838,16 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 
 		case MSG_SHOW_MQTT_LOG:
-		{
-			if (fMqttLogWindow == NULL) {
-				fMqttLogWindow = new MqttLogWindow();
-				fMqttLogWindow->Show();
-			} else {
-				_ShowWindow(fMqttLogWindow);
-			}
+			_ShowWindow(fMqttLogWindow);
 			break;
-		}
 
 		case MSG_MQTT_LOG_ENTRY:
 		{
+			int32 type = message->GetInt32("type", MQTT_LOG_INFO);
 			const char* text = message->GetString("text", NULL);
 			if (text != NULL && fMqttLogWindow != NULL) {
 				if (fMqttLogWindow->LockLooper()) {
-					fMqttLogWindow->AddLogEntry(text);
+					fMqttLogWindow->AddLogEntry(type, text);
 					fMqttLogWindow->UnlockLooper();
 				}
 			}
