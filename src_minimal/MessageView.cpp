@@ -88,8 +88,8 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	owner->GetFontHeight(&fh);
 	float lineHeight = fh.ascent + fh.descent + fh.leading;
 
-	// Calculate bubble dimensions
-	float maxBubbleWidth = frame.Width() * kBubbleMaxWidthRatio;
+	// Calculate bubble dimensions — use owner bounds (same as Update)
+	float maxBubbleWidth = owner->Bounds().Width() * kBubbleMaxWidthRatio;
 
 	// Wrap text if needed
 	std::vector<BString> lines;
@@ -104,36 +104,51 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	}
 
 	// Include sender name in width calculation for incoming messages
+	// Must use bold font since the name is drawn bold
 	float headerWidth = 0;
 	if (!fOutgoing && fSenderName.Length() > 0) {
-		headerWidth = owner->StringWidth(fSenderName.String());
+		BFont boldFont;
+		owner->GetFont(&boldFont);
+		boldFont.SetFace(B_BOLD_FACE);
+		headerWidth = boldFont.StringWidth(fSenderName.String());
 	}
 
-	// Calculate meta text width (timestamp + hops + SNR)
+	// Calculate meta text — build the actual displayed string for sizing
 	char timeStr[16];
 	_FormatTimestamp(timeStr, sizeof(timeStr));
-	BString metaStr;
+
+	BString displayMeta;
 	if (!fOutgoing) {
-		if (fPathLen == 0 || fPathLen == kPathLenDirect) {
-			if (fSnr != 0)
-				metaStr.SetToFormat("%s \xC2\xB7 SNR %d", timeStr, fSnr);
-			else
-				metaStr.SetToFormat("%s", timeStr);
-		} else {
-			if (fSnr != 0)
-				metaStr.SetToFormat("%s \xC2\xB7 %d hops \xC2\xB7 SNR %d",
-					timeStr, fPathLen, fSnr);
-			else
-				metaStr.SetToFormat("%s \xC2\xB7 %d hops", timeStr, fPathLen);
-		}
+		if (fPathLen == 0 || fPathLen == kPathLenDirect)
+			displayMeta.SetToFormat("%s \xE2\x9C\x93", timeStr);
+		else
+			displayMeta.SetToFormat("%s \xC2\xB7 %d hops", timeStr, fPathLen);
 	} else {
-		metaStr.SetToFormat("%s", timeStr);
+		displayMeta.SetToFormat("%s \xE2\x9C\x93\xE2\x9C\x93", timeStr);
 	}
-	float metaWidth = owner->StringWidth(metaStr.String()) * 0.85f;  // Account for smaller font
+
+	BString snrStr;
+	float snrWidth = 0;
+	bool showSnr = (!fOutgoing && fSnr != 0);
+	if (showSnr) {
+		snrStr.SetToFormat(" SNR %d", fSnr);
+	}
+
+	// Measure total meta width with actual smaller font
+	BFont metaFont;
+	owner->GetFont(&metaFont);
+	metaFont.SetSize(metaFont.Size() * 0.85f);
+	float metaWidth = metaFont.StringWidth(displayMeta.String());
+	if (showSnr)
+		metaWidth += metaFont.StringWidth(snrStr.String()) + 4;
 
 	// Bubble must fit text, header, AND meta
 	float bubbleContentWidth = std::max({maxLineWidth, headerWidth, metaWidth});
 	float bubbleWidth = bubbleContentWidth + kBubblePadding * 2;
+
+	// For wrapped messages, use full max width to avoid word-boundary gaps
+	if (lines.size() > 1)
+		bubbleWidth = maxBubbleWidth;
 
 	// Calculate bubble height
 	float textHeight = lines.size() * lineHeight;
@@ -202,38 +217,13 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	}
 
 	// Draw timestamp and delivery info
-	// Use smaller font for meta
-	BFont smallFont;
-	owner->GetFont(&smallFont);
-	float originalSize = smallFont.Size();
-	smallFont.SetSize(originalSize * 0.85f);
-	owner->SetFont(&smallFont);
-
-	// Build display meta string (with checkmarks)
-	BString displayMeta;
-	if (!fOutgoing) {
-		if (fPathLen == 0 || fPathLen == kPathLenDirect) {
-			displayMeta.SetToFormat("%s \xE2\x9C\x93", timeStr);
-		} else {
-			displayMeta.SetToFormat("%s \xC2\xB7 %d hops", timeStr, fPathLen);
-		}
-	} else {
-		displayMeta.SetToFormat("%s \xE2\x9C\x93\xE2\x9C\x93", timeStr);
-	}
+	owner->SetFont(&metaFont);
 
 	// Draw base meta text
 	owner->SetHighColor(MetaTextColor());
 
-	float metaWidthActual = owner->StringWidth(displayMeta.String());
-
-	// Calculate SNR badge width if applicable
-	BString snrStr;
-	float snrWidth = 0;
-	bool showSnr = (!fOutgoing && fSnr != 0);
-	if (showSnr) {
-		snrStr.SetToFormat(" SNR %d", fSnr);
-		snrWidth = owner->StringWidth(snrStr.String()) + 4;
-	}
+	float metaWidthActual = metaFont.StringWidth(displayMeta.String());
+	snrWidth = showSnr ? (metaFont.StringWidth(snrStr.String()) + 4) : 0;
 
 	float totalMetaWidth = metaWidthActual + snrWidth;
 	float metaX = bubbleRect.right - kBubblePadding - totalMetaWidth;

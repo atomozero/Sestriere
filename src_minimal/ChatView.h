@@ -22,6 +22,7 @@ public:
 	virtual					~ChatView();
 
 	virtual void			AttachedToWindow();
+	virtual void			FrameResized(float newWidth, float newHeight);
 	virtual void			MessageReceived(BMessage* message);
 
 			void			AddMessage(const ChatMessage& message,

@@ -42,6 +42,22 @@ ChatView::AttachedToWindow()
 
 
 void
+ChatView::FrameResized(float newWidth, float newHeight)
+{
+	// Recalculate all item heights for the new width —
+	// text wrapping depends on view width, so heights change on resize
+	BFont font;
+	GetFont(&font);
+
+	for (int32 i = 0; i < CountItems(); i++)
+		ItemAt(i)->Update(this, &font);
+
+	BListView::FrameResized(newWidth, newHeight);
+	Invalidate();
+}
+
+
+void
 ChatView::MessageReceived(BMessage* message)
 {
 	BListView::MessageReceived(message);
