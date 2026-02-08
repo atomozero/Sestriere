@@ -135,6 +135,202 @@ ColorStringColumn::AcceptsField(const BField* field) const
 }
 
 
+// #pragma mark - SNRTrendView
+
+
+static const int32 kMaxSNRPoints = 200;
+
+
+class SNRTrendView : public BView {
+public:
+	SNRTrendView()
+		:
+		BView("snrtrend", B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE),
+		fPointCount(0)
+	{
+		SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
+		SetExplicitMinSize(BSize(B_SIZE_UNSET, 80));
+		SetExplicitPreferredSize(BSize(B_SIZE_UNLIMITED, 80));
+	}
+
+	void AddPoint(int8 snr, bigtime_t timestamp)
+	{
+		if (fPointCount < kMaxSNRPoints) {
+			fSNRValues[fPointCount] = snr;
+			fTimestamps[fPointCount] = timestamp;
+			fPointCount++;
+		} else {
+			// Shift left
+			memmove(fSNRValues, fSNRValues + 1,
+				(kMaxSNRPoints - 1) * sizeof(int8));
+			memmove(fTimestamps, fTimestamps + 1,
+				(kMaxSNRPoints - 1) * sizeof(bigtime_t));
+			fSNRValues[kMaxSNRPoints - 1] = snr;
+			fTimestamps[kMaxSNRPoints - 1] = timestamp;
+		}
+		Invalidate();
+	}
+
+	void Clear()
+	{
+		fPointCount = 0;
+		Invalidate();
+	}
+
+	virtual void Draw(BRect updateRect)
+	{
+		BRect bounds = Bounds();
+		float w = bounds.Width();
+		float h = bounds.Height();
+
+		// Background zones: green (>5), yellow (-5..5), red (<-10)
+		float snrMax = 20.0f;
+		float snrMin = -20.0f;
+		float snrRange = snrMax - snrMin;
+
+		// Zone boundaries in pixel Y (inverted: top = max)
+		float yGoodTop = 0;
+		float yGoodBot = h * (snrMax - 5.0f) / snrRange;
+		float yFairBot = h * (snrMax - 0.0f) / snrRange;
+		float yPoorBot = h * (snrMax - (-5.0f)) / snrRange;
+		float yBadBot = h * (snrMax - (-10.0f)) / snrRange;
+
+		// Draw background zones with very subtle tints
+		rgb_color bgColor = ui_color(B_DOCUMENT_BACKGROUND_COLOR);
+		bool isDark = bgColor.Brightness() < 128;
+		float tintAmount = isDark ? 1.05f : 0.95f;
+
+		rgb_color greenZone = tint_color(
+			(rgb_color){200, 255, 200, 255}, tintAmount);
+		rgb_color yellowZone = tint_color(
+			(rgb_color){255, 255, 200, 255}, tintAmount);
+		rgb_color redZone = tint_color(
+			(rgb_color){255, 220, 220, 255}, tintAmount);
+
+		if (isDark) {
+			greenZone = tint_color(
+				(rgb_color){20, 50, 20, 255}, 1.0f);
+			yellowZone = tint_color(
+				(rgb_color){50, 50, 10, 255}, 1.0f);
+			redZone = tint_color(
+				(rgb_color){50, 15, 15, 255}, 1.0f);
+		}
+
+		SetHighColor(greenZone);
+		FillRect(BRect(0, yGoodTop, w, yGoodBot));
+		SetHighColor(yellowZone);
+		FillRect(BRect(0, yFairBot, w, yPoorBot));
+		SetHighColor(redZone);
+		FillRect(BRect(0, yBadBot, w, h));
+
+		// Zero line
+		float yZero = h * snrMax / snrRange;
+		SetHighColor(tint_color(ui_color(B_DOCUMENT_TEXT_COLOR),
+			B_LIGHTEN_2_TINT));
+		StrokeLine(BPoint(0, yZero), BPoint(w, yZero));
+
+		// Draw 5 dB grid lines
+		SetHighColor(tint_color(ui_color(B_DOCUMENT_TEXT_COLOR),
+			B_LIGHTEN_2_TINT));
+		for (int snr = -15; snr <= 15; snr += 5) {
+			if (snr == 0) continue;
+			float y = h * (snrMax - snr) / snrRange;
+			StrokeLine(BPoint(0, y), BPoint(w, y),
+				B_MIXED_COLORS);
+		}
+
+		// Y-axis labels
+		BFont labelFont(be_plain_font);
+		labelFont.SetSize(9);
+		SetFont(&labelFont);
+		SetHighColor(tint_color(ui_color(B_DOCUMENT_TEXT_COLOR),
+			B_LIGHTEN_1_TINT));
+		for (int snr = -15; snr <= 15; snr += 5) {
+			float y = h * (snrMax - snr) / snrRange;
+			char label[8];
+			snprintf(label, sizeof(label), "%d", snr);
+			DrawString(label, BPoint(2, y - 2));
+		}
+
+		if (fPointCount < 2) {
+			// Draw placeholder text
+			SetHighColor(tint_color(ui_color(B_DOCUMENT_TEXT_COLOR),
+				B_LIGHTEN_1_TINT));
+			BFont font(be_plain_font);
+			font.SetSize(10);
+			SetFont(&font);
+			DrawString("SNR Trend (waiting for data...)",
+				BPoint(w / 2 - 80, h / 2));
+			return;
+		}
+
+		// Draw line chart
+		float xStep = w / (float)(kMaxSNRPoints - 1);
+
+		SetPenSize(1.5f);
+		for (int32 i = 1; i < fPointCount; i++) {
+			float x1 = (i - 1 + (kMaxSNRPoints - fPointCount)) * xStep;
+			float x2 = (i + (kMaxSNRPoints - fPointCount)) * xStep;
+			float y1 = h * (snrMax - fSNRValues[i - 1]) / snrRange;
+			float y2 = h * (snrMax - fSNRValues[i]) / snrRange;
+
+			// Color segment by SNR quality
+			int8 snr = fSNRValues[i];
+			rgb_color lineColor;
+			if (snr > 5)
+				lineColor = (rgb_color){50, 205, 50, 255};
+			else if (snr > 0)
+				lineColor = (rgb_color){100, 200, 100, 255};
+			else if (snr > -5)
+				lineColor = (rgb_color){255, 193, 37, 255};
+			else if (snr > -10)
+				lineColor = (rgb_color){255, 140, 0, 255};
+			else
+				lineColor = (rgb_color){220, 20, 60, 255};
+
+			SetHighColor(lineColor);
+			StrokeLine(BPoint(x1, y1), BPoint(x2, y2));
+		}
+
+		// Draw dots at data points
+		SetPenSize(1.0f);
+		for (int32 i = 0; i < fPointCount; i++) {
+			float x = (i + (kMaxSNRPoints - fPointCount)) * xStep;
+			float y = h * (snrMax - fSNRValues[i]) / snrRange;
+
+			int8 snr = fSNRValues[i];
+			rgb_color dotColor;
+			if (snr > 5)
+				dotColor = (rgb_color){50, 205, 50, 255};
+			else if (snr > 0)
+				dotColor = (rgb_color){100, 200, 100, 255};
+			else if (snr > -5)
+				dotColor = (rgb_color){255, 193, 37, 255};
+			else if (snr > -10)
+				dotColor = (rgb_color){255, 140, 0, 255};
+			else
+				dotColor = (rgb_color){220, 20, 60, 255};
+
+			SetHighColor(dotColor);
+			FillEllipse(BPoint(x, y), 2.5f, 2.5f);
+		}
+
+		// Title
+		SetHighColor(ui_color(B_DOCUMENT_TEXT_COLOR));
+		BFont titleFont(be_plain_font);
+		titleFont.SetSize(10);
+		titleFont.SetFace(B_BOLD_FACE);
+		SetFont(&titleFont);
+		DrawString("SNR Trend", BPoint(w - 65, 12));
+	}
+
+private:
+	int8		fSNRValues[kMaxSNRPoints];
+	bigtime_t	fTimestamps[kMaxSNRPoints];
+	int32		fPointCount;
+};
+
+
 PacketAnalyzerWindow::PacketAnalyzerWindow(BWindow* parent)
 	:
 	BWindow(BRect(100, 100, 820, 620), "Packet Analyzer",
@@ -150,6 +346,7 @@ PacketAnalyzerWindow::PacketAnalyzerWindow(BWindow* parent)
 	fAutoScrollCheck(NULL),
 	fPacketList(NULL),
 	fDetailView(NULL),
+	fSNRTrendView(NULL),
 	fSplitView(NULL),
 	fStatusTotal(NULL),
 	fStatusFiltered(NULL),
@@ -304,6 +501,10 @@ PacketAnalyzerWindow::AddPacket(const CapturedPacket& packet)
 
 	fPackets.AddItem(stored);
 
+	// Feed SNR trend chart
+	if (stored->snr != 0 && fSNRTrendView != NULL)
+		fSNRTrendView->AddPoint(stored->snr, stored->captureTime);
+
 	// Rate tracking
 	fRateCount++;
 
@@ -367,8 +568,10 @@ PacketAnalyzerWindow::Clear()
 	fRateCount = 0;
 	fRateStartTime = system_time();
 
-	// Clear detail view
+	// Clear detail view and SNR trend
 	fDetailView->SetText("");
+	if (fSNRTrendView != NULL)
+		fSNRTrendView->Clear();
 
 	_UpdateStatusBar();
 }
@@ -491,7 +694,13 @@ PacketAnalyzerWindow::_BuildUI()
 	BScrollView* detailScroll = new BScrollView("detailscroll", fDetailView,
 		0, true, true);
 
-	// Split view: packet list on top, detail on bottom
+	// SNR trend chart
+	fSNRTrendView = new SNRTrendView();
+
+	// Bottom pane: detail + SNR trend side by side
+	BSplitView* bottomSplit = new BSplitView(B_HORIZONTAL);
+
+	// Split view: packet list on top, detail+trend on bottom
 	fSplitView = new BSplitView(B_VERTICAL);
 
 	// Status bar
@@ -518,13 +727,19 @@ PacketAnalyzerWindow::_BuildUI()
 		.Add(fStatusRate)
 	.End();
 
+	// Build bottom split: detail + SNR trend
+	BLayoutBuilder::Split<>(bottomSplit)
+		.Add(detailScroll, 3)
+		.Add(fSNRTrendView, 1)
+	.End();
+
 	// Main layout
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(fMenuBar)
 		.Add(toolBar)
 		.AddSplit(fSplitView, B_VERTICAL)
 			.Add(fPacketList, 3)
-			.Add(detailScroll, 1)
+			.Add(bottomSplit, 1)
 		.End()
 		.Add(statusBar)
 	.End();

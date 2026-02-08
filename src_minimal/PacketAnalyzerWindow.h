@@ -69,6 +69,10 @@ public:
 };
 
 
+class BTabView;
+class SNRTrendView;
+
+
 class PacketAnalyzerWindow : public BWindow {
 public:
 							PacketAnalyzerWindow(BWindow* parent);
@@ -128,6 +132,7 @@ private:
 			// Main views
 			BColumnListView*	fPacketList;
 			BTextView*		fDetailView;
+			SNRTrendView*	fSNRTrendView;
 			BSplitView*		fSplitView;
 
 			// Status bar
