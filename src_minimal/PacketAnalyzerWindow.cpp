@@ -393,7 +393,7 @@ PacketAnalyzerWindow::PacketAnalyzerWindow(BWindow* parent)
 	fFilterType(-1),
 	fSavePanel(NULL),
 	fRateCount(0),
-	fRateStartTime(0)
+	fRateStartTime(system_time())
 {
 	_BuildMenuBar();
 	_BuildUI();
