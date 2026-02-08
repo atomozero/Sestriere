@@ -190,10 +190,9 @@ PacketAnalyzerWindow::MessageReceived(BMessage* message)
 		{
 			fCapturing = !fCapturing;
 			fStartStopButton->SetLabel(fCapturing ? "Stop" : "Start");
-			if (fCapturing) {
-				fRateCount = 0;
-				fRateStartTime = system_time();
-			}
+			fRateCount = 0;
+			fRateStartTime = system_time();
+			_UpdateStatusBar();
 			break;
 		}
 
@@ -545,13 +544,15 @@ PacketAnalyzerWindow::_DecodePacket(CapturedPacket& packet,
 			bool isV3 = (code == RSP_CONTACT_MSG_RECV_V3);
 			size_t minLen = isV3 ? 12 : 9;
 			if (rawLength >= minLen) {
-				int snrOffset = isV3 ? 1 : -1;
 				int keyOffset = isV3 ? 4 : 1;
 
-				if (isV3 && rawLength > 1)
-					packet.snr = (int8)rawData[snrOffset];
+				if (isV3 && rawLength > 3) {
+					packet.snr = (int8)rawData[1];
+					packet.rssi = (int8)rawData[2];
+					packet.pathLen = rawData[3];
+				}
 
-				// Source = first 6 bytes of pubkey
+				// Source = first 3 bytes of pubkey as hex
 				if (rawLength > (size_t)(keyOffset + 5)) {
 					snprintf(packet.sourceStr, sizeof(packet.sourceStr),
 						"%02X%02X%02X",
@@ -584,8 +585,11 @@ PacketAnalyzerWindow::_DecodePacket(CapturedPacket& packet,
 		{
 			// Channel message
 			bool isV3 = (code == RSP_CHANNEL_MSG_RECV_V3);
-			if (isV3 && rawLength > 1)
+			if (isV3 && rawLength > 3) {
 				packet.snr = (int8)rawData[1];
+				packet.rssi = (int8)rawData[2];
+				packet.pathLen = rawData[3];
+			}
 
 			size_t textOff = isV3 ? 12 : 9;
 			if (textOff < rawLength) {
@@ -611,23 +615,24 @@ PacketAnalyzerWindow::_DecodePacket(CapturedPacket& packet,
 					"%02X%02X%02X",
 					rawData[1], rawData[2], rawData[3]);
 			}
-			// Try to extract name from advert
+			// Try to extract name from advert payload
+			// Advert structure: [code][pubkey6][type][name...]
 			if (rawLength >= 40) {
-				size_t nameOff = 7;	// After pubkey prefix + type
-				size_t nameLen = rawLength - nameOff;
-				if (nameLen > sizeof(packet.summary) - 10)
-					nameLen = sizeof(packet.summary) - 10;
-				// Look for printable name
-				bool hasPrintable = false;
-				for (size_t i = nameOff; i < nameOff + nameLen && i < rawLength; i++) {
-					if (rawData[i] >= 0x20 && rawData[i] < 0x7F) {
-						hasPrintable = true;
-						break;
-					}
+				// Find first printable run as name (starts after pubkey+type)
+				size_t nameOff = 8;
+				size_t nameEnd = nameOff;
+				for (size_t i = nameOff; i < rawLength; i++) {
+					if (rawData[i] >= 0x20 && rawData[i] < 0x7F)
+						nameEnd = i + 1;
+					else if (nameEnd > nameOff)
+						break;	// End of printable run
 				}
-				if (hasPrintable) {
+				if (nameEnd > nameOff) {
+					size_t nameLen = nameEnd - nameOff;
+					if (nameLen > 63) nameLen = 63;
 					snprintf(packet.summary, sizeof(packet.summary),
-						"Advert from node");
+						"Advert: \"%.*s\"", (int)nameLen,
+						(const char*)(rawData + nameOff));
 				}
 			}
 			if (packet.summary[0] == '\0')
@@ -751,8 +756,17 @@ PacketAnalyzerWindow::_DecodePacket(CapturedPacket& packet,
 		}
 
 		case RSP_DEVICE_INFO:
-			strlcpy(packet.summary, "Device info", sizeof(packet.summary));
+		{
+			if (rawLength >= 4) {
+				snprintf(packet.summary, sizeof(packet.summary),
+					"Device: max %u contacts, %u channels",
+					rawData[2] * 2, rawData[3]);
+			} else {
+				strlcpy(packet.summary, "Device info",
+					sizeof(packet.summary));
+			}
 			break;
+		}
 
 		case RSP_BATT_AND_STORAGE:
 		{
@@ -768,9 +782,44 @@ PacketAnalyzerWindow::_DecodePacket(CapturedPacket& packet,
 		}
 
 		case RSP_STATS:
-			strlcpy(packet.summary, "Statistics response",
-				sizeof(packet.summary));
+		{
+			if (rawLength >= 2) {
+				uint8 statType = rawData[1];
+				if (statType == 0 && rawLength >= 8) {
+					// Core stats: [0]=code,[1]=type,[2-3]=battMv,[4-7]=uptime
+					uint16 battMv = rawData[2] | (rawData[3] << 8);
+					uint32 uptime = rawData[4] | (rawData[5] << 8)
+						| (rawData[6] << 16) | (rawData[7] << 24);
+					snprintf(packet.summary, sizeof(packet.summary),
+						"Stats/Core: uptime=%us, batt=%umV",
+						uptime, battMv);
+				} else if (statType == 1 && rawLength >= 6) {
+					// Radio stats: [2-3]=noiseFloor,[4]=rssi,[5]=snr
+					int16 noiseFloor = (int16)(rawData[2]
+						| (rawData[3] << 8));
+					packet.rssi = (int8)rawData[4];
+					packet.snr = (int8)rawData[5];
+					snprintf(packet.summary, sizeof(packet.summary),
+						"Stats/Radio: noise=%ddBm, rssi=%ddBm, snr=%ddB",
+						noiseFloor, packet.rssi, packet.snr);
+				} else if (statType == 2 && rawLength >= 10) {
+					// Packet stats: [2-5]=recvPkts,[6-9]=sentPkts
+					uint32 recv = rawData[2] | (rawData[3] << 8)
+						| (rawData[4] << 16) | (rawData[5] << 24);
+					uint32 sent = rawData[6] | (rawData[7] << 8)
+						| (rawData[8] << 16) | (rawData[9] << 24);
+					snprintf(packet.summary, sizeof(packet.summary),
+						"Stats/Packets: recv=%u, sent=%u", recv, sent);
+				} else {
+					snprintf(packet.summary, sizeof(packet.summary),
+						"Stats (type=%u)", statType);
+				}
+			} else {
+				strlcpy(packet.summary, "Statistics response",
+					sizeof(packet.summary));
+			}
 			break;
+		}
 
 		case RSP_SENT:
 			strlcpy(packet.summary, "Message sent OK", sizeof(packet.summary));
@@ -961,11 +1010,12 @@ PacketAnalyzerWindow::_FormatDecodedSection(const CapturedPacket* packet,
 				}
 			}
 
-			if (packet->snr != 0) {
+			if (packet->snr != 0 || packet->rssi != 0) {
 				output << "  Signal:   " << _SignalQualityString(packet->snr);
-				char snrBuf[16];
-				snprintf(snrBuf, sizeof(snrBuf), " (SNR %d dB)", packet->snr);
-				output << snrBuf << "\n";
+				char sigBuf[48];
+				snprintf(sigBuf, sizeof(sigBuf),
+					" (SNR %d dB, RSSI %d dBm)", packet->snr, packet->rssi);
+				output << sigBuf << "\n";
 			}
 
 			if (packet->pathLen > 0) {
@@ -995,11 +1045,12 @@ PacketAnalyzerWindow::_FormatDecodedSection(const CapturedPacket* packet,
 				}
 			}
 
-			if (packet->snr != 0) {
+			if (packet->snr != 0 || packet->rssi != 0) {
 				output << "  Signal:   " << _SignalQualityString(packet->snr);
-				char snrBuf[16];
-				snprintf(snrBuf, sizeof(snrBuf), " (SNR %d dB)", packet->snr);
-				output << snrBuf << "\n";
+				char sigBuf[48];
+				snprintf(sigBuf, sizeof(sigBuf),
+					" (SNR %d dB, RSSI %d dBm)", packet->snr, packet->rssi);
+				output << sigBuf << "\n";
 			}
 			break;
 		}
@@ -1370,6 +1421,16 @@ PacketAnalyzerWindow::_UpdatePacketDetail(int32 index)
 		char snrBuf[16];
 		snprintf(snrBuf, sizeof(snrBuf), "%d dB", packet->snr);
 		technical << "SNR:       " << snrBuf << "\n";
+	}
+	if (packet->rssi != 0) {
+		char rssiBuf[16];
+		snprintf(rssiBuf, sizeof(rssiBuf), "%d dBm", packet->rssi);
+		technical << "RSSI:      " << rssiBuf << "\n";
+	}
+	if (packet->pathLen > 0) {
+		char pathBuf[16];
+		snprintf(pathBuf, sizeof(pathBuf), "%u", packet->pathLen);
+		technical << "Path:      " << pathBuf << " hop(s)\n";
 	}
 	technical << "Size:      " << packet->payloadSize << " bytes\n";
 	if (packet->summary[0] != '\0')
