@@ -317,13 +317,45 @@ public:
 			FillEllipse(BPoint(x, y), 2.5f, 2.5f);
 		}
 
-		// Title
+		// Title with current SNR value
 		SetHighColor(ui_color(B_DOCUMENT_TEXT_COLOR));
 		BFont titleFont(be_plain_font);
 		titleFont.SetSize(10);
 		titleFont.SetFace(B_BOLD_FACE);
 		SetFont(&titleFont);
-		DrawString("SNR Trend", BPoint(w - 65, 12));
+
+		int8 lastSNR = fSNRValues[fPointCount - 1];
+		char titleBuf[32];
+		snprintf(titleBuf, sizeof(titleBuf), "SNR: %d dB", lastSNR);
+		DrawString(titleBuf, BPoint(w - 70, 12));
+
+		// Draw value label at last data point
+		float lastX = (fPointCount - 1 + (kMaxSNRPoints - fPointCount))
+			* xStep;
+		float lastY = h * (snrMax - lastSNR) / snrRange;
+
+		char valBuf[8];
+		snprintf(valBuf, sizeof(valBuf), "%d", lastSNR);
+		BFont valFont(be_plain_font);
+		valFont.SetSize(9);
+		SetFont(&valFont);
+
+		// Use same color as the dot
+		rgb_color valColor;
+		if (lastSNR > 5)
+			valColor = (rgb_color){50, 205, 50, 255};
+		else if (lastSNR > 0)
+			valColor = (rgb_color){100, 200, 100, 255};
+		else if (lastSNR > -5)
+			valColor = (rgb_color){255, 193, 37, 255};
+		else if (lastSNR > -10)
+			valColor = (rgb_color){255, 140, 0, 255};
+		else
+			valColor = (rgb_color){220, 20, 60, 255};
+
+		SetHighColor(valColor);
+		float valY = lastY > 12 ? lastY - 5 : lastY + 12;
+		DrawString(valBuf, BPoint(lastX + 5, valY));
 	}
 
 private:
@@ -763,7 +795,6 @@ PacketAnalyzerWindow::_BuildUI()
 
 	// Bottom tab view
 	fBottomTabView = new BTabView("bottomtabs", B_WIDTH_FROM_LABEL);
-	fBottomTabView->SetBorder(B_NO_BORDER);
 
 	BView* detailTab = new BView("Packet Detail", B_WILL_DRAW);
 	detailTab->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
