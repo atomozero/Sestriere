@@ -111,6 +111,9 @@ private:
 								size_t bufSize);
 	static	rgb_color		_DeltaColor(bigtime_t deltaUs);
 
+			// Contact stats
+			void			_UpdateContactStats();
+
 			// Filtering
 			bool			_MatchesFilter(const CapturedPacket& packet);
 			void			_RebuildFilteredList();
@@ -133,6 +136,8 @@ private:
 			BColumnListView*	fPacketList;
 			BTextView*		fDetailView;
 			SNRTrendView*	fSNRTrendView;
+			BTabView*		fBottomTabView;
+			BColumnListView*	fContactStatsList;
 			BSplitView*		fSplitView;
 
 			// Status bar

@@ -26,6 +26,7 @@
 #include <SeparatorItem.h>
 #include <SplitView.h>
 #include <StringView.h>
+#include <TabView.h>
 #include <TextControl.h>
 #include <TextView.h>
 
@@ -51,6 +52,7 @@ enum {
 	MSG_PA_ROW_SELECTED = 'pars',
 	MSG_PA_EXPORT = 'paex',
 	MSG_PA_SAVE_DONE = 'pasd',
+	MSG_PA_CONTACT_CLICKED = 'pacc',
 };
 
 // Theme-aware colors
@@ -347,6 +349,8 @@ PacketAnalyzerWindow::PacketAnalyzerWindow(BWindow* parent)
 	fPacketList(NULL),
 	fDetailView(NULL),
 	fSNRTrendView(NULL),
+	fBottomTabView(NULL),
+	fContactStatsList(NULL),
 	fSplitView(NULL),
 	fStatusTotal(NULL),
 	fStatusFiltered(NULL),
@@ -478,6 +482,24 @@ PacketAnalyzerWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_PA_CONTACT_CLICKED:
+		{
+			// Filter by selected contact
+			BRow* row = fContactStatsList->CurrentSelection();
+			if (row != NULL) {
+				BStringField* nameField = static_cast<BStringField*>(
+					row->GetField(0));
+				if (nameField != NULL) {
+					fSearchText = nameField->String();
+					fSearchField->SetText(fSearchText.String());
+					_RebuildFilteredList();
+					// Switch to packet detail tab to see results
+					fBottomTabView->Select(0);
+				}
+			}
+			break;
+		}
+
 		default:
 			BWindow::MessageReceived(message);
 			break;
@@ -504,6 +526,10 @@ PacketAnalyzerWindow::AddPacket(const CapturedPacket& packet)
 	// Feed SNR trend chart
 	if (stored->snr != 0 && fSNRTrendView != NULL)
 		fSNRTrendView->AddPoint(stored->snr, stored->captureTime);
+
+	// Update contact stats periodically (every 10 packets)
+	if (fPackets.CountItems() % 10 == 0)
+		_UpdateContactStats();
 
 	// Rate tracking
 	fRateCount++;
@@ -568,10 +594,12 @@ PacketAnalyzerWindow::Clear()
 	fRateCount = 0;
 	fRateStartTime = system_time();
 
-	// Clear detail view and SNR trend
+	// Clear detail view, SNR trend, and contact stats
 	fDetailView->SetText("");
 	if (fSNRTrendView != NULL)
 		fSNRTrendView->Clear();
+	if (fContactStatsList != NULL)
+		fContactStatsList->Clear();
 
 	_UpdateStatusBar();
 }
@@ -697,10 +725,61 @@ PacketAnalyzerWindow::_BuildUI()
 	// SNR trend chart
 	fSNRTrendView = new SNRTrendView();
 
-	// Bottom pane: detail + SNR trend side by side
+	// Bottom pane: detail + SNR trend side by side (Tab 1)
 	BSplitView* bottomSplit = new BSplitView(B_HORIZONTAL);
+	BLayoutBuilder::Split<>(bottomSplit)
+		.Add(detailScroll, 3)
+		.Add(fSNRTrendView, 1)
+	.End();
 
-	// Split view: packet list on top, detail+trend on bottom
+	// Contact stats list (Tab 2)
+	fContactStatsList = new BColumnListView("contactstats", 0,
+		B_FANCY_BORDER);
+	fContactStatsList->SetSelectionMessage(
+		new BMessage(MSG_PA_CONTACT_CLICKED));
+
+	// Contact stats columns
+	enum {
+		kCSContactCol = 0,
+		kCSPacketsCol,
+		kCSAvgSNRCol,
+		kCSMinSNRCol,
+		kCSMaxSNRCol,
+		kCSLastSeenCol
+	};
+
+	fContactStatsList->AddColumn(new BStringColumn("Contact", 130, 80, 200,
+		B_TRUNCATE_END), kCSContactCol);
+	fContactStatsList->AddColumn(new BStringColumn("Packets", 60, 40, 80,
+		B_TRUNCATE_END, B_ALIGN_RIGHT), kCSPacketsCol);
+	fContactStatsList->AddColumn(new ColorStringColumn("Avg SNR", 65, 45, 80,
+		B_TRUNCATE_END, B_ALIGN_RIGHT), kCSAvgSNRCol);
+	fContactStatsList->AddColumn(new BStringColumn("Min", 45, 35, 60,
+		B_TRUNCATE_END, B_ALIGN_RIGHT), kCSMinSNRCol);
+	fContactStatsList->AddColumn(new BStringColumn("Max", 45, 35, 60,
+		B_TRUNCATE_END, B_ALIGN_RIGHT), kCSMaxSNRCol);
+	fContactStatsList->AddColumn(new BStringColumn("Last Seen", 80, 60, 120,
+		B_TRUNCATE_END), kCSLastSeenCol);
+
+	// Bottom tab view
+	fBottomTabView = new BTabView("bottomtabs", B_WIDTH_FROM_LABEL);
+	fBottomTabView->SetBorder(B_NO_BORDER);
+
+	BView* detailTab = new BView("Packet Detail", B_WILL_DRAW);
+	detailTab->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	BLayoutBuilder::Group<>(detailTab, B_VERTICAL, 0)
+		.Add(bottomSplit)
+	.End();
+	fBottomTabView->AddTab(detailTab);
+
+	BView* contactTab = new BView("Contact Stats", B_WILL_DRAW);
+	contactTab->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	BLayoutBuilder::Group<>(contactTab, B_VERTICAL, 0)
+		.Add(fContactStatsList)
+	.End();
+	fBottomTabView->AddTab(contactTab);
+
+	// Split view: packet list on top, tab view on bottom
 	fSplitView = new BSplitView(B_VERTICAL);
 
 	// Status bar
@@ -727,19 +806,13 @@ PacketAnalyzerWindow::_BuildUI()
 		.Add(fStatusRate)
 	.End();
 
-	// Build bottom split: detail + SNR trend
-	BLayoutBuilder::Split<>(bottomSplit)
-		.Add(detailScroll, 3)
-		.Add(fSNRTrendView, 1)
-	.End();
-
 	// Main layout
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(fMenuBar)
 		.Add(toolBar)
 		.AddSplit(fSplitView, B_VERTICAL)
 			.Add(fPacketList, 3)
-			.Add(bottomSplit, 1)
+			.Add(fBottomTabView, 1)
 		.End()
 		.Add(statusBar)
 	.End();
@@ -1855,6 +1928,141 @@ PacketAnalyzerWindow::_UpdateStatusBar()
 			rateStr.SetToFormat("Rate: %.1f pkt/s", rate);
 			fStatusRate->SetText(rateStr.String());
 		}
+	}
+}
+
+
+void
+PacketAnalyzerWindow::_UpdateContactStats()
+{
+	if (fContactStatsList == NULL)
+		return;
+
+	fContactStatsList->Clear();
+
+	// Aggregate stats per source contact
+	struct ContactStat {
+		BString		name;
+		int32		packetCount;
+		int32		snrSum;
+		int32		snrCount;
+		int8		minSNR;
+		int8		maxSNR;
+		uint32		lastSeen;
+	};
+
+	// Simple array-based map (sufficient for typical contact counts)
+	BObjectList<ContactStat, true> stats(20);
+
+	for (int32 i = 0; i < fPackets.CountItems(); i++) {
+		CapturedPacket* pkt = fPackets.ItemAt(i);
+		if (pkt->sourceStr[0] == '\0')
+			continue;
+
+		// Find or create stat entry
+		ContactStat* stat = NULL;
+		for (int32 j = 0; j < stats.CountItems(); j++) {
+			if (stats.ItemAt(j)->name == pkt->sourceStr) {
+				stat = stats.ItemAt(j);
+				break;
+			}
+		}
+		if (stat == NULL) {
+			stat = new ContactStat();
+			stat->name = pkt->sourceStr;
+			stat->packetCount = 0;
+			stat->snrSum = 0;
+			stat->snrCount = 0;
+			stat->minSNR = 127;
+			stat->maxSNR = -128;
+			stat->lastSeen = 0;
+			stats.AddItem(stat);
+		}
+
+		stat->packetCount++;
+		if (pkt->snr != 0) {
+			stat->snrSum += pkt->snr;
+			stat->snrCount++;
+			if (pkt->snr < stat->minSNR) stat->minSNR = pkt->snr;
+			if (pkt->snr > stat->maxSNR) stat->maxSNR = pkt->snr;
+		}
+		if (pkt->timestamp > stat->lastSeen)
+			stat->lastSeen = pkt->timestamp;
+	}
+
+	// Contact stats column indices (must match _BuildUI)
+	enum {
+		kCSContactCol = 0,
+		kCSPacketsCol,
+		kCSAvgSNRCol,
+		kCSMinSNRCol,
+		kCSMaxSNRCol,
+		kCSLastSeenCol
+	};
+
+	// Build rows sorted by packet count (descending)
+	for (int32 i = 0; i < stats.CountItems(); i++) {
+		ContactStat* stat = stats.ItemAt(i);
+
+		BRow* row = new BRow();
+
+		char pktStr[12];
+		snprintf(pktStr, sizeof(pktStr), "%d", (int)stat->packetCount);
+
+		char avgStr[12];
+		char minStr[12];
+		char maxStr[12];
+		int8 avgSNR = 0;
+
+		if (stat->snrCount > 0) {
+			avgSNR = (int8)(stat->snrSum / stat->snrCount);
+			snprintf(avgStr, sizeof(avgStr), "%d dB", avgSNR);
+			snprintf(minStr, sizeof(minStr), "%d", stat->minSNR);
+			snprintf(maxStr, sizeof(maxStr), "%d", stat->maxSNR);
+		} else {
+			strlcpy(avgStr, "-", sizeof(avgStr));
+			strlcpy(minStr, "-", sizeof(minStr));
+			strlcpy(maxStr, "-", sizeof(maxStr));
+		}
+
+		char timeStr[16];
+		if (stat->lastSeen > 0) {
+			time_t t = (time_t)stat->lastSeen;
+			struct tm tm;
+			if (localtime_r(&t, &tm) != NULL)
+				strftime(timeStr, sizeof(timeStr), "%H:%M:%S", &tm);
+			else
+				strlcpy(timeStr, "?", sizeof(timeStr));
+		} else {
+			strlcpy(timeStr, "-", sizeof(timeStr));
+		}
+
+		// Color avg SNR
+		rgb_color avgColor;
+		if (stat->snrCount == 0)
+			avgColor = tint_color(ui_color(B_LIST_ITEM_TEXT_COLOR),
+				B_LIGHTEN_1_TINT);
+		else if (avgSNR > 5)
+			avgColor = (rgb_color){50, 205, 50, 255};
+		else if (avgSNR > 0)
+			avgColor = (rgb_color){100, 200, 100, 255};
+		else if (avgSNR > -5)
+			avgColor = (rgb_color){255, 193, 37, 255};
+		else if (avgSNR > -10)
+			avgColor = (rgb_color){255, 140, 0, 255};
+		else
+			avgColor = (rgb_color){220, 20, 60, 255};
+
+		row->SetField(new BStringField(stat->name.String()),
+			kCSContactCol);
+		row->SetField(new BStringField(pktStr), kCSPacketsCol);
+		row->SetField(new ColorStringField(avgStr, avgColor),
+			kCSAvgSNRCol);
+		row->SetField(new BStringField(minStr), kCSMinSNRCol);
+		row->SetField(new BStringField(maxStr), kCSMaxSNRCol);
+		row->SetField(new BStringField(timeStr), kCSLastSeenCol);
+
+		fContactStatsList->AddRow(row);
 	}
 }
 
