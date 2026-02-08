@@ -2046,10 +2046,7 @@ MainWindow::_HandleDeviceInfo(const uint8* data, size_t length)
 		info << "Firmware: " << fDeviceFirmware << "\n";
 	}
 
-	// Show alert with device info
-	BAlert* alert = new BAlert("Device Info", info.String(), "OK",
-		NULL, NULL, B_WIDTH_AS_USUAL, B_INFO_ALERT);
-	alert->Go();
+	_LogMessage("INFO", info.String());
 }
 
 
