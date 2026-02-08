@@ -1,0 +1,19 @@
+/*
+ * Sestriere.rdef — Application resource definitions
+ */
+
+resource app_signature "application/x-vnd.Sestriere";
+
+resource app_name_catalog_entry "Sestriere";
+
+resource app_version {
+	major = 1,
+	middle = 1,
+	minor = 0,
+	variety = B_APPV_FINAL,
+	internal = 0,
+	short_info = "Sestriere",
+	long_info = "MeshCore LoRa mesh client for Haiku OS"
+};
+
+resource app_flags B_SINGLE_LAUNCH;

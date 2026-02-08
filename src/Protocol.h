@@ -43,10 +43,17 @@ public:
 	static size_t		BuildSendAdvert(bool flood, uint8* outBuffer);
 	static size_t		BuildSetDeviceTime(uint32 epochSecs, uint8* outBuffer);
 	static size_t		BuildSetAdvertName(const char* name, uint8* outBuffer);
+	static size_t		BuildSetAdvertLatLon(int32 lat, int32 lon,
+							uint8* outBuffer);
 	static size_t		BuildSetRadioParams(const RadioParams& params,
 							uint8* outBuffer);
 	static size_t		BuildSetTxPower(uint8 powerDbm, uint8* outBuffer);
 	static size_t		BuildReboot(uint8* outBuffer);
+	static size_t		BuildSendTracePath(const uint8* pubKeyPrefix,
+							uint8* outBuffer);
+	static size_t		BuildGetStats(uint8* outBuffer);
+	static size_t		BuildSendTelemetryReq(const uint8* pubKeyPrefix,
+							uint8* outBuffer);
 
 	// Utility functions
 	static const char*	GetAdvTypeName(uint8 type);

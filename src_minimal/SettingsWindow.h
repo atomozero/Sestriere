@@ -2,7 +2,7 @@
  * Copyright 2025, Sestriere Authors
  * All rights reserved. Distributed under the terms of the MIT license.
  *
- * SettingsWindow.h — Application settings dialog
+ * SettingsWindow.h — Device and radio settings dialog
  */
 
 #ifndef SETTINGSWINDOW_H
@@ -10,12 +10,14 @@
 
 #include <Window.h>
 
+#include "MqttClient.h"
 #include "Types.h"
 
 class BButton;
 class BCheckBox;
 class BMenuField;
 class BSlider;
+class BStringView;
 class BTextControl;
 
 class SettingsWindow : public BWindow {
@@ -24,19 +26,23 @@ public:
 	virtual					~SettingsWindow();
 
 	virtual void			MessageReceived(BMessage* message);
+	virtual bool			QuitRequested();
 
-			void			SetCurrentSettings(const SelfInfo& selfInfo);
+			void			SetDeviceName(const char* name);
+			void			SetLatitude(double lat);
+			void			SetLongitude(double lon);
+			void			SetRadioPreset(int32 preset);
+			void			SetMqttSettings(const MqttSettings& settings);
 
 private:
 			void			_BuildDeviceTab(BView* parent);
 			void			_BuildRadioTab(BView* parent);
+			void			_BuildMqttTab(BView* parent);
 			void			_BuildAboutTab(BView* parent);
 
 			void			_OnApply();
-			void			_OnRevert();
 			void			_OnPresetSelected(int32 preset);
-			void			_LoadSettings();
-			void			_SaveSettings();
+			void			_OnMqttEnableChanged();
 
 			BWindow*		fParent;
 
@@ -53,16 +59,21 @@ private:
 			BTextControl*	fSpreadingFactorControl;
 			BTextControl*	fCodingRateControl;
 
-			// Checkboxes
-			BCheckBox*		fAutoSyncCheck;
-			BCheckBox*		fNotificationsCheck;
+			// MQTT settings
+			BCheckBox*		fMqttEnableCheck;
+			BTextControl*	fMqttIataControl;
+			BTextControl*	fMqttBrokerControl;
+			BTextControl*	fMqttPortControl;
+			BTextControl*	fMqttUsernameControl;
+			BTextControl*	fMqttPasswordControl;
+			BStringView*	fMqttStatusLabel;
+			MqttSettings	fMqttSettings;
 
 			// Buttons
 			BButton*		fApplyButton;
 			BButton*		fRevertButton;
 
-			// Current settings
-			SelfInfo		fCurrentSettings;
+			// State
 			bool			fSettingsChanged;
 			int32			fSelectedPreset;
 };

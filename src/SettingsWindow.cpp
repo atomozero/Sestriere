@@ -12,6 +12,10 @@
 #include <Catalog.h>
 #include <CheckBox.h>
 #include <LayoutBuilder.h>
+#include <Menu.h>
+#include <MenuField.h>
+#include <MenuItem.h>
+#include <PopUpMenu.h>
 #include <Slider.h>
 #include <StringView.h>
 #include <TabView.h>
@@ -32,17 +36,19 @@
 static const uint32 MSG_SETTING_CHANGED		= 'stch';
 static const uint32 MSG_APPLY_SETTINGS		= 'apst';
 static const uint32 MSG_REVERT_SETTINGS		= 'rvst';
+static const uint32 MSG_PRESET_SELECTED		= 'prsl';
 
 
 SettingsWindow::SettingsWindow(BWindow* parent)
 	:
-	BWindow(BRect(0, 0, 400, 350), B_TRANSLATE(TR_TITLE_SETTINGS),
+	BWindow(BRect(0, 0, 400, 380), B_TRANSLATE(TR_TITLE_SETTINGS),
 		B_FLOATING_WINDOW_LOOK, B_MODAL_APP_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS | B_CLOSE_ON_ESCAPE),
 	fParent(parent),
 	fNodeNameControl(NULL),
 	fLatitudeControl(NULL),
 	fLongitudeControl(NULL),
+	fPresetMenu(NULL),
 	fTxPowerSlider(NULL),
 	fFrequencyControl(NULL),
 	fBandwidthControl(NULL),
@@ -52,7 +58,8 @@ SettingsWindow::SettingsWindow(BWindow* parent)
 	fNotificationsCheck(NULL),
 	fApplyButton(NULL),
 	fRevertButton(NULL),
-	fSettingsChanged(false)
+	fSettingsChanged(false),
+	fSelectedPreset(PRESET_CUSTOM)
 {
 	memset(&fCurrentSettings, 0, sizeof(fCurrentSettings));
 
@@ -136,6 +143,14 @@ SettingsWindow::MessageReceived(BMessage* message)
 		case MSG_REVERT_SETTINGS:
 			_OnRevert();
 			break;
+
+		case MSG_PRESET_SELECTED:
+		{
+			int32 preset;
+			if (message->FindInt32("preset", &preset) == B_OK)
+				_OnPresetSelected(preset);
+			break;
+		}
 
 		default:
 			BWindow::MessageReceived(message);
@@ -243,6 +258,16 @@ SettingsWindow::_BuildDeviceTab(BView* parent)
 void
 SettingsWindow::_BuildRadioTab(BView* parent)
 {
+	// Preset menu
+	BPopUpMenu* presetPopUp = new BPopUpMenu("preset_popup");
+	for (int i = 0; i < PRESET_COUNT; i++) {
+		BMessage* msg = new BMessage(MSG_PRESET_SELECTED);
+		msg->AddInt32("preset", i);
+		BMenuItem* item = new BMenuItem(kRadioPresets[i].name, msg);
+		presetPopUp->AddItem(item);
+	}
+	fPresetMenu = new BMenuField("preset_menu", "Preset:", presetPopUp);
+
 	fTxPowerSlider = new BSlider("tx_power", "TX Power (dBm)",
 		new BMessage(MSG_SETTING_CHANGED), 0, 22, B_HORIZONTAL);
 	fTxPowerSlider->SetHashMarks(B_HASH_MARKS_BOTTOM);
@@ -275,6 +300,7 @@ SettingsWindow::_BuildRadioTab(BView* parent)
 
 	BLayoutBuilder::Group<>(parent, B_VERTICAL)
 		.SetInsets(B_USE_DEFAULT_SPACING)
+		.Add(fPresetMenu)
 		.Add(fTxPowerSlider)
 		.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
 			.Add(fFrequencyControl->CreateLabelLayoutItem(), 0, 0)
@@ -358,13 +384,86 @@ SettingsWindow::_OnApply()
 		app->GetSerialHandler()->SendFrame(buffer, len);
 	}
 
-	// TODO: Apply other radio settings
+	// Update lat/lon if changed
+	float newLat = atof(fLatitudeControl->Text());
+	float newLon = atof(fLongitudeControl->Text());
+	int32 newLatInt = Protocol::LatLonToInt(newLat);
+	int32 newLonInt = Protocol::LatLonToInt(newLon);
+	if (newLatInt != fCurrentSettings.advLat ||
+		newLonInt != fCurrentSettings.advLon) {
+		size_t len = Protocol::BuildSetAdvertLatLon(newLatInt, newLonInt, buffer);
+		app->GetSerialHandler()->SendFrame(buffer, len);
+	}
+
+	// Update radio parameters if changed
+	float newFreqMHz = atof(fFrequencyControl->Text());
+	float newBwKHz = atof(fBandwidthControl->Text());
+	int newSf = atoi(fSpreadingFactorControl->Text());
+	int newCr = atoi(fCodingRateControl->Text());
+
+	uint32 newFreqHz = (uint32)(newFreqMHz * 1000000.0f);
+	uint32 newBwHz = (uint32)(newBwKHz * 1000.0f);
+
+	if (newFreqHz != fCurrentSettings.radioFreq ||
+		newBwHz != fCurrentSettings.radioBw ||
+		(uint8)newSf != fCurrentSettings.radioSf ||
+		(uint8)newCr != fCurrentSettings.radioCr) {
+
+		RadioParams params;
+		params.freq = newFreqHz;
+		params.bw = newBwHz;
+		params.sf = (uint8)newSf;
+		params.cr = (uint8)newCr;
+
+		size_t len = Protocol::BuildSetRadioParams(params, buffer);
+		app->GetSerialHandler()->SendFrame(buffer, len);
+	}
 
 	fSettingsChanged = false;
 	fApplyButton->SetEnabled(false);
 	fRevertButton->SetEnabled(false);
 
 	PostMessage(B_QUIT_REQUESTED);
+}
+
+
+void
+SettingsWindow::_OnPresetSelected(int32 preset)
+{
+	if (preset < 0 || preset >= PRESET_COUNT)
+		return;
+
+	fSelectedPreset = preset;
+
+	// Update menu selection
+	BMenu* menu = fPresetMenu->Menu();
+	if (menu != NULL) {
+		BMenuItem* item = menu->ItemAt(preset);
+		if (item != NULL)
+			item->SetMarked(true);
+	}
+
+	// If not custom, fill in the preset values
+	if (preset != PRESET_CUSTOM) {
+		const RadioPresetInfo& info = kRadioPresets[preset];
+
+		char buf[32];
+		snprintf(buf, sizeof(buf), "%.3f", info.freq / 1000000.0);
+		fFrequencyControl->SetText(buf);
+
+		snprintf(buf, sizeof(buf), "%.1f", info.bw / 1000.0);
+		fBandwidthControl->SetText(buf);
+
+		snprintf(buf, sizeof(buf), "%d", info.sf);
+		fSpreadingFactorControl->SetText(buf);
+
+		snprintf(buf, sizeof(buf), "%d", info.cr);
+		fCodingRateControl->SetText(buf);
+
+		fSettingsChanged = true;
+		fApplyButton->SetEnabled(true);
+		fRevertButton->SetEnabled(true);
+	}
 }
 
 

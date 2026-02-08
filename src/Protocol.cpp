@@ -435,6 +435,21 @@ Protocol::BuildSetAdvertName(const char* name, uint8* outBuffer)
 
 
 size_t
+Protocol::BuildSetAdvertLatLon(int32 lat, int32 lon, uint8* outBuffer)
+{
+	// Command format:
+	// [0] = CMD_SET_ADVERT_LATLON (14)
+	// [1-4] = lat (int32 LE)
+	// [5-8] = lon (int32 LE)
+
+	outBuffer[0] = CMD_SET_ADVERT_LATLON;
+	_WriteI32LE(outBuffer + 1, lat);
+	_WriteI32LE(outBuffer + 5, lon);
+	return 9;
+}
+
+
+size_t
 Protocol::BuildSetRadioParams(const RadioParams& params, uint8* outBuffer)
 {
 	// Command format:
@@ -471,6 +486,43 @@ Protocol::BuildReboot(uint8* outBuffer)
 {
 	outBuffer[0] = CMD_REBOOT;
 	return 1;
+}
+
+
+size_t
+Protocol::BuildSendTracePath(const uint8* pubKeyPrefix, uint8* outBuffer)
+{
+	// Command format:
+	// [0] = CMD_SEND_TRACE_PATH (36)
+	// [1-6] = pub_key_prefix (6 bytes)
+
+	outBuffer[0] = CMD_SEND_TRACE_PATH;
+	memcpy(outBuffer + 1, pubKeyPrefix, kPubKeyPrefixSize);
+	return 7;
+}
+
+
+size_t
+Protocol::BuildGetStats(uint8* outBuffer)
+{
+	// Command format:
+	// [0] = CMD_GET_STATS (56)
+
+	outBuffer[0] = CMD_GET_STATS;
+	return 1;
+}
+
+
+size_t
+Protocol::BuildSendTelemetryReq(const uint8* pubKeyPrefix, uint8* outBuffer)
+{
+	// Command format:
+	// [0] = CMD_SEND_TELEMETRY_REQ (39)
+	// [1-6] = pub_key_prefix (6 bytes)
+
+	outBuffer[0] = CMD_SEND_TELEMETRY_REQ;
+	memcpy(outBuffer + 1, pubKeyPrefix, kPubKeyPrefixSize);
+	return 7;
 }
 
 

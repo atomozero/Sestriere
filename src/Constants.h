@@ -87,7 +87,8 @@ enum {
 	// View windows
 	MSG_SHOW_MAP				= 'shmp',
 	MSG_SHOW_MESH_GRAPH			= 'shmg',
-	MSG_SHOW_TELEMETRY			= 'shtl'
+	MSG_SHOW_TELEMETRY			= 'shtl',
+	MSG_TELEMETRY_DATA			= 'tldt'
 };
 
 // =============================================================================

@@ -239,10 +239,51 @@ struct SendConfirmed {
 
 // Radio parameters
 struct RadioParams {
-	uint32	freq;		// Hz * 1000
-	uint32	bw;			// Hz * 1000
+	uint32	freq;		// Hz
+	uint32	bw;			// Hz
 	uint8	sf;			// spreading factor (7-12)
 	uint8	cr;			// coding rate (5-8)
+};
+
+// MeshCore Radio Presets
+enum RadioPreset {
+	PRESET_CUSTOM = 0,
+	PRESET_MESHCORE_DEFAULT,	// 906.875 MHz, 250kHz, SF10, CR5
+	PRESET_EU_868,				// 869.525 MHz, 125kHz, SF11, CR5
+	PRESET_EU_868_NARROW,		// 869.525 MHz, 62.5kHz, SF9, CR8 (EU/UK Narrow)
+	PRESET_EU_433,				// 433.875 MHz, 125kHz, SF9, CR5
+	PRESET_US_915,				// 906.875 MHz, 250kHz, SF10, CR5
+	PRESET_US_915_FAST,			// 906.875 MHz, 500kHz, SF7, CR5
+	PRESET_AU_915,				// 915.0 MHz, 250kHz, SF10, CR5
+	PRESET_NZ_915,				// 915.0 MHz, 125kHz, SF9, CR5
+	PRESET_LONG_RANGE,			// 906.875 MHz, 62.5kHz, SF12, CR8
+	PRESET_MEDIUM_RANGE,		// 906.875 MHz, 125kHz, SF10, CR5
+	PRESET_FAST,				// 906.875 MHz, 500kHz, SF7, CR5
+	PRESET_COUNT
+};
+
+struct RadioPresetInfo {
+	const char*	name;
+	uint32		freq;		// Hz
+	uint32		bw;			// Hz
+	uint8		sf;
+	uint8		cr;
+};
+
+// Preset definitions (from MeshCore defaults)
+static const RadioPresetInfo kRadioPresets[] = {
+	{ "Custom",              0,         0,      0,  0 },
+	{ "MeshCore Default",    906875000, 250000, 10, 5 },
+	{ "EU 868 MHz",          869525000, 125000, 11, 5 },
+	{ "EU/UK 868 Narrow",    869525000,  62500,  9, 8 },
+	{ "EU 433 MHz",          433875000, 125000,  9, 5 },
+	{ "US 915 MHz",          906875000, 250000, 10, 5 },
+	{ "US 915 Fast",         906875000, 500000,  7, 5 },
+	{ "AU 915 MHz",          915000000, 250000, 10, 5 },
+	{ "NZ 915 MHz",          915000000, 125000,  9, 5 },
+	{ "Long Range (Slow)",   906875000,  62500, 12, 8 },
+	{ "Medium Range",        906875000, 125000, 10, 5 },
+	{ "Fast (Short Range)",  906875000, 500000,  7, 5 },
 };
 
 // Tuning parameters

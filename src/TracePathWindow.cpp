@@ -195,15 +195,10 @@ TracePathWindow::_OnStartTrace()
 	fTraceButton->SetLabel("Tracing...");
 	fStatusLabel->SetText("Sending trace request...");
 
-	// CMD_SEND_TRACE_PATH format:
-	// [0] = CMD_SEND_TRACE_PATH (36)
-	// [1-6] = pub_key_prefix
-
+	// Send trace path request
 	uint8 buffer[16];
-	buffer[0] = CMD_SEND_TRACE_PATH;
-	memcpy(buffer + 1, fContact.publicKey, kPubKeyPrefixSize);
-
-	app->GetSerialHandler()->SendFrame(buffer, 7);
+	size_t len = Protocol::BuildSendTracePath(fContact.publicKey, buffer);
+	app->GetSerialHandler()->SendFrame(buffer, len);
 }
 
 

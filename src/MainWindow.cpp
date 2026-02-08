@@ -262,6 +262,7 @@ MainWindow::MessageReceived(BMessage* message)
 		case MSG_SHOW_SETTINGS:
 		{
 			SettingsWindow* settingsWindow = new SettingsWindow(this);
+			settingsWindow->SetCurrentSettings(fSelfInfo);
 			settingsWindow->Show();
 			break;
 		}
@@ -682,6 +683,7 @@ MainWindow::_BuildLayout()
 
 	// Chat view on right
 	fChatView = new ChatView("chat");
+	fChatView->SetContactList(fContactList);
 	BScrollView* chatScroll = new BScrollView("chat_scroll",
 		fChatView, 0, false, true, B_PLAIN_BORDER);
 
@@ -961,6 +963,50 @@ MainWindow::_HandleFrameReceived(BMessage* message)
 			case PUSH_CODE_PATH_UPDATED:
 				// Path updated, could refresh contacts
 				break;
+
+			case PUSH_CODE_TELEMETRY_RESPONSE:
+			{
+				// Telemetry data received
+				// Format: [0]=code, [1-6]=pubkey_prefix, [7]=sensor_type,
+				//         [8-11]=value(float LE), [12+]=sensor_name
+				if (size >= 12) {
+					uint8 sensorType = payload[7];
+					float value;
+					memcpy(&value, payload + 8, sizeof(float));
+
+					BString sensorName;
+					if (size > 12) {
+						sensorName.SetTo((const char*)(payload + 12), size - 12);
+					} else {
+						sensorName = "Unknown";
+					}
+
+					// Get node ID from pub key prefix
+					uint32 nodeId = Protocol::ReadU32LE(payload + 1);
+
+					// Determine sensor type and unit
+					SensorType type = (SensorType)sensorType;
+					BString unit;
+					switch (type) {
+						case SENSOR_TEMPERATURE: unit = "°C"; break;
+						case SENSOR_HUMIDITY: unit = "%"; break;
+						case SENSOR_PRESSURE: unit = "hPa"; break;
+						case SENSOR_BATTERY: unit = "V"; break;
+						case SENSOR_ALTITUDE: unit = "m"; break;
+						default: unit = ""; break;
+					}
+
+					// Forward to telemetry windows
+					BMessage telemetryMsg(MSG_TELEMETRY_DATA);
+					telemetryMsg.AddInt32("nodeId", nodeId);
+					telemetryMsg.AddString("sensorName", sensorName);
+					telemetryMsg.AddInt32("sensorType", type);
+					telemetryMsg.AddFloat("value", value);
+					telemetryMsg.AddString("unit", unit);
+					be_app->PostMessage(&telemetryMsg);
+				}
+				break;
+			}
 
 			default:
 				fprintf(stderr, "Unhandled push code: 0x%02X\n", code);

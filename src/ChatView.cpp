@@ -13,6 +13,7 @@
 #include <cstring>
 
 #include "Constants.h"
+#include "ContactListView.h"
 #include "MessageStore.h"
 #include "MessageView.h"
 
@@ -21,7 +22,8 @@ ChatView::ChatView(const char* name)
 	:
 	BListView(name, B_SINGLE_SELECTION_LIST),
 	fCurrentContact(NULL),
-	fCurrentContactName("")
+	fCurrentContactName(""),
+	fContactList(NULL)
 {
 }
 
@@ -141,16 +143,28 @@ ChatView::_ScrollToBottom()
 }
 
 
+void
+ChatView::SetContactList(ContactListView* contactList)
+{
+	fContactList = contactList;
+}
+
+
 const char*
 ChatView::_FindContactName(const uint8* pubKeyPrefix) const
 {
-	// TODO: Look up contact name from ContactListView
-	// For now, return NULL and use "Unknown"
-
+	// First check current contact (fast path)
 	if (fCurrentContact != NULL) {
 		if (memcmp(fCurrentContact->publicKey, pubKeyPrefix,
 				kPubKeyPrefixSize) == 0)
 			return fCurrentContact->advName;
+	}
+
+	// Look up in contact list
+	if (fContactList != NULL) {
+		Contact* contact = fContactList->ContactByPubKeyPrefix(pubKeyPrefix);
+		if (contact != NULL && contact->advName[0] != '\0')
+			return contact->advName;
 	}
 
 	return NULL;

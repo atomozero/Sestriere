@@ -111,8 +111,11 @@ MeshGraphView::MouseDown(BPoint where)
 		SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
 
 		// Select node
-		for (int32 i = 0; i < fNodes.CountItems(); i++)
-			fNodes.ItemAt(i)->isSelected = false;
+		for (int32 i = 0; i < fNodes.CountItems(); i++) {
+			GraphNode* n = fNodes.ItemAt(i);
+			if (n != NULL)
+				n->isSelected = false;
+		}
 		node->isSelected = true;
 
 		Invalidate();
@@ -151,6 +154,8 @@ MeshGraphView::FrameResized(float newWidth, float newHeight)
 	// Re-center nodes
 	if (fSelfIndex >= 0 && fSelfIndex < fNodes.CountItems()) {
 		GraphNode* self = fNodes.ItemAt(fSelfIndex);
+		if (self == NULL)
+			return;
 		self->x = newWidth / 2;
 		self->y = newHeight / 2;
 	}
@@ -380,12 +385,16 @@ MeshGraphView::_DrawNodes()
 {
 	// Draw self node last (on top)
 	for (int32 i = 0; i < fNodes.CountItems(); i++) {
-		if (i != fSelfIndex)
-			_DrawNode(*fNodes.ItemAt(i));
+		GraphNode* node = fNodes.ItemAt(i);
+		if (node != NULL && i != fSelfIndex)
+			_DrawNode(*node);
 	}
 
-	if (fSelfIndex >= 0)
-		_DrawNode(*fNodes.ItemAt(fSelfIndex));
+	if (fSelfIndex >= 0 && fSelfIndex < fNodes.CountItems()) {
+		GraphNode* self = fNodes.ItemAt(fSelfIndex);
+		if (self != NULL)
+			_DrawNode(*self);
+	}
 }
 
 
@@ -461,20 +470,25 @@ MeshGraphView::_DrawNode(const GraphNode& node)
 void
 MeshGraphView::_DrawEdges()
 {
-	for (int32 i = 0; i < fEdges.CountItems(); i++)
-		_DrawEdge(*fEdges.ItemAt(i));
+	for (int32 i = 0; i < fEdges.CountItems(); i++) {
+		GraphEdge* edge = fEdges.ItemAt(i);
+		if (edge != NULL)
+			_DrawEdge(*edge);
+	}
 }
 
 
 void
 MeshGraphView::_DrawEdge(const GraphEdge& edge)
 {
-	if (edge.fromIndex >= fNodes.CountItems() ||
-		edge.toIndex >= fNodes.CountItems())
+	if (edge.fromIndex < 0 || edge.fromIndex >= fNodes.CountItems() ||
+		edge.toIndex < 0 || edge.toIndex >= fNodes.CountItems())
 		return;
 
 	GraphNode* from = fNodes.ItemAt(edge.fromIndex);
 	GraphNode* to = fNodes.ItemAt(edge.toIndex);
+	if (from == NULL || to == NULL)
+		return;
 
 	rgb_color color = _EdgeColor(edge);
 	float thickness = edge.isActive ? 2.5f : 1.0f;
@@ -581,6 +595,8 @@ MeshGraphView::_UpdatePhysics()
 	// Update positions
 	for (int32 i = 0; i < fNodes.CountItems(); i++) {
 		GraphNode* node = fNodes.ItemAt(i);
+		if (node == NULL)
+			continue;
 
 		if (node->isDragging)
 			continue;
@@ -612,12 +628,16 @@ MeshGraphView::_ApplyForces()
 	// Repulsion between all nodes
 	for (int32 i = 0; i < fNodes.CountItems(); i++) {
 		GraphNode* nodeA = fNodes.ItemAt(i);
+		if (nodeA == NULL)
+			continue;
 
 		if (nodeA->isDragging)
 			continue;
 
 		for (int32 j = i + 1; j < fNodes.CountItems(); j++) {
 			GraphNode* nodeB = fNodes.ItemAt(j);
+			if (nodeB == NULL)
+				continue;
 
 			float dx = nodeB->x - nodeA->x;
 			float dy = nodeB->y - nodeA->y;
@@ -651,12 +671,15 @@ MeshGraphView::_ApplyForces()
 	for (int32 i = 0; i < fEdges.CountItems(); i++) {
 		GraphEdge* edge = fEdges.ItemAt(i);
 
-		if (edge->fromIndex >= fNodes.CountItems() ||
-			edge->toIndex >= fNodes.CountItems())
+		if (edge == NULL ||
+			edge->fromIndex < 0 || edge->fromIndex >= fNodes.CountItems() ||
+			edge->toIndex < 0 || edge->toIndex >= fNodes.CountItems())
 			continue;
 
 		GraphNode* from = fNodes.ItemAt(edge->fromIndex);
 		GraphNode* to = fNodes.ItemAt(edge->toIndex);
+		if (from == NULL || to == NULL)
+			continue;
 
 		float dx = to->x - from->x;
 		float dy = to->y - from->y;
@@ -691,6 +714,8 @@ MeshGraphView::_ConstrainToView()
 
 	for (int32 i = 0; i < fNodes.CountItems(); i++) {
 		GraphNode* node = fNodes.ItemAt(i);
+		if (node == NULL)
+			continue;
 		float radius = _NodeRadius(*node);
 
 		if (node->x - radius < margin) {
@@ -717,7 +742,9 @@ int32
 MeshGraphView::_FindNodeIndex(const uint8* publicKey) const
 {
 	for (int32 i = 0; i < fNodes.CountItems(); i++) {
-		if (memcmp(fNodes.ItemAt(i)->publicKey, publicKey, kPublicKeySize) == 0)
+		GraphNode* node = fNodes.ItemAt(i);
+		if (node != NULL &&
+			memcmp(node->publicKey, publicKey, kPublicKeySize) == 0)
 			return i;
 	}
 	return -1;
@@ -730,6 +757,8 @@ MeshGraphView::_FindNodeAt(BPoint where)
 	// Check in reverse order (top nodes first)
 	for (int32 i = fNodes.CountItems() - 1; i >= 0; i--) {
 		GraphNode* node = fNodes.ItemAt(i);
+		if (node == NULL)
+			continue;
 		float radius = _NodeRadius(*node);
 		float dx = where.x - node->x;
 		float dy = where.y - node->y;
