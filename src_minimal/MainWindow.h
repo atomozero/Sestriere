@@ -118,6 +118,9 @@ private:
 			void			_LogRx(const uint8* data, size_t length);
 			void			_LogMessage(const char* prefix, const char* text);
 
+			// Sidebar
+			void			_UpdateSidebarDeviceLabel();
+
 			// Contact helpers
 			void			_UpdateContactList();
 			void			_FilterContacts(const char* filter);
@@ -157,6 +160,7 @@ private:
 			BListView*		fContactList;
 			BScrollView*	fContactScroll;
 			ContactItem*	fChannelItem;
+			BStringView*	fSidebarDeviceLabel;
 
 			// UI elements - Chat area
 			ChatHeaderView*	fChatHeader;

@@ -23,6 +23,7 @@ public:
 
 	virtual void			AttachedToWindow();
 	virtual void			FrameResized(float newWidth, float newHeight);
+	virtual void			MouseDown(BPoint where);
 	virtual void			MessageReceived(BMessage* message);
 
 			void			AddMessage(const ChatMessage& message,

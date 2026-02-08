@@ -7,12 +7,18 @@
 
 #include "ChatView.h"
 
+#include <Clipboard.h>
+#include <MenuItem.h>
+#include <PopUpMenu.h>
 #include <ScrollView.h>
 #include <Window.h>
 
 #include <cstring>
 
 #include "MessageView.h"
+
+
+static const uint32 kMsgCopyText = 'cpyt';
 
 
 ChatView::ChatView(const char* name)
@@ -58,9 +64,71 @@ ChatView::FrameResized(float newWidth, float newHeight)
 
 
 void
+ChatView::MouseDown(BPoint where)
+{
+	BMessage* current = Window()->CurrentMessage();
+	int32 buttons = 0;
+	if (current != NULL)
+		current->FindInt32("buttons", &buttons);
+
+	if (buttons & B_SECONDARY_MOUSE_BUTTON) {
+		int32 index = IndexOf(where);
+		if (index < 0) return;
+
+		MessageView* item = dynamic_cast<MessageView*>(ItemAt(index));
+		if (item == NULL) return;
+
+		Select(index);
+
+		BPopUpMenu* menu = new BPopUpMenu("context", false, false);
+
+		BMessage* copyMsg = new BMessage(kMsgCopyText);
+		copyMsg->AddInt32("index", index);
+		menu->AddItem(new BMenuItem("Copy", copyMsg));
+
+		menu->SetTargetForItems(this);
+
+		ConvertToScreen(&where);
+		menu->Go(where, true, true, true);
+		return;
+	}
+
+	BListView::MouseDown(where);
+}
+
+
+void
 ChatView::MessageReceived(BMessage* message)
 {
-	BListView::MessageReceived(message);
+	switch (message->what) {
+		case kMsgCopyText:
+		{
+			int32 index;
+			if (message->FindInt32("index", &index) != B_OK)
+				break;
+
+			MessageView* item = dynamic_cast<MessageView*>(ItemAt(index));
+			if (item == NULL)
+				break;
+
+			const char* text = item->Text();
+			if (text == NULL || text[0] == '\0')
+				break;
+
+			if (be_clipboard->Lock()) {
+				be_clipboard->Clear();
+				BMessage* clip = be_clipboard->Data();
+				clip->AddData("text/plain", B_MIME_TYPE, text, strlen(text));
+				be_clipboard->Commit();
+				be_clipboard->Unlock();
+			}
+			break;
+		}
+
+		default:
+			BListView::MessageReceived(message);
+			break;
+	}
 }
 
 

@@ -114,6 +114,7 @@ MainWindow::MainWindow()
 	fContactList(NULL),
 	fContactScroll(NULL),
 	fChannelItem(NULL),
+	fSidebarDeviceLabel(NULL),
 	fChatHeader(NULL),
 	fChatView(NULL),
 	fChatScroll(NULL),
@@ -346,7 +347,16 @@ MainWindow::_BuildUI()
 	fContactScroll = new BScrollView("contact_scroll", fContactList,
 		B_WILL_DRAW | B_FRAME_EVENTS, false, true, B_PLAIN_BORDER);
 
-	// Sidebar with search + contact list
+	// Device info label at sidebar footer
+	fSidebarDeviceLabel = new BStringView("device_label", "");
+	BFont smallFont(be_plain_font);
+	smallFont.SetSize(smallFont.Size() * 0.85f);
+	fSidebarDeviceLabel->SetFont(&smallFont);
+	fSidebarDeviceLabel->SetHighUIColor(B_PANEL_TEXT_COLOR, B_LIGHTEN_1_TINT);
+	fSidebarDeviceLabel->SetAlignment(B_ALIGN_CENTER);
+	fSidebarDeviceLabel->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+
+	// Sidebar with search + contact list + device footer
 	BView* sidebar = new BView("sidebar", 0);
 	sidebar->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	sidebar->SetExplicitMinSize(BSize(220, B_SIZE_UNSET));
@@ -357,6 +367,10 @@ MainWindow::_BuildUI()
 			.Add(fSearchField, 1.0)
 		.End()
 		.Add(fContactScroll, 1.0)
+		.AddGroup(B_HORIZONTAL, 0)
+			.SetInsets(4, 2, 4, 4)
+			.Add(fSidebarDeviceLabel)
+		.End()
 	.End();
 
 	// === RIGHT SIDE: Chat Area ===
@@ -2073,6 +2087,8 @@ MainWindow::_HandleDeviceInfo(const uint8* data, size_t length)
 	}
 
 	_LogMessage("INFO", info.String());
+
+	_UpdateSidebarDeviceLabel();
 }
 
 
@@ -2350,6 +2366,8 @@ MainWindow::_HandleSelfInfo(const uint8* data, size_t length)
 		fMqttClient->PublishStatus(fDeviceName, fDeviceFirmware, fDeviceBoard,
 			fBatteryMv, fDeviceUptime, fNoiseFloor);
 	}
+
+	_UpdateSidebarDeviceLabel();
 }
 
 
@@ -3108,6 +3126,24 @@ MainWindow::_OnError(BMessage* message)
 	if (message->FindString(kFieldError, &error) == B_OK) {
 		_LogMessage("ERROR", error);
 	}
+}
+
+
+void
+MainWindow::_UpdateSidebarDeviceLabel()
+{
+	BString label;
+
+	if (fDeviceBoard[0] != '\0')
+		label << fDeviceBoard;
+
+	if (fDeviceFirmware[0] != '\0') {
+		if (label.Length() > 0)
+			label << " \xC2\xB7 ";
+		label << "fw " << fDeviceFirmware;
+	}
+
+	fSidebarDeviceLabel->SetText(label.String());
 }
 
 
