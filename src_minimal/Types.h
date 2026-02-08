@@ -56,6 +56,13 @@ static const size_t kPubKeySize = 32;
 static const size_t kPubKeyPrefixSize = 6;
 static const uint8 kPathLenDirect = 0xFF;	// Direct path (no hops)
 
+// Delivery status for outgoing messages
+enum DeliveryStatus {
+	DELIVERY_PENDING	= 0,	// Waiting for radio to transmit
+	DELIVERY_SENT		= 1,	// Radio transmitted (RSP_SENT)
+	DELIVERY_CONFIRMED	= 2		// Recipient ACKed (PUSH_SEND_CONFIRMED)
+};
+
 // Chat message for display in ChatView
 struct ChatMessage {
 	uint8	pubKeyPrefix[kPubKeyPrefixSize];
@@ -65,9 +72,12 @@ struct ChatMessage {
 	char	text[256];			// Message content
 	bool	isOutgoing;			// True if we sent this message
 	bool	isChannel;			// True if channel message (vs DM)
+	uint8	deliveryStatus;		// DeliveryStatus enum value
+	uint32	roundTripMs;		// Round-trip time from PUSH_SEND_CONFIRMED
 
 	ChatMessage() : pathLen(kPathLenDirect), snr(0), timestamp(0),
-					isOutgoing(false), isChannel(false) {
+					isOutgoing(false), isChannel(false),
+					deliveryStatus(DELIVERY_SENT), roundTripMs(0) {
 		memset(pubKeyPrefix, 0, sizeof(pubKeyPrefix));
 		memset(text, 0, sizeof(text));
 	}

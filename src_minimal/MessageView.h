@@ -31,6 +31,9 @@ public:
 			const char*		Text() const { return fText.String(); }
 			const char*		SenderName() const { return fSenderName.String(); }
 
+			void			SetDeliveryStatus(uint8 status, uint32 rtt = 0);
+			uint8			DeliveryStatus() const { return fDeliveryStatus; }
+
 private:
 			void			_FormatTimestamp(char* buffer, size_t size) const;
 			void			_WrapText(BView* owner, const BString& text,
@@ -44,6 +47,8 @@ private:
 			bool			fIsChannel;
 			uint8			fPathLen;
 			int8			fSnr;
+			uint8			fDeliveryStatus;
+			uint32			fRoundTripMs;
 
 			float			fBaselineOffset;
 };

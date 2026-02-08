@@ -195,6 +195,9 @@ private:
 			// Channel messages (public channel history)
 			BObjectList<ChatMessage, true>	fChannelMessages;
 
+			// Delivery tracking
+			int32			fPendingMsgIndex;
+
 			// Mode flags
 			bool			fSendingToChannel;
 			bool			fLoginPending;

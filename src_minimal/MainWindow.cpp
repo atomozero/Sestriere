@@ -134,6 +134,7 @@ MainWindow::MainWindow()
 	fOldContacts(20),
 	fSyncingContacts(false),
 	fChannelMessages(50),
+	fPendingMsgIndex(-1),
 	fSendingToChannel(false),
 	fLoginPending(false),
 	fSettingsWindow(NULL),
@@ -1787,7 +1788,7 @@ MainWindow::_SendTextMessage(const char* text)
 
 	fSerialHandler->SendFrame(payload, pos);
 
-	// Add to chat view as outgoing message
+	// Add to chat view as outgoing message (pending delivery)
 	ChatMessage outMsg;
 	memcpy(outMsg.pubKeyPrefix, contact->publicKey, kPubKeyPrefixSize);
 	strlcpy(outMsg.text, text, sizeof(outMsg.text));
@@ -1796,7 +1797,11 @@ MainWindow::_SendTextMessage(const char* text)
 	outMsg.isChannel = false;
 	outMsg.pathLen = 0;
 	outMsg.snr = 0;
+	outMsg.deliveryStatus = DELIVERY_PENDING;
 	fChatView->AddMessage(outMsg, "Me");
+
+	// Track pending message index for delivery status updates
+	fPendingMsgIndex = fChatView->CountItems() - 1;
 
 	// Store message in contact's history
 	ChatMessage* stored = new ChatMessage(outMsg);
@@ -1853,7 +1858,7 @@ MainWindow::_SendChannelMessage(const char* text)
 
 	fSerialHandler->SendFrame(payload, pos);
 
-	// Add to chat view as outgoing message
+	// Add to chat view as outgoing message (sent immediately for channel)
 	ChatMessage outMsg;
 	memset(outMsg.pubKeyPrefix, 0, kPubKeyPrefixSize);
 	strlcpy(outMsg.text, text, sizeof(outMsg.text));
@@ -1862,6 +1867,7 @@ MainWindow::_SendChannelMessage(const char* text)
 	outMsg.isChannel = true;
 	outMsg.pathLen = 0;
 	outMsg.snr = 0;
+	outMsg.deliveryStatus = DELIVERY_SENT;
 
 	// Store message
 	ChatMessage* stored = new ChatMessage(outMsg);
@@ -2001,8 +2007,42 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			_HandlePushAdvert(data, length);
 			break;
 		case PUSH_SEND_CONFIRMED:
-			_LogMessage("OK", "Message delivery confirmed");
+		{
+			uint32 roundTripMs = 0;
+			// PUSH_SEND_CONFIRMED payload: [0]=code [1-4]=ackCode(u32) [5-8]=roundTripMs(u32)
+			if (length >= 9) {
+				roundTripMs = (uint32)data[5] | ((uint32)data[6] << 8)
+					| ((uint32)data[7] << 16) | ((uint32)data[8] << 24);
+			}
+
+			BString logMsg("Message delivery confirmed");
+			if (roundTripMs > 0)
+				logMsg.SetToFormat("Message delivery confirmed (RTT: %lums)",
+					(unsigned long)roundTripMs);
+			_LogMessage("OK", logMsg.String());
+
+			// Update pending message to CONFIRMED status
+			if (fPendingMsgIndex >= 0) {
+				fChatView->UpdateDeliveryStatus(fPendingMsgIndex,
+					DELIVERY_CONFIRMED, roundTripMs);
+
+				// Also update stored ChatMessage
+				ContactInfo* contact = fChatView->CurrentContact();
+				if (contact != NULL) {
+					int32 lastIdx = contact->messages.CountItems() - 1;
+					if (lastIdx >= 0) {
+						ChatMessage* msg = contact->messages.ItemAt(lastIdx);
+						if (msg != NULL && msg->isOutgoing) {
+							msg->deliveryStatus = DELIVERY_CONFIRMED;
+							msg->roundTripMs = roundTripMs;
+						}
+					}
+				}
+
+				fPendingMsgIndex = -1;
+			}
 			break;
+		}
 		case PUSH_PATH_UPDATED:
 			_LogMessage("INFO", "Path updated for a contact");
 			break;
@@ -3063,6 +3103,22 @@ void
 MainWindow::_HandleMsgSent(const uint8* data, size_t length)
 {
 	_LogMessage("OK", "Message sent successfully");
+
+	// Update pending message to SENT status
+	if (fPendingMsgIndex >= 0) {
+		fChatView->UpdateDeliveryStatus(fPendingMsgIndex, DELIVERY_SENT);
+
+		// Also update the stored ChatMessage in contact history
+		ContactInfo* contact = fChatView->CurrentContact();
+		if (contact != NULL) {
+			int32 lastIdx = contact->messages.CountItems() - 1;
+			if (lastIdx >= 0) {
+				ChatMessage* msg = contact->messages.ItemAt(lastIdx);
+				if (msg != NULL && msg->isOutgoing)
+					msg->deliveryStatus = DELIVERY_SENT;
+			}
+		}
+	}
 }
 
 
@@ -3109,6 +3165,7 @@ MainWindow::_OnDisconnected()
 {
 	fConnected = false;
 	fHasDeviceInfo = false;  // Reset for next connection
+	fPendingMsgIndex = -1;
 
 	// Stop periodic stats timer
 	delete fStatsRefreshTimer;

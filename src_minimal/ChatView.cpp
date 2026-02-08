@@ -148,6 +148,21 @@ ChatView::AddMessage(const ChatMessage& message, const char* senderName)
 
 
 void
+ChatView::UpdateDeliveryStatus(int32 index, uint8 status, uint32 rtt)
+{
+	if (index < 0 || index >= CountItems())
+		return;
+
+	MessageView* item = dynamic_cast<MessageView*>(ItemAt(index));
+	if (item == NULL)
+		return;
+
+	item->SetDeliveryStatus(status, rtt);
+	InvalidateItem(index);
+}
+
+
+void
 ChatView::ClearMessages()
 {
 	// Remove visual items

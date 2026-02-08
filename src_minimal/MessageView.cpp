@@ -63,6 +63,8 @@ MessageView::MessageView(const ChatMessage& message, const char* senderName)
 	fIsChannel(message.isChannel),
 	fPathLen(message.pathLen),
 	fSnr(message.snr),
+	fDeliveryStatus(message.deliveryStatus),
+	fRoundTripMs(message.roundTripMs),
 	fBaselineOffset(0)
 {
 }
@@ -119,12 +121,28 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 
 	BString displayMeta;
 	if (!fOutgoing) {
+		// Incoming: time + hops (no checkmarks)
 		if (fPathLen == 0 || fPathLen == kPathLenDirect)
-			displayMeta.SetToFormat("%s \xE2\x9C\x93", timeStr);
+			displayMeta.SetToFormat("%s", timeStr);
 		else
 			displayMeta.SetToFormat("%s \xC2\xB7 %d hops", timeStr, fPathLen);
 	} else {
-		displayMeta.SetToFormat("%s \xE2\x9C\x93\xE2\x9C\x93", timeStr);
+		// Outgoing: time + delivery status indicator
+		switch (fDeliveryStatus) {
+			case DELIVERY_PENDING:
+				displayMeta.SetToFormat("%s \xE2\x8F\xB3", timeStr);  // ⏳
+				break;
+			case DELIVERY_CONFIRMED:
+				if (fRoundTripMs > 0)
+					displayMeta.SetToFormat("%s \xE2\x9C\x93\xE2\x9C\x93 %lums",
+						timeStr, (unsigned long)fRoundTripMs);
+				else
+					displayMeta.SetToFormat("%s \xE2\x9C\x93\xE2\x9C\x93", timeStr);
+				break;
+			default:  // DELIVERY_SENT
+				displayMeta.SetToFormat("%s \xE2\x9C\x93", timeStr);  // ✓
+				break;
+		}
 	}
 
 	BString snrStr;
@@ -280,6 +298,14 @@ MessageView::Update(BView* owner, const BFont* font)
 		kBubblePadding * 2 + kBubbleMargin;
 
 	SetHeight(height);
+}
+
+
+void
+MessageView::SetDeliveryStatus(uint8 status, uint32 rtt)
+{
+	fDeliveryStatus = status;
+	fRoundTripMs = rtt;
 }
 
 
