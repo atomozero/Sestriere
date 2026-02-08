@@ -42,10 +42,15 @@ static const uint32 MSG_NODE_TRACE = 'ndtr';
 static const uint32 MSG_NODE_INFO = 'ndin';
 static const uint32 MSG_AUTO_TRACE = 'autr';
 static const uint32 MSG_TOGGLE_AUTO_TRACE = 'tgat';
+static const uint32 MSG_DISCOVER_TOPOLOGY = 'dtop';
+static const uint32 MSG_DISCOVERY_TICK = 'dctk';
 
 static const bigtime_t kMapRefreshInterval = 3000000;   // 3 seconds
 static const bigtime_t kAutoTraceInterval = 30000000;   // 30 seconds
 static const bigtime_t kAnimationInterval = 50000;      // 50ms = 20fps
+static const bigtime_t kDiscoveryTickInterval = 2000000; // 2 seconds between trace requests
+static const uint32 kEdgeExpireSeconds = 600;            // 10 minutes edge lifetime
+static const uint32 kAutoTraceSkipSeconds = 300;         // 5 min: skip recently traced nodes
 
 // Colors
 static const rgb_color kBackgroundColor = {24, 28, 32, 255};
@@ -76,6 +81,8 @@ static const rgb_color kLinkPoor = {255, 140, 0, 255};          // Orange (-10..
 static const rgb_color kLinkBad = {220, 20, 60, 255};           // Red (< -10)
 static const rgb_color kLinkUnknown = {80, 80, 80, 255};        // Gray (no data)
 static const rgb_color kTraceRouteColor = {180, 120, 255, 255}; // Purple for trace paths
+static const rgb_color kEdgeDiscoveredColor = {100, 180, 255, 200}; // Blue for discovered edges
+static const rgb_color kHubGlowColor = {255, 180, 50, 40};         // Amber glow for repeater hubs
 
 // Node sizes
 static const float kSelfNodeRadius = 24.0f;
@@ -83,6 +90,12 @@ static const float kNodeRadiusMin = 10.0f;
 static const float kNodeRadiusMax = 18.0f;
 static const float kMinDistance = 80.0f;
 static const float kMaxDistance = 280.0f;
+
+// Topology layout rings
+static const float kRing1Distance = 120.0f;  // Direct contacts
+static const float kRing2Distance = 220.0f;  // 2-hop contacts
+static const float kRing3Distance = 300.0f;  // 3+ hop contacts
+static const float kClusterSpread = 40.0f;   // Spread of nodes around relay
 
 // Time thresholds (seconds)
 static const uint32 kOnlineThreshold = 300;      // 5 minutes
@@ -104,7 +117,8 @@ NetworkMapView::NetworkMapView()
 	fShowSignalStrength(true),
 	fSelectedNode(NULL),
 	fDragStart(0, 0),
-	fDragging(false)
+	fDragging(false),
+	fEdges(20)
 {
 	SetViewColor(kBackgroundColor);
 	memset(fSelfNode.name, 0, sizeof(fSelfNode.name));
@@ -224,10 +238,36 @@ NetworkMapView::Draw(BRect updateRect)
 	// Calculate target positions for all nodes
 	_CalculatePositions();
 
-	// Draw connections first (behind nodes)
+	// Expire old edges
+	uint32 now = (uint32)time(NULL);
+	for (int32 i = fEdges.CountItems() - 1; i >= 0; i--) {
+		TopologyEdge* edge = fEdges.ItemAt(i);
+		if (edge && now - edge->timestamp > kEdgeExpireSeconds)
+			fEdges.RemoveItemAt(i);
+	}
+
+	// Draw topology edges (discovered inter-node connections)
+	_DrawTopologyEdges();
+
+	// Draw self→node connections for direct or undiscovered nodes
 	for (int32 i = 0; i < fNodes.CountItems(); i++) {
 		MapNode* node = fNodes.ItemAt(i);
-		if (node != NULL) {
+		if (node == NULL)
+			continue;
+
+		// Check if this node has discovered edges leading to it
+		bool hasEdge = false;
+		for (int32 e = 0; e < fEdges.CountItems(); e++) {
+			TopologyEdge* edge = fEdges.ItemAt(e);
+			if (edge && !edge->ambiguous &&
+				memcmp(edge->toPrefix, node->pubKeyPrefix, kPubKeyPrefixSize) == 0) {
+				hasEdge = true;
+				break;
+			}
+		}
+
+		if (!hasEdge) {
+			// No discovered edge — draw connection to center
 			_DrawConnection(fCenter, node->position, node);
 		}
 	}
@@ -532,37 +572,256 @@ NetworkMapView::ClearTraceRoutes()
 
 
 void
+NetworkMapView::BuildEdgesFromTrace(const TraceRoute& route)
+{
+	// Build topology edges from trace route data by matching hop hashes
+	// to known contacts. Creates edges: Self→Hop1, Hop1→Hop2, ..., HopN→Dest
+	if (route.pathLen == 0)
+		return;
+
+	uint32 now = (uint32)time(NULL);
+
+	// Build chain: self → hop1 → hop2 → ... → dest
+	// "from" starts as self (zeros = self node)
+	uint8 selfPrefix[kPubKeyPrefixSize];
+	memset(selfPrefix, 0, sizeof(selfPrefix));
+
+	const uint8* prevPrefix = selfPrefix;
+	bool prevIsSelf = true;
+
+	for (uint8 h = 0; h < route.pathLen; h++) {
+		MapNode* hopNode = _MatchHopToContact(route.hops[h].hash);
+		if (hopNode == NULL)
+			continue;  // Unknown hop — skip
+
+		// Check for hash collision (multiple contacts match same hash)
+		bool ambiguous = false;
+		int matchCount = 0;
+		for (int32 n = 0; n < fNodes.CountItems(); n++) {
+			MapNode* check = fNodes.ItemAt(n);
+			if (check && _HashForContact(check->pubKeyPrefix) == route.hops[h].hash)
+				matchCount++;
+		}
+		if (matchCount > 1)
+			ambiguous = true;
+
+		// Create edge from previous node to this hop
+		TopologyEdge* edge = new TopologyEdge();
+		if (prevIsSelf)
+			memset(edge->fromPrefix, 0, sizeof(edge->fromPrefix));
+		else
+			memcpy(edge->fromPrefix, prevPrefix, kPubKeyPrefixSize);
+		memcpy(edge->toPrefix, hopNode->pubKeyPrefix, kPubKeyPrefixSize);
+		edge->snr = route.hops[h].snr / 4;
+		edge->timestamp = now;
+		edge->ambiguous = ambiguous;
+
+		// Replace existing edge for same from→to pair, or add new
+		bool replaced = false;
+		for (int32 e = 0; e < fEdges.CountItems(); e++) {
+			TopologyEdge* existing = fEdges.ItemAt(e);
+			if (existing &&
+				memcmp(existing->fromPrefix, edge->fromPrefix, kPubKeyPrefixSize) == 0 &&
+				memcmp(existing->toPrefix, edge->toPrefix, kPubKeyPrefixSize) == 0) {
+				*existing = *edge;
+				delete edge;
+				replaced = true;
+				break;
+			}
+		}
+		if (!replaced)
+			fEdges.AddItem(edge);
+
+		prevPrefix = hopNode->pubKeyPrefix;
+		prevIsSelf = false;
+	}
+
+	// Final edge: last hop → destination
+	MapNode* destNode = _FindNodeByPrefix(route.destKeyPrefix);
+	if (destNode != NULL && !prevIsSelf) {
+		TopologyEdge* finalEdge = new TopologyEdge();
+		memcpy(finalEdge->fromPrefix, prevPrefix, kPubKeyPrefixSize);
+		memcpy(finalEdge->toPrefix, destNode->pubKeyPrefix, kPubKeyPrefixSize);
+		finalEdge->snr = route.destSnr / 4;
+		finalEdge->timestamp = now;
+
+		bool replaced = false;
+		for (int32 e = 0; e < fEdges.CountItems(); e++) {
+			TopologyEdge* existing = fEdges.ItemAt(e);
+			if (existing &&
+				memcmp(existing->fromPrefix, finalEdge->fromPrefix, kPubKeyPrefixSize) == 0 &&
+				memcmp(existing->toPrefix, finalEdge->toPrefix, kPubKeyPrefixSize) == 0) {
+				*existing = *finalEdge;
+				delete finalEdge;
+				replaced = true;
+				break;
+			}
+		}
+		if (!replaced)
+			fEdges.AddItem(finalEdge);
+	}
+
+	Invalidate();
+}
+
+
+void
+NetworkMapView::ExpireStaleEdges()
+{
+	uint32 now = (uint32)time(NULL);
+	for (int32 i = fEdges.CountItems() - 1; i >= 0; i--) {
+		TopologyEdge* edge = fEdges.ItemAt(i);
+		if (edge && now - edge->timestamp > kEdgeExpireSeconds)
+			fEdges.RemoveItemAt(i);
+	}
+}
+
+
+int32
+NetworkMapView::GetMultiHopNodes(BObjectList<MapNode, false>* outList) const
+{
+	if (outList == NULL)
+		return 0;
+
+	int32 count = 0;
+	for (int32 i = 0; i < fNodes.CountItems(); i++) {
+		MapNode* node = fNodes.ItemAt(i);
+		if (node == NULL)
+			continue;
+		if (node->hops >= 2 &&
+			(node->status == STATUS_ONLINE || node->status == STATUS_RECENT)) {
+			outList->AddItem(node);
+			count++;
+		}
+	}
+	return count;
+}
+
+
+void
 NetworkMapView::_CalculatePositions()
 {
 	int32 count = fNodes.CountItems();
 	if (count == 0)
 		return;
 
-	// Position nodes in a spiral/circle around center
-	// Distance from center based on RSSI
-	// Angle distributed based on activity and hash
+	// Layered concentric layout:
+	// Ring 0 = self (center)
+	// Ring 1 = direct contacts (hops <= 1)
+	// Ring 2 = 2-hop contacts, clustered near discovered relay
+	// Ring 3 = 3+ hop contacts
+
+	// First pass: separate nodes into rings
+	BObjectList<MapNode, false> ring1(10);  // Direct
+	BObjectList<MapNode, false> ring2(10);  // 2-hop
+	BObjectList<MapNode, false> ring3(10);  // 3+ hop
 
 	for (int32 i = 0; i < count; i++) {
 		MapNode* node = fNodes.ItemAt(i);
 		if (node == NULL)
 			continue;
 
-		// Use pubkey to create consistent angle
+		if (node->hops <= 1)
+			ring1.AddItem(node);
+		else if (node->hops == 2)
+			ring2.AddItem(node);
+		else
+			ring3.AddItem(node);
+	}
+
+	// Position Ring 1: direct contacts evenly around center
+	int32 r1Count = ring1.CountItems();
+	for (int32 i = 0; i < r1Count; i++) {
+		MapNode* node = ring1.ItemAt(i);
+		if (node == NULL)
+			continue;
+
+		// Use pubkey for consistent angle
 		uint32 hash = node->pubKeyPrefix[0] | (node->pubKeyPrefix[1] << 8);
 		float baseAngle = (hash % 360) * M_PI / 180.0f;
+		// Spread evenly if many direct nodes
+		float angleSpread = (r1Count > 1) ? (2.0f * M_PI / r1Count) : 0;
+		float angle = baseAngle + i * angleSpread * 0.3f;
 
-		// Add offset based on index to prevent overlap
-		float angle = baseAngle + i * 0.3f;
+		float distance = kRing1Distance * fZoom;
 
-		float distance = _DistanceForRssi(node->rssi) * fZoom;
+		// Repeaters get drawn slightly closer (hub position)
+		if (node->nodeType == NODE_REPEATER || node->nodeType == NODE_ROOM)
+			distance *= 0.85f;
 
 		node->targetPosition.x = fCenter.x + cosf(angle) * distance;
 		node->targetPosition.y = fCenter.y + sinf(angle) * distance;
 
-		// Initialize position if not set
-		if (node->position.x == 0 && node->position.y == 0) {
+		if (node->position.x == 0 && node->position.y == 0)
 			node->position = fCenter;
+	}
+
+	// Position Ring 2: 2-hop contacts clustered near their relay
+	for (int32 i = 0; i < ring2.CountItems(); i++) {
+		MapNode* node = ring2.ItemAt(i);
+		if (node == NULL)
+			continue;
+
+		// Try to find the relay this node connects through
+		MapNode* relay = _FindRelayForNode(node);
+
+		uint32 hash = node->pubKeyPrefix[0] | (node->pubKeyPrefix[1] << 8);
+		float baseAngle = (hash % 360) * M_PI / 180.0f;
+
+		if (relay != NULL) {
+			// Position near the relay, further from center
+			float relayAngle = atan2f(relay->targetPosition.y - fCenter.y,
+									  relay->targetPosition.x - fCenter.x);
+			// Spread around relay angle
+			float spread = baseAngle * 0.3f - 0.15f * M_PI;
+			float angle = relayAngle + spread;
+			float distance = kRing2Distance * fZoom;
+
+			node->targetPosition.x = fCenter.x + cosf(angle) * distance;
+			node->targetPosition.y = fCenter.y + sinf(angle) * distance;
+		} else {
+			// No relay found — use standard positioning
+			float angle = baseAngle + i * 0.4f;
+			float distance = kRing2Distance * fZoom;
+
+			node->targetPosition.x = fCenter.x + cosf(angle) * distance;
+			node->targetPosition.y = fCenter.y + sinf(angle) * distance;
 		}
+
+		if (node->position.x == 0 && node->position.y == 0)
+			node->position = fCenter;
+	}
+
+	// Position Ring 3: 3+ hop contacts
+	for (int32 i = 0; i < ring3.CountItems(); i++) {
+		MapNode* node = ring3.ItemAt(i);
+		if (node == NULL)
+			continue;
+
+		MapNode* relay = _FindRelayForNode(node);
+
+		uint32 hash = node->pubKeyPrefix[0] | (node->pubKeyPrefix[1] << 8);
+		float baseAngle = (hash % 360) * M_PI / 180.0f;
+
+		if (relay != NULL) {
+			float relayAngle = atan2f(relay->targetPosition.y - fCenter.y,
+									  relay->targetPosition.x - fCenter.x);
+			float spread = baseAngle * 0.3f - 0.15f * M_PI;
+			float angle = relayAngle + spread;
+			float distance = kRing3Distance * fZoom;
+
+			node->targetPosition.x = fCenter.x + cosf(angle) * distance;
+			node->targetPosition.y = fCenter.y + sinf(angle) * distance;
+		} else {
+			float angle = baseAngle + i * 0.5f;
+			float distance = kRing3Distance * fZoom;
+
+			node->targetPosition.x = fCenter.x + cosf(angle) * distance;
+			node->targetPosition.y = fCenter.y + sinf(angle) * distance;
+		}
+
+		if (node->position.x == 0 && node->position.y == 0)
+			node->position = fCenter;
 	}
 }
 
@@ -649,6 +908,26 @@ NetworkMapView::_DrawNode(const MapNode& node)
 			StrokePolygon(hexPulse, 6, true);
 		} else {
 			StrokeEllipse(node.position, pulseRadius, pulseRadius);
+		}
+	}
+
+	// Draw hub glow for repeaters that have discovered edges
+	if (isRepeater) {
+		bool isHub = false;
+		for (int32 e = 0; e < fEdges.CountItems(); e++) {
+			TopologyEdge* edge = fEdges.ItemAt(e);
+			if (edge && !edge->ambiguous &&
+				memcmp(edge->fromPrefix, node.pubKeyPrefix, kPubKeyPrefixSize) == 0) {
+				isHub = true;
+				break;
+			}
+		}
+		if (isHub) {
+			float glowRadius = radius * 2.5f;
+			rgb_color glow = kHubGlowColor;
+			glow.alpha = (uint8)(40 * opacity);
+			SetHighColor(glow);
+			FillEllipse(node.position, glowRadius, glowRadius);
 		}
 	}
 
@@ -1100,6 +1379,108 @@ NetworkMapView::_DrawTraceRoutes()
 
 
 void
+NetworkMapView::_DrawTopologyEdges()
+{
+	uint32 now = (uint32)time(NULL);
+
+	for (int32 e = 0; e < fEdges.CountItems(); e++) {
+		TopologyEdge* edge = fEdges.ItemAt(e);
+		if (edge == NULL || edge->ambiguous)
+			continue;
+
+		// Find from and to nodes
+		BPoint fromPos;
+		BPoint toPos;
+		float opacity = 0.8f;
+
+		// Check if "from" is self (all zeros)
+		uint8 zeroPrefix[kPubKeyPrefixSize];
+		memset(zeroPrefix, 0, sizeof(zeroPrefix));
+		bool fromIsSelf = (memcmp(edge->fromPrefix, zeroPrefix, kPubKeyPrefixSize) == 0);
+
+		if (fromIsSelf) {
+			fromPos = fCenter;
+		} else {
+			MapNode* fromNode = _FindNodeByPrefix(edge->fromPrefix);
+			if (fromNode == NULL)
+				continue;
+			fromPos = fromNode->position;
+			opacity *= _OpacityForNode(*fromNode);
+		}
+
+		MapNode* toNode = _FindNodeByPrefix(edge->toPrefix);
+		if (toNode == NULL)
+			continue;
+		toPos = toNode->position;
+		opacity *= _OpacityForNode(*toNode);
+
+		// Fade out edges approaching expiry
+		uint32 age = (now > edge->timestamp) ? (now - edge->timestamp) : 0;
+		if (age > kEdgeExpireSeconds - 120) {
+			float fade = (float)(kEdgeExpireSeconds - age) / 120.0f;
+			opacity *= fmaxf(0.0f, fade);
+		}
+
+		// Color based on hop SNR
+		rgb_color lineColor = _ColorForSNR(edge->snr);
+		lineColor.alpha = (uint8)(200 * opacity);
+
+		float thickness = _ThicknessForSNR(edge->snr) * fZoom;
+
+		SetHighColor(lineColor);
+		SetPenSize(thickness);
+		StrokeLine(fromPos, toPos);
+
+		// Draw glow for repeater hub connections
+		if (!fromIsSelf) {
+			MapNode* fromNode = _FindNodeByPrefix(edge->fromPrefix);
+			if (fromNode && (fromNode->nodeType == NODE_REPEATER ||
+							 fromNode->nodeType == NODE_ROOM)) {
+				rgb_color glow = kHubGlowColor;
+				glow.alpha = (uint8)(30 * opacity);
+				SetHighColor(glow);
+				SetPenSize(thickness + 6.0f * fZoom);
+				StrokeLine(fromPos, toPos);
+			}
+		}
+
+		SetPenSize(1.0f);
+
+		// Draw animated flow dots on discovered edges for active nodes
+		if (toNode->status == STATUS_ONLINE || toNode->status == STATUS_RECENT) {
+			rgb_color dotColor = lineColor;
+			dotColor.alpha = (uint8)(180 * opacity);
+			_DrawFlowDots(fromPos, toPos, toNode->flowPhase, dotColor);
+		}
+
+		// Draw SNR label at midpoint
+		if (fShowSignalStrength) {
+			BFont font;
+			GetFont(&font);
+			font.SetSize(8);
+			SetFont(&font);
+
+			char label[16];
+			snprintf(label, sizeof(label), "%d dB", edge->snr);
+
+			BPoint mid((fromPos.x + toPos.x) / 2, (fromPos.y + toPos.y) / 2);
+			float labelWidth = StringWidth(label);
+
+			// Background pill
+			SetHighColor(0, 0, 0, (uint8)(180 * opacity));
+			FillRoundRect(BRect(mid.x - labelWidth / 2 - 3, mid.y - 8,
+				mid.x + labelWidth / 2 + 3, mid.y + 4), 3, 3);
+
+			rgb_color textColor = _ColorForSNR(edge->snr);
+			textColor.alpha = (uint8)(255 * opacity);
+			SetHighColor(textColor);
+			DrawString(label, BPoint(mid.x - labelWidth / 2, mid.y + 2));
+		}
+	}
+}
+
+
+void
 NetworkMapView::_DrawInfoPanel()
 {
 	if (fSelectedNode == NULL)
@@ -1107,7 +1488,7 @@ NetworkMapView::_DrawInfoPanel()
 
 	BRect bounds = Bounds();
 	float panelWidth = 180;
-	float panelHeight = 180;
+	float panelHeight = 210;
 	float panelX = bounds.right - panelWidth - 10;
 	float panelY = 10;
 
@@ -1210,6 +1591,25 @@ NetworkMapView::_DrawInfoPanel()
 	DrawString(buf, BPoint(x, y));
 	y += 14;
 
+	// Hops
+	if (fSelectedNode->hops > 1) {
+		SetHighColor(kLabelColor);
+		snprintf(buf, sizeof(buf), "Hops: %d", fSelectedNode->hops);
+		DrawString(buf, BPoint(x, y));
+		y += 14;
+
+		// Show relay if discovered
+		MapNode* relay = _FindRelayForNode(fSelectedNode);
+		if (relay != NULL) {
+			SetHighColor(kEdgeDiscoveredColor);
+			char viaStr[80];
+			snprintf(viaStr, sizeof(viaStr), "Via: %.70s",
+				relay->name[0] ? relay->name : "Unknown");
+			DrawString(viaStr, BPoint(x, y));
+			y += 14;
+		}
+	}
+
 	// Public key prefix
 	SetHighColor(100, 100, 100);
 	font.SetSize(9);
@@ -1297,8 +1697,13 @@ NetworkMapView::_DrawStats()
 			repeaters++;
 	}
 
+	int32 edges = fEdges.CountItems();
+
 	char stats[128];
-	if (repeaters > 0)
+	if (edges > 0)
+		snprintf(stats, sizeof(stats), "Nodes: %d (%d online, %d repeaters) — %d edges",
+			(int)total, (int)online, (int)repeaters, (int)edges);
+	else if (repeaters > 0)
 		snprintf(stats, sizeof(stats), "Nodes: %d total, %d online, %d repeaters",
 			(int)total, (int)online, (int)repeaters);
 	else
@@ -1455,6 +1860,75 @@ NetworkMapView::_DistanceForRssi(int8 rssi) const
 }
 
 
+uint8
+NetworkMapView::_HashForContact(const uint8* pubKeyPrefix) const
+{
+	// MeshCore path hash is typically derived from pubkey[0]
+	return pubKeyPrefix[0];
+}
+
+
+MapNode*
+NetworkMapView::_MatchHopToContact(uint8 hopHash) const
+{
+	// Find a contact whose hash matches the hop hash
+	// Returns NULL if no match or ambiguous (multiple matches)
+	MapNode* match = NULL;
+	int matchCount = 0;
+
+	for (int32 i = 0; i < fNodes.CountItems(); i++) {
+		MapNode* node = fNodes.ItemAt(i);
+		if (node == NULL)
+			continue;
+
+		if (_HashForContact(node->pubKeyPrefix) == hopHash) {
+			match = node;
+			matchCount++;
+		}
+	}
+
+	// If ambiguous (multiple matches), still return first — caller checks
+	return match;
+}
+
+
+MapNode*
+NetworkMapView::_FindNodeByPrefix(const uint8* prefix) const
+{
+	for (int32 i = 0; i < fNodes.CountItems(); i++) {
+		MapNode* node = fNodes.ItemAt(i);
+		if (node && memcmp(node->pubKeyPrefix, prefix, kPubKeyPrefixSize) == 0)
+			return node;
+	}
+	return NULL;
+}
+
+
+MapNode*
+NetworkMapView::_FindRelayForNode(const MapNode* node) const
+{
+	// Find which relay node this one connects through, using discovered edges
+	// Walk backward through edges: find an edge where toPrefix == node's prefix
+	for (int32 e = 0; e < fEdges.CountItems(); e++) {
+		TopologyEdge* edge = fEdges.ItemAt(e);
+		if (edge == NULL || edge->ambiguous)
+			continue;
+
+		if (memcmp(edge->toPrefix, node->pubKeyPrefix, kPubKeyPrefixSize) == 0) {
+			// "from" is the relay for this node
+			// Check if "from" is self (all zeros)
+			uint8 zeroPrefix[kPubKeyPrefixSize];
+			memset(zeroPrefix, 0, sizeof(zeroPrefix));
+			if (memcmp(edge->fromPrefix, zeroPrefix, kPubKeyPrefixSize) == 0)
+				return NULL;  // Connected to self, not relayed
+
+			return _FindNodeByPrefix(edge->fromPrefix);
+		}
+	}
+	return NULL;
+}
+
+
 // ============================================================================
 // NetworkMapWindow
 // ============================================================================
@@ -1472,10 +1946,14 @@ NetworkMapWindow::NetworkMapWindow(BWindow* parent)
 	fAutoTraceCheck(NULL),
 	fZoomSlider(NULL),
 	fRefreshButton(NULL),
+	fMapNetworkButton(NULL),
 	fCloseButton(NULL),
 	fRefreshTimer(NULL),
 	fAutoTraceTimer(NULL),
-	fAutoTraceIndex(0)
+	fDiscoveryTimer(NULL),
+	fAutoTraceIndex(0),
+	fDiscoveryTotal(0),
+	fDiscoveryActive(false)
 {
 	memset(fSelfName, 0, sizeof(fSelfName));
 
@@ -1503,6 +1981,8 @@ NetworkMapWindow::NetworkMapWindow(BWindow* parent)
 
 	fRefreshButton = new BButton("refresh", "Refresh",
 		new BMessage(MSG_REFRESH_MAP));
+	fMapNetworkButton = new BButton("map_network", "Map Network",
+		new BMessage(MSG_DISCOVER_TOPOLOGY));
 	fCloseButton = new BButton("close", "Close",
 		new BMessage(B_QUIT_REQUESTED));
 
@@ -1522,6 +2002,7 @@ NetworkMapWindow::NetworkMapWindow(BWindow* parent)
 			.Add(new BStringView("zoom_label", "Zoom:"))
 			.Add(fZoomSlider, 0.2)
 			.AddGlue()
+			.Add(fMapNetworkButton)
 			.Add(fRefreshButton)
 			.Add(fCloseButton)
 		.End()
@@ -1550,6 +2031,7 @@ NetworkMapWindow::~NetworkMapWindow()
 {
 	delete fRefreshTimer;
 	delete fAutoTraceTimer;
+	delete fDiscoveryTimer;
 }
 
 
@@ -1621,6 +2103,14 @@ NetworkMapWindow::MessageReceived(BMessage* message)
 		case MSG_AUTO_TRACE:
 			if (!IsHidden() && fAutoTraceCheck->Value() == B_CONTROL_ON)
 				_RequestAutoTrace();
+			break;
+
+		case MSG_DISCOVER_TOPOLOGY:
+			_RequestFullDiscovery();
+			break;
+
+		case MSG_DISCOVERY_TICK:
+			_DiscoveryTick();
 			break;
 
 		default:
@@ -1703,16 +2193,18 @@ NetworkMapWindow::HandleTraceData(const uint8* data, size_t length)
 		route.destSnr = (int8)data[snrOffset + pathLen];
 
 	fMapView->SetTraceRoute(route);
+
+	// Build topology edges from the trace data
+	fMapView->BuildEdgesFromTrace(route);
 }
 
 
 void
 NetworkMapWindow::_RequestAutoTrace()
 {
-	// Request trace path for each online contact, one at a time (round-robin)
+	// If a node is selected, trace that one first
 	MapNode* selectedNode = fMapView->GetSelectedNode();
 	if (selectedNode != NULL && selectedNode->status <= STATUS_RECENT) {
-		// If a node is selected, trace that one
 		BMessage msg(MSG_TRACE_PATH);
 		msg.AddData("pubkey", B_RAW_TYPE, selectedNode->pubKeyPrefix, kPubKeyPrefixSize);
 		if (fParent != NULL)
@@ -1720,7 +2212,93 @@ NetworkMapWindow::_RequestAutoTrace()
 		return;
 	}
 
-	// Otherwise, no automatic trace without selection (to avoid radio spam)
+	// Round-robin through all online/recent multi-hop nodes
+	BObjectList<MapNode, false> multiHop(10);
+	fMapView->GetMultiHopNodes(&multiHop);
+
+	if (multiHop.CountItems() == 0)
+		return;
+
+	int32 startIndex = fAutoTraceIndex % multiHop.CountItems();
+	int32 idx = startIndex;
+	MapNode* node = multiHop.ItemAt(idx);
+
+	if (node != NULL && fParent != NULL) {
+		BMessage msg(MSG_TRACE_PATH);
+		msg.AddData("pubkey", B_RAW_TYPE, node->pubKeyPrefix, kPubKeyPrefixSize);
+		fParent->PostMessage(&msg);
+	}
+
+	fAutoTraceIndex = (idx + 1) % multiHop.CountItems();
+}
+
+
+void
+NetworkMapWindow::_RequestFullDiscovery()
+{
+	if (fDiscoveryActive)
+		return;  // Already running
+
+	// Queue all multi-hop online/recent nodes for trace
+	fDiscoveryQueue.MakeEmpty();
+	fMapView->GetMultiHopNodes(&fDiscoveryQueue);
+
+	fDiscoveryTotal = fDiscoveryQueue.CountItems();
+	if (fDiscoveryTotal == 0) {
+		fInfoLabel->SetText("No multi-hop nodes to trace");
+		return;
+	}
+
+	fDiscoveryActive = true;
+	fMapNetworkButton->SetEnabled(false);
+
+	char status[64];
+	snprintf(status, sizeof(status), "Mapping... 0/%d nodes traced",
+		(int)fDiscoveryTotal);
+	fInfoLabel->SetText(status);
+
+	// Start discovery tick timer (2s between traces)
+	delete fDiscoveryTimer;
+	BMessage tickMsg(MSG_DISCOVERY_TICK);
+	fDiscoveryTimer = new BMessageRunner(this, &tickMsg, kDiscoveryTickInterval);
+
+	// Send first trace immediately
+	_DiscoveryTick();
+}
+
+
+void
+NetworkMapWindow::_DiscoveryTick()
+{
+	if (!fDiscoveryActive || fDiscoveryQueue.CountItems() == 0) {
+		// Discovery complete
+		fDiscoveryActive = false;
+		fMapNetworkButton->SetEnabled(true);
+		delete fDiscoveryTimer;
+		fDiscoveryTimer = NULL;
+
+		char status[64];
+		snprintf(status, sizeof(status),
+			"Topology mapped — %d edges discovered",
+			(int)fMapView->CountEdges());
+		fInfoLabel->SetText(status);
+		return;
+	}
+
+	// Pop next node from queue
+	MapNode* node = fDiscoveryQueue.RemoveItemAt(0);
+	if (node != NULL && fParent != NULL) {
+		BMessage msg(MSG_TRACE_PATH);
+		msg.AddData("pubkey", B_RAW_TYPE, node->pubKeyPrefix, kPubKeyPrefixSize);
+		fParent->PostMessage(&msg);
+	}
+
+	// Update progress
+	int32 done = fDiscoveryTotal - fDiscoveryQueue.CountItems();
+	char status[64];
+	snprintf(status, sizeof(status), "Mapping... %d/%d nodes traced",
+		(int)done, (int)fDiscoveryTotal);
+	fInfoLabel->SetText(status);
 }
 
 

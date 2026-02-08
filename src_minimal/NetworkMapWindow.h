@@ -93,6 +93,20 @@ struct TraceRoute {
 	}
 };
 
+// Discovered inter-node connection from trace route analysis
+struct TopologyEdge {
+	uint8		fromPrefix[kPubKeyPrefixSize];	// Source node pubkey prefix
+	uint8		toPrefix[kPubKeyPrefixSize];	// Dest node pubkey prefix
+	int8		snr;							// Link quality (SNR)
+	uint32		timestamp;						// When discovered
+	bool		ambiguous;						// True if hash collision detected
+
+	TopologyEdge() : snr(0), timestamp(0), ambiguous(false) {
+		memset(fromPrefix, 0, sizeof(fromPrefix));
+		memset(toPrefix, 0, sizeof(toPrefix));
+	}
+};
+
 // Custom view for drawing the network map
 class NetworkMapView : public BView {
 public:
@@ -118,8 +132,13 @@ public:
 								int8 snr, int8 rssi);
 			void			SetTraceRoute(const TraceRoute& route);
 			void			ClearTraceRoutes();
+			void			BuildEdgesFromTrace(const TraceRoute& route);
+			void			ExpireStaleEdges();
+			int32			CountEdges() const { return fEdges.CountItems(); }
 
 			MapNode*		GetSelectedNode() const { return fSelectedNode; }
+			int32			GetMultiHopNodes(
+								BObjectList<MapNode, false>* outList) const;
 
 private:
 			void			_CalculatePositions();
@@ -132,6 +151,7 @@ private:
 			void			_DrawFlowDots(BPoint from, BPoint to,
 								float phase, rgb_color color);
 			void			_DrawTraceRoutes();
+			void			_DrawTopologyEdges();
 			void			_DrawInfoPanel();
 			void			_DrawLinkQualityLegend();
 			void			_DrawStats();
@@ -146,6 +166,10 @@ private:
 			float			_ThicknessForSNR(int8 snr) const;
 			rgb_color		_StatusColor(NodeStatus status) const;
 			float			_DistanceForRssi(int8 rssi) const;
+			uint8			_HashForContact(const uint8* pubKeyPrefix) const;
+			MapNode*		_MatchHopToContact(uint8 hopHash) const;
+			MapNode*		_FindNodeByPrefix(const uint8* prefix) const;
+			MapNode*		_FindRelayForNode(const MapNode* node) const;
 
 			BObjectList<MapNode, true>	fNodes;
 			MapNode			fSelfNode;
@@ -159,6 +183,7 @@ private:
 			bool			fDragging;
 
 			BObjectList<TraceRoute, true>	fTraceRoutes;
+			BObjectList<TopologyEdge, true>	fEdges;
 };
 
 
@@ -180,6 +205,8 @@ public:
 private:
 			void			_RequestUpdate();
 			void			_RequestAutoTrace();
+			void			_RequestFullDiscovery();
+			void			_DiscoveryTick();
 
 			BWindow*		fParent;
 			NetworkMapView*	fMapView;
@@ -189,12 +216,19 @@ private:
 			BCheckBox*		fAutoTraceCheck;
 			BSlider*		fZoomSlider;
 			BButton*		fRefreshButton;
+			BButton*		fMapNetworkButton;
 			BButton*		fCloseButton;
 
 			BMessageRunner*	fRefreshTimer;
 			BMessageRunner*	fAutoTraceTimer;
+			BMessageRunner*	fDiscoveryTimer;
 			char			fSelfName[64];
 			int32			fAutoTraceIndex;
+
+			// Discovery state
+			BObjectList<MapNode, false>	fDiscoveryQueue;
+			int32			fDiscoveryTotal;
+			bool			fDiscoveryActive;
 };
 
 #endif // NETWORKMAPWINDOW_H
