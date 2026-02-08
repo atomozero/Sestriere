@@ -1919,6 +1919,7 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 		CapturedPacket pkt;
 		pkt.index = ++fRawPacketCount;
 		pkt.timestamp = (uint32)real_time_clock();
+		pkt.captureTime = system_time();
 		PacketAnalyzerWindow::_DecodePacket(pkt, data, length);
 
 		// Resolve contact name from pubkey prefix

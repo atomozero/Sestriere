@@ -104,20 +104,21 @@ struct ContactInfo {
 
 // Captured raw radio packet for Packet Analyzer
 struct CapturedPacket {
-	uint32	index;				// Sequential packet number
-	uint32	timestamp;			// Capture time (real_time_clock)
-	uint8	code;				// MeshCore response/push code
-	int8	snr;				// Signal-to-noise ratio
-	int8	rssi;				// Signal strength
-	uint8	pathLen;			// Hop count
-	uint16	payloadSize;		// Raw payload size
-	uint8	payload[512];		// Raw payload data
-	char	typeStr[32];		// Human-readable type name
-	char	sourceStr[80];		// Source identifier (name + hex key prefix)
-	char	summary[128];		// Decoded summary text
+	uint32		index;				// Sequential packet number
+	uint32		timestamp;			// Capture time (real_time_clock, seconds)
+	bigtime_t	captureTime;		// Capture time (system_time, microseconds)
+	uint8		code;				// MeshCore response/push code
+	int8		snr;				// Signal-to-noise ratio
+	int8		rssi;				// Signal strength
+	uint8		pathLen;			// Hop count
+	uint16		payloadSize;		// Raw payload size
+	uint8		payload[512];		// Raw payload data
+	char		typeStr[32];		// Human-readable type name
+	char		sourceStr[80];		// Source identifier (name + hex key prefix)
+	char		summary[128];		// Decoded summary text
 
-	CapturedPacket() : index(0), timestamp(0), code(0), snr(0), rssi(0),
-					   pathLen(0), payloadSize(0) {
+	CapturedPacket() : index(0), timestamp(0), captureTime(0), code(0),
+					   snr(0), rssi(0), pathLen(0), payloadSize(0) {
 		memset(payload, 0, sizeof(payload));
 		memset(typeStr, 0, sizeof(typeStr));
 		memset(sourceStr, 0, sizeof(sourceStr));

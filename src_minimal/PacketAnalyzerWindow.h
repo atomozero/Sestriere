@@ -32,6 +32,7 @@ class BTextView;
 enum {
 	kIndexColumn = 0,
 	kTimeColumn,
+	kDeltaColumn,
 	kTypeColumn,
 	kSourceColumn,
 	kSNRColumn,
@@ -102,6 +103,9 @@ private:
 
 	static	rgb_color		_PacketCategoryColor(uint8 code);
 	static	const char*		_SignalQualityString(int8 snr);
+	static	void			_FormatDelta(bigtime_t deltaUs, char* buf,
+								size_t bufSize);
+	static	rgb_color		_DeltaColor(bigtime_t deltaUs);
 
 			// Filtering
 			bool			_MatchesFilter(const CapturedPacket& packet);

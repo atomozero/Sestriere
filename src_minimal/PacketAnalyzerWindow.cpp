@@ -292,6 +292,16 @@ void
 PacketAnalyzerWindow::AddPacket(const CapturedPacket& packet)
 {
 	CapturedPacket* stored = new CapturedPacket(packet);
+
+	// Calculate delta-t from previous packet
+	bigtime_t deltaUs = -1;
+	int32 prevIdx = fPackets.CountItems() - 1;
+	if (prevIdx >= 0) {
+		CapturedPacket* prev = fPackets.ItemAt(prevIdx);
+		if (prev != NULL && stored->captureTime > 0 && prev->captureTime > 0)
+			deltaUs = stored->captureTime - prev->captureTime;
+	}
+
 	fPackets.AddItem(stored);
 
 	// Rate tracking
@@ -312,6 +322,9 @@ PacketAnalyzerWindow::AddPacket(const CapturedPacket& packet)
 		else
 			snprintf(timeStr, sizeof(timeStr), "--:--:--");
 
+		char deltaStr[24];
+		_FormatDelta(deltaUs, deltaStr, sizeof(deltaStr));
+
 		char sizeStr[12];
 		snprintf(sizeStr, sizeof(sizeStr), "%u", stored->payloadSize);
 
@@ -323,6 +336,8 @@ PacketAnalyzerWindow::AddPacket(const CapturedPacket& packet)
 
 		row->SetField(new BStringField(indexStr), kIndexColumn);
 		row->SetField(new BStringField(timeStr), kTimeColumn);
+		row->SetField(new ColorStringField(deltaStr,
+			_DeltaColor(deltaUs)), kDeltaColumn);
 		row->SetField(new ColorStringField(stored->typeStr,
 			_PacketCategoryColor(stored->code)), kTypeColumn);
 		row->SetField(new BStringField(stored->sourceStr), kSourceColumn);
@@ -448,6 +463,8 @@ PacketAnalyzerWindow::_BuildUI()
 		B_TRUNCATE_END, B_ALIGN_RIGHT), kIndexColumn);
 	fPacketList->AddColumn(new BStringColumn("Time", 70, 60, 100,
 		B_TRUNCATE_END), kTimeColumn);
+	fPacketList->AddColumn(new ColorStringColumn(B_UTF8_OPEN_QUOTE "t",
+		65, 45, 100, B_TRUNCATE_END, B_ALIGN_RIGHT), kDeltaColumn);
 	fPacketList->AddColumn(new ColorStringColumn("Type", 110, 80, 160,
 		B_TRUNCATE_END), kTypeColumn);
 	fPacketList->AddColumn(new BStringColumn("Source", 90, 60, 130,
@@ -977,6 +994,61 @@ PacketAnalyzerWindow::_SignalQualityString(int8 snr)
 	if (snr > -10)
 		return "Poor";
 	return "Bad";
+}
+
+
+/* static */ void
+PacketAnalyzerWindow::_FormatDelta(bigtime_t deltaUs, char* buf, size_t bufSize)
+{
+	if (deltaUs < 0) {
+		strlcpy(buf, "-", bufSize);
+	} else if (deltaUs < 1000) {
+		// Microseconds
+		snprintf(buf, bufSize, "%ldus", (long)deltaUs);
+	} else if (deltaUs < 1000000) {
+		// Milliseconds
+		snprintf(buf, bufSize, "%.1fms", deltaUs / 1000.0);
+	} else if (deltaUs < 60000000LL) {
+		// Seconds
+		snprintf(buf, bufSize, "%.1fs", deltaUs / 1000000.0);
+	} else {
+		// Minutes
+		snprintf(buf, bufSize, "%.0fm%02ds",
+			deltaUs / 60000000.0,
+			(int)((deltaUs / 1000000) % 60));
+	}
+}
+
+
+/* static */ rgb_color
+PacketAnalyzerWindow::_DeltaColor(bigtime_t deltaUs)
+{
+	bool isDark = ui_color(B_PANEL_BACKGROUND_COLOR).Brightness() < 128;
+
+	if (deltaUs < 0) {
+		// No delta (first packet)
+		return tint_color(ui_color(B_LIST_ITEM_TEXT_COLOR),
+			B_LIGHTEN_1_TINT);
+	}
+
+	if (deltaUs < 100000) {
+		// Burst: < 100ms — amber warning
+		rgb_color c = (rgb_color){211, 132, 0, 255};
+		if (isDark)
+			c = tint_color(c, B_LIGHTEN_1_TINT);
+		return c;
+	}
+
+	if (deltaUs > 10000000) {
+		// Long gap: > 10s — red warning
+		rgb_color c = (rgb_color){220, 20, 60, 255};
+		if (isDark)
+			c = tint_color(c, B_LIGHTEN_1_TINT);
+		return c;
+	}
+
+	// Normal range — default text
+	return ui_color(B_LIST_ITEM_TEXT_COLOR);
 }
 
 
@@ -1653,6 +1725,19 @@ PacketAnalyzerWindow::_RebuildFilteredList()
 		else
 			snprintf(timeStr, sizeof(timeStr), "--:--:--");
 
+		// Calculate delta-t from previous packet in full list
+		bigtime_t deltaUs = -1;
+		if (i > 0) {
+			CapturedPacket* prev = fPackets.ItemAt(i - 1);
+			if (prev != NULL && packet->captureTime > 0
+				&& prev->captureTime > 0) {
+				deltaUs = packet->captureTime - prev->captureTime;
+			}
+		}
+
+		char deltaStr[24];
+		_FormatDelta(deltaUs, deltaStr, sizeof(deltaStr));
+
 		char sizeStr[12];
 		snprintf(sizeStr, sizeof(sizeStr), "%u", packet->payloadSize);
 
@@ -1664,6 +1749,8 @@ PacketAnalyzerWindow::_RebuildFilteredList()
 
 		row->SetField(new BStringField(indexStr), kIndexColumn);
 		row->SetField(new BStringField(timeStr), kTimeColumn);
+		row->SetField(new ColorStringField(deltaStr,
+			_DeltaColor(deltaUs)), kDeltaColumn);
 		row->SetField(new ColorStringField(packet->typeStr,
 			_PacketCategoryColor(packet->code)), kTypeColumn);
 		row->SetField(new BStringField(packet->sourceStr), kSourceColumn);
