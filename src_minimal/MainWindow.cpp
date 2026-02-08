@@ -179,9 +179,6 @@ MainWindow::MainWindow()
 	fSerialHandler = new SerialHandler(this);
 	fSerialHandler->Run();
 
-	// Create MQTT log window (hidden) so it collects entries from the start
-	fMqttLogWindow = new MqttLogWindow();
-
 	// MQTT client is created lazily when needed
 	fprintf(stderr, "[MainWindow] MQTT will be initialized on demand\n");
 	fMqttClient = NULL;
@@ -838,6 +835,8 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 
 		case MSG_SHOW_MQTT_LOG:
+			if (fMqttLogWindow == NULL)
+				fMqttLogWindow = new MqttLogWindow();
 			_ShowWindow(fMqttLogWindow);
 			break;
 

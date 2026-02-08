@@ -32,6 +32,7 @@ static const uint32 kMsgClear = 'mclr';
 static const uint32 kMsgFilterChanged = 'mflt';
 static const uint32 kMsgSearchChanged = 'msrc';
 static const uint32 kMsgAutoScrollToggle = 'masc';
+static const uint32 kMsgRefreshOnShow = 'mrfs';
 
 // Filter values: -1 = All, 0-4 = specific MqttLogType
 static const int32 kFilterAll = -1;
@@ -181,10 +182,35 @@ MqttLogWindow::MessageReceived(BMessage* message)
 		case kMsgAutoScrollToggle:
 			break;
 
+		case kMsgRefreshOnShow:
+			// Sync views with internal state after window is fully visible
+			if (fIsConnected) {
+				fStatusView->SetText("Connected");
+				fStatusView->SetHighUIColor(B_SUCCESS_COLOR);
+			} else {
+				fStatusView->SetText("Disconnected");
+				fStatusView->SetHighUIColor(B_FAILURE_COLOR);
+			}
+			_RebuildLog();
+			_UpdateStatusBar();
+			break;
+
 		default:
 			BWindow::MessageReceived(message);
 			break;
 	}
+}
+
+
+void
+MqttLogWindow::Show()
+{
+	BWindow::Show();
+
+	// Defer UI rebuild — BWindow::Show() starts the looper; doing
+	// heavy view operations while an external thread holds our lock
+	// can deadlock.  PostMessage queues work for after unlock.
+	PostMessage(kMsgRefreshOnShow);
 }
 
 
@@ -199,16 +225,24 @@ MqttLogWindow::QuitRequested()
 void
 MqttLogWindow::SetMqttStatus(bool connected)
 {
+	// Always update internal state
 	fIsConnected = connected;
 	SetTitle(connected ? "MQTT Log \xe2\x80\x94 Connected"
 		: "MQTT Log \xe2\x80\x94 Disconnected");
 
-	if (connected) {
+	if (connected)
 		fConnectTime = time(NULL);
+	else
+		fConnectTime = 0;
+
+	// Skip view updates if window was never shown
+	if (IsHidden())
+		return;
+
+	if (connected) {
 		fStatusView->SetText("Connected");
 		fStatusView->SetHighUIColor(B_SUCCESS_COLOR);
 	} else {
-		fConnectTime = 0;
 		fStatusView->SetText("Disconnected");
 		fStatusView->SetHighUIColor(B_FAILURE_COLOR);
 	}
@@ -234,6 +268,10 @@ MqttLogWindow::AddLogEntry(int32 type, const char* text)
 
 	// Prune if over limit
 	_PruneEntries();
+
+	// Skip UI operations if window was never shown — views aren't laid out yet
+	if (IsHidden())
+		return;
 
 	// Only append to view if it matches the current filter
 	if (_MatchesFilter(entry))

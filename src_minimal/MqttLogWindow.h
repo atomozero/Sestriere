@@ -41,6 +41,7 @@ public:
 
 	virtual void		MessageReceived(BMessage* message);
 	virtual bool		QuitRequested();
+	virtual void		Show();
 
 			void		AddLogEntry(int32 type, const char* text);
 			void		SetMqttStatus(bool connected);

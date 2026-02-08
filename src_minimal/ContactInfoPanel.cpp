@@ -91,10 +91,11 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	SetExplicitMinSize(BSize(kPanelMinWidth, B_SIZE_UNSET));
 	SetExplicitPreferredSize(BSize(220, B_SIZE_UNSET));
 
-	// Create SNR chart child view — always visible, positioned in _PositionChart()
+	// Create SNR chart child view — hidden until a contact is selected
 	fSNRChart = new SNRChartView("snr_chart");
 	fSNRChart->MoveTo(kMargin, 280);
 	fSNRChart->ResizeTo(kPanelMinWidth - kMargin * 2, 100);
+	fSNRChart->Hide();
 	AddChild(fSNRChart);
 }
 
