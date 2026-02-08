@@ -9,6 +9,7 @@
 #define PACKETANALYZERWINDOW_H
 
 #include <Window.h>
+#include <ColumnTypes.h>
 #include <ObjectList.h>
 #include <String.h>
 
@@ -40,6 +41,33 @@ enum {
 };
 
 
+// BStringField subclass carrying a per-field color
+class ColorStringField : public BStringField {
+public:
+								ColorStringField(const char* string,
+									rgb_color color);
+
+			rgb_color			Color() const { return fColor; }
+
+private:
+			rgb_color			fColor;
+};
+
+
+// BStringColumn subclass that draws fields in the color stored in ColorStringField
+class ColorStringColumn : public BStringColumn {
+public:
+								ColorStringColumn(const char* title,
+									float width, float minWidth,
+									float maxWidth, uint32 truncate,
+									alignment align = B_ALIGN_LEFT);
+
+	virtual	void				DrawField(BField* field, BRect rect,
+									BView* parent);
+	virtual	bool				AcceptsField(const BField* field) const;
+};
+
+
 class PacketAnalyzerWindow : public BWindow {
 public:
 							PacketAnalyzerWindow(BWindow* parent);
@@ -67,7 +95,13 @@ private:
 			void			_UpdatePacketDetail(int32 index);
 			void			_FormatHexDump(const uint8* data, size_t length,
 								BString& output);
+			void			_FormatDecodedSection(
+								const CapturedPacket* packet,
+								BString& output);
 			void			_UpdateStatusBar();
+
+	static	rgb_color		_PacketCategoryColor(uint8 code);
+	static	const char*		_SignalQualityString(int8 snr);
 
 			// Filtering
 			bool			_MatchesFilter(const CapturedPacket& packet);

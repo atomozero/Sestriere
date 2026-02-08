@@ -1921,6 +1921,38 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 		pkt.timestamp = (uint32)real_time_clock();
 		PacketAnalyzerWindow::_DecodePacket(pkt, data, length);
 
+		// Resolve contact name from pubkey prefix
+		if (pkt.sourceStr[0] != '\0') {
+			// Determine pubkey offset in raw data based on packet code
+			int keyOffset = -1;
+			switch (pkt.code) {
+				case RSP_CONTACT_MSG_RECV_V3:
+					keyOffset = 4; break;
+				case RSP_CONTACT_MSG_RECV:
+					keyOffset = 1; break;
+				case PUSH_ADVERT:
+				case PUSH_NEW_ADVERT:
+				case PUSH_TELEMETRY_RESPONSE:
+				case RSP_CONTACT:
+					keyOffset = 1; break;
+				case RSP_SELF_INFO:
+					keyOffset = 4; break;
+				default:
+					break;
+			}
+			if (keyOffset >= 0
+				&& length >= (size_t)(keyOffset + kPubKeyPrefixSize)) {
+				ContactInfo* contact = _FindContactByPrefix(
+					data + keyOffset, kPubKeyPrefixSize);
+				if (contact != NULL && contact->name[0] != '\0') {
+					char hexPrefix[8];
+					strlcpy(hexPrefix, pkt.sourceStr, sizeof(hexPrefix));
+					snprintf(pkt.sourceStr, sizeof(pkt.sourceStr),
+						"%s (%s)", contact->name, hexPrefix);
+				}
+			}
+		}
+
 		BMessage msg(MSG_PACKET_CAPTURED);
 		msg.AddData("packet", B_RAW_TYPE, &pkt, sizeof(pkt));
 

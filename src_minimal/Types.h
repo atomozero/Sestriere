@@ -113,7 +113,7 @@ struct CapturedPacket {
 	uint16	payloadSize;		// Raw payload size
 	uint8	payload[512];		// Raw payload data
 	char	typeStr[32];		// Human-readable type name
-	char	sourceStr[16];		// Source identifier (hex key prefix)
+	char	sourceStr[80];		// Source identifier (name + hex key prefix)
 	char	summary[128];		// Decoded summary text
 
 	CapturedPacket() : index(0), timestamp(0), code(0), snr(0), rssi(0),

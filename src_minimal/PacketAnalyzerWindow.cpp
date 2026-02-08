@@ -84,6 +84,56 @@ static inline rgb_color StatusBgColor()
 	return tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_1_TINT);
 }
 
+static inline rgb_color SectionHeaderColor()
+{
+	return ui_color(B_CONTROL_HIGHLIGHT_COLOR);
+}
+
+
+// #pragma mark - ColorStringField
+
+
+ColorStringField::ColorStringField(const char* string, rgb_color color)
+	:
+	BStringField(string),
+	fColor(color)
+{
+}
+
+
+// #pragma mark - ColorStringColumn
+
+
+ColorStringColumn::ColorStringColumn(const char* title, float width,
+	float minWidth, float maxWidth, uint32 truncate, alignment align)
+	:
+	BStringColumn(title, width, minWidth, maxWidth, truncate, align)
+{
+}
+
+
+void
+ColorStringColumn::DrawField(BField* field, BRect rect, BView* parent)
+{
+	ColorStringField* colorField = dynamic_cast<ColorStringField*>(field);
+	if (colorField != NULL) {
+		rgb_color savedColor = parent->HighColor();
+		parent->SetHighColor(colorField->Color());
+		BStringColumn::DrawField(field, rect, parent);
+		parent->SetHighColor(savedColor);
+	} else {
+		BStringColumn::DrawField(field, rect, parent);
+	}
+}
+
+
+bool
+ColorStringColumn::AcceptsField(const BField* field) const
+{
+	return dynamic_cast<const ColorStringField*>(field) != NULL
+		|| dynamic_cast<const BStringField*>(field) != NULL;
+}
+
 
 PacketAnalyzerWindow::PacketAnalyzerWindow(BWindow* parent)
 	:
@@ -274,7 +324,8 @@ PacketAnalyzerWindow::AddPacket(const CapturedPacket& packet)
 
 		row->SetField(new BStringField(indexStr), kIndexColumn);
 		row->SetField(new BStringField(timeStr), kTimeColumn);
-		row->SetField(new BStringField(stored->typeStr), kTypeColumn);
+		row->SetField(new ColorStringField(stored->typeStr,
+			_PacketCategoryColor(stored->code)), kTypeColumn);
 		row->SetField(new BStringField(stored->sourceStr), kSourceColumn);
 		row->SetField(new BStringField(snrStr), kSNRColumn);
 		row->SetField(new BStringField(sizeStr), kSizeColumn);
@@ -398,7 +449,7 @@ PacketAnalyzerWindow::_BuildUI()
 		B_TRUNCATE_END, B_ALIGN_RIGHT), kIndexColumn);
 	fPacketList->AddColumn(new BStringColumn("Time", 70, 60, 100,
 		B_TRUNCATE_END), kTimeColumn);
-	fPacketList->AddColumn(new BStringColumn("Type", 110, 80, 160,
+	fPacketList->AddColumn(new ColorStringColumn("Type", 110, 80, 160,
 		B_TRUNCATE_END), kTypeColumn);
 	fPacketList->AddColumn(new BStringColumn("Source", 90, 60, 130,
 		B_TRUNCATE_END), kSourceColumn);
@@ -807,6 +858,461 @@ PacketAnalyzerWindow::_PacketTypeName(uint8 code)
 }
 
 
+/* static */ rgb_color
+PacketAnalyzerWindow::_PacketCategoryColor(uint8 code)
+{
+	rgb_color base;
+	bool isDark = ui_color(B_PANEL_BACKGROUND_COLOR).Brightness() < 128;
+
+	switch (code) {
+		// Messages — steel blue
+		case RSP_CONTACT_MSG_RECV:
+		case RSP_CONTACT_MSG_RECV_V3:
+		case RSP_CHANNEL_MSG_RECV:
+		case RSP_CHANNEL_MSG_RECV_V3:
+			base = (rgb_color){41, 128, 185, 255};
+			if (isDark)
+				base = tint_color(base, B_LIGHTEN_1_TINT);
+			return base;
+
+		// Adverts — emerald green
+		case PUSH_ADVERT:
+		case PUSH_NEW_ADVERT:
+			base = (rgb_color){39, 174, 96, 255};
+			if (isDark)
+				base = tint_color(base, B_LIGHTEN_1_TINT);
+			return base;
+
+		// Alerts — amber
+		case PUSH_MSG_WAITING:
+		case PUSH_LOGIN_SUCCESS:
+		case PUSH_LOGIN_FAIL:
+		case PUSH_SEND_CONFIRMED:
+		case PUSH_PATH_UPDATED:
+			base = (rgb_color){211, 132, 0, 255};
+			if (isDark)
+				base = tint_color(base, B_LIGHTEN_1_TINT);
+			return base;
+
+		// Raw/Radio — purple
+		case PUSH_RAW_RADIO_PACKET:
+		case PUSH_TRACE_DATA:
+		case PUSH_TELEMETRY_RESPONSE:
+		case PUSH_RAW_DATA:
+			base = (rgb_color){142, 68, 173, 255};
+			if (isDark)
+				base = tint_color(base, B_LIGHTEN_1_TINT);
+			return base;
+
+		// Sent — normal text color
+		case RSP_SENT:
+			return ui_color(B_LIST_ITEM_TEXT_COLOR);
+
+		// System — dimmed text
+		default:
+			return tint_color(ui_color(B_LIST_ITEM_TEXT_COLOR),
+				B_LIGHTEN_1_TINT);
+	}
+}
+
+
+/* static */ const char*
+PacketAnalyzerWindow::_SignalQualityString(int8 snr)
+{
+	if (snr > 5)
+		return "Excellent";
+	if (snr > 0)
+		return "Good";
+	if (snr > -5)
+		return "Fair";
+	if (snr > -10)
+		return "Poor";
+	return "Bad";
+}
+
+
+void
+PacketAnalyzerWindow::_FormatDecodedSection(const CapturedPacket* packet,
+	BString& output)
+{
+	output = "";
+
+	switch (packet->code) {
+		case RSP_CONTACT_MSG_RECV_V3:
+		case RSP_CONTACT_MSG_RECV:
+		{
+			output << "\xe2\x9c\x89  Direct Message Received\n";
+			output << "A private message was received from another "
+				"node in the mesh.\n";
+
+			if (packet->sourceStr[0] != '\0')
+				output << "  From:     " << packet->sourceStr << "\n";
+
+			// Extract text preview from summary
+			if (packet->summary[0] != '\0') {
+				const char* quote = strchr(packet->summary, '"');
+				if (quote != NULL) {
+					const char* end = strrchr(packet->summary, '"');
+					if (end != NULL && end > quote) {
+						BString msg;
+						msg.Append(quote + 1, end - quote - 1);
+						output << "  Message:  \"" << msg << "\"\n";
+					}
+				}
+			}
+
+			if (packet->snr != 0) {
+				output << "  Signal:   " << _SignalQualityString(packet->snr);
+				char snrBuf[16];
+				snprintf(snrBuf, sizeof(snrBuf), " (SNR %d dB)", packet->snr);
+				output << snrBuf << "\n";
+			}
+
+			if (packet->pathLen > 0) {
+				char pathBuf[32];
+				snprintf(pathBuf, sizeof(pathBuf), "%u", packet->pathLen);
+				output << "  Path:     " << pathBuf
+					<< " hop(s) through the mesh\n";
+			}
+			break;
+		}
+
+		case RSP_CHANNEL_MSG_RECV_V3:
+		case RSP_CHANNEL_MSG_RECV:
+		{
+			output << "\xf0\x9f\x93\xa2  Channel Message Received\n";
+			output << "A message was received on the public channel.\n";
+
+			if (packet->summary[0] != '\0') {
+				const char* quote = strchr(packet->summary, '"');
+				if (quote != NULL) {
+					const char* end = strrchr(packet->summary, '"');
+					if (end != NULL && end > quote) {
+						BString msg;
+						msg.Append(quote + 1, end - quote - 1);
+						output << "  Message:  \"" << msg << "\"\n";
+					}
+				}
+			}
+
+			if (packet->snr != 0) {
+				output << "  Signal:   " << _SignalQualityString(packet->snr);
+				char snrBuf[16];
+				snprintf(snrBuf, sizeof(snrBuf), " (SNR %d dB)", packet->snr);
+				output << snrBuf << "\n";
+			}
+			break;
+		}
+
+		case PUSH_ADVERT:
+		case PUSH_NEW_ADVERT:
+		{
+			if (packet->code == PUSH_NEW_ADVERT)
+				output << "\xf0\x9f\x86\x95  New Node Advertisement\n";
+			else
+				output << "\xf0\x9f\x93\xa1  Node Advertisement\n";
+
+			if (packet->code == PUSH_NEW_ADVERT) {
+				output << "A previously unknown node announced its "
+					"presence on the mesh.\n";
+			} else {
+				output << "A known node announced its presence on "
+					"the mesh.\n";
+			}
+
+			if (packet->sourceStr[0] != '\0')
+				output << "  Node:     " << packet->sourceStr << "\n";
+			break;
+		}
+
+		case RSP_BATT_AND_STORAGE:
+		{
+			output << "\xf0\x9f\x94\x8b  Battery & Storage Report\n";
+			output << "The radio reported its battery and storage "
+				"status.\n";
+
+			if (packet->payloadSize >= 3) {
+				uint16 battMv = packet->payload[1]
+					| (packet->payload[2] << 8);
+				int pct = ((int)battMv - 3000) * 100 / 1200;
+				if (pct < 0) pct = 0;
+				if (pct > 100) pct = 100;
+				char buf[48];
+				snprintf(buf, sizeof(buf), "  Battery:  %u mV (~%d%%)\n",
+					battMv, pct);
+				output << buf;
+			}
+
+			if (packet->payloadSize >= 11) {
+				uint32 usedKb = packet->payload[3]
+					| (packet->payload[4] << 8)
+					| (packet->payload[5] << 16)
+					| (packet->payload[6] << 24);
+				uint32 totalKb = packet->payload[7]
+					| (packet->payload[8] << 8)
+					| (packet->payload[9] << 16)
+					| (packet->payload[10] << 24);
+				char buf[64];
+				snprintf(buf, sizeof(buf),
+					"  Storage:  %u / %u KB used\n", usedKb, totalKb);
+				output << buf;
+			}
+			break;
+		}
+
+		case RSP_SELF_INFO:
+		{
+			output << "\xf0\x9f\x93\x8b  Device Identity\n";
+			output << "The radio reported its identity and "
+				"configuration.\n";
+
+			if (packet->sourceStr[0] != '\0')
+				output << "  Node ID:  " << packet->sourceStr << "\n";
+
+			if (packet->payloadSize >= 37) {
+				uint8 nodeType = packet->payload[36];
+				const char* typeStr = "Unknown";
+				if (nodeType == 1) typeStr = "Chat Node";
+				else if (nodeType == 2) typeStr = "Repeater";
+				else if (nodeType == 3) typeStr = "Room Server";
+				output << "  Type:     " << typeStr << "\n";
+			}
+			break;
+		}
+
+		case RSP_SENT:
+		{
+			output << "\xe2\x9c\x85  Message Sent\n";
+			output << "The radio successfully transmitted your "
+				"message.\n";
+			break;
+		}
+
+		case RSP_OK:
+		{
+			output << "\xe2\x9c\x93  Command Acknowledged\n";
+			output << "The radio processed your command "
+				"successfully.\n";
+			break;
+		}
+
+		case RSP_ERR:
+		{
+			if (packet->payloadSize >= 2 && packet->payload[1] <= 3) {
+				output << "\xf0\x9f\x94\x97  Connection Established\n";
+				char buf[48];
+				snprintf(buf, sizeof(buf),
+					"APP_START acknowledged, protocol version %u.\n",
+					packet->payload[1]);
+				output << buf;
+			} else {
+				output << "\xe2\x9a\xa0  Error Response\n";
+				output << "The radio returned an error.\n";
+				if (packet->payloadSize >= 2) {
+					char buf[32];
+					snprintf(buf, sizeof(buf), "  Code:     %u\n",
+						packet->payload[1]);
+					output << buf;
+				}
+			}
+			break;
+		}
+
+		case RSP_CONTACTS_START:
+		{
+			output << "\xf0\x9f\x93\x96  Contact Sync Started\n";
+			output << "The radio is sending its contact list.\n";
+			break;
+		}
+
+		case RSP_CONTACT:
+		{
+			output << "\xf0\x9f\x91\xa4  Contact Data\n";
+			output << "Information about a node in the contact "
+				"list.\n";
+
+			if (packet->sourceStr[0] != '\0')
+				output << "  Node:     " << packet->sourceStr << "\n";
+
+			// Extract name from summary "Contact: name"
+			if (strncmp(packet->summary, "Contact: ", 9) == 0)
+				output << "  Name:     " << (packet->summary + 9) << "\n";
+
+			if (packet->payloadSize >= 34) {
+				uint8 nodeType = packet->payload[33];
+				const char* typeStr = "Unknown";
+				if (nodeType == 1) typeStr = "Chat Node";
+				else if (nodeType == 2) typeStr = "Repeater";
+				else if (nodeType == 3) typeStr = "Room Server";
+				output << "  Type:     " << typeStr << "\n";
+			}
+			break;
+		}
+
+		case RSP_END_OF_CONTACTS:
+		{
+			output << "\xf0\x9f\x93\x96  Contact Sync Complete\n";
+			output << "All contacts have been received from the "
+				"radio.\n";
+			break;
+		}
+
+		case RSP_DEVICE_INFO:
+		{
+			output << "\xe2\x84\xb9  Device Information\n";
+			output << "Hardware and firmware details.\n";
+
+			if (packet->payloadSize >= 4) {
+				char buf[48];
+				snprintf(buf, sizeof(buf),
+					"  Max contacts:  %u\n", packet->payload[2] * 2);
+				output << buf;
+				snprintf(buf, sizeof(buf),
+					"  Max channels:  %u\n", packet->payload[3]);
+				output << buf;
+			}
+			break;
+		}
+
+		case RSP_STATS:
+		{
+			output << "\xf0\x9f\x93\x8a  Statistics Response\n";
+
+			if (packet->payloadSize >= 2) {
+				uint8 statType = packet->payload[1];
+				if (statType == 0) {
+					output << "Core statistics (uptime, battery).\n";
+					if (packet->payloadSize >= 8) {
+						uint32 uptime = packet->payload[4]
+							| (packet->payload[5] << 8)
+							| (packet->payload[6] << 16)
+							| (packet->payload[7] << 24);
+						char buf[48];
+						snprintf(buf, sizeof(buf),
+							"  Uptime:   %u seconds\n", uptime);
+						output << buf;
+					}
+				} else if (statType == 1) {
+					output << "Radio statistics (noise floor, "
+						"RSSI, SNR).\n";
+				} else if (statType == 2) {
+					output << "Packet statistics (sent/received "
+						"counts).\n";
+				} else {
+					output << "Statistics from the radio.\n";
+				}
+			} else {
+				output << "Statistics from the radio.\n";
+			}
+			break;
+		}
+
+		case PUSH_SEND_CONFIRMED:
+		{
+			output << "\xe2\x9c\x93\xe2\x9c\x93  Delivery Confirmed\n";
+			output << "The recipient acknowledged receiving your "
+				"message.\n";
+			break;
+		}
+
+		case PUSH_PATH_UPDATED:
+		{
+			output << "\xf0\x9f\x94\x80  Path Updated\n";
+			output << "A new or better route was found to a node "
+				"in the mesh.\n";
+			break;
+		}
+
+		case PUSH_MSG_WAITING:
+		{
+			output << "\xf0\x9f\x93\xac  Messages Waiting\n";
+			output << "There are queued messages on the radio "
+				"device.\n";
+			break;
+		}
+
+		case PUSH_LOGIN_SUCCESS:
+		{
+			output << "\xf0\x9f\x94\x93  Login Successful\n";
+			output << "Successfully authenticated with a "
+				"repeater or room.\n";
+			break;
+		}
+
+		case PUSH_LOGIN_FAIL:
+		{
+			output << "\xf0\x9f\x94\x92  Login Failed\n";
+			output << "Authentication was rejected by the "
+				"repeater or room.\n";
+			break;
+		}
+
+		case PUSH_RAW_RADIO_PACKET:
+		{
+			output << "\xf0\x9f\x93\xa1  Raw Radio Packet\n";
+			output << "A low-level radio frame captured from the "
+				"air.\n";
+
+			if (packet->payloadSize >= 5) {
+				char buf[64];
+				uint8 seqLo = packet->payload[1];
+				uint8 counter = packet->payload[2];
+				uint8 flags = packet->payload[4];
+				snprintf(buf, sizeof(buf),
+					"  Sequence: %u\n  Flags:    0x%02X\n",
+					seqLo | (counter << 8), flags);
+				output << buf;
+			}
+			break;
+		}
+
+		case PUSH_TRACE_DATA:
+		{
+			output << "\xf0\x9f\x97\xba  Trace Route Data\n";
+			output << "Path information showing how data travels "
+				"through the mesh.\n";
+
+			if (packet->payloadSize >= 12) {
+				char buf[32];
+				snprintf(buf, sizeof(buf), "  Hops:     %u\n",
+					packet->payload[2]);
+				output << buf;
+			}
+			break;
+		}
+
+		case PUSH_TELEMETRY_RESPONSE:
+		{
+			output << "\xf0\x9f\x8c\xa1  Telemetry Data\n";
+			output << "Sensor readings received from a remote "
+				"node.\n";
+
+			if (packet->sourceStr[0] != '\0')
+				output << "  From:     " << packet->sourceStr << "\n";
+			break;
+		}
+
+		default:
+		{
+			if (packet->code >= 0x80) {
+				output << "\xf0\x9f\x94\x94  Push Notification\n";
+				output << "An unsolicited notification from the "
+					"radio.\n";
+			} else {
+				output << "\xe2\x86\xa9  Response\n";
+				output << "A response to a command sent to the "
+					"radio.\n";
+			}
+			char buf[32];
+			snprintf(buf, sizeof(buf), "  Code:     0x%02X\n",
+				packet->code);
+			output << buf;
+			break;
+		}
+	}
+}
+
+
 void
 PacketAnalyzerWindow::_UpdatePacketDetail(int32 index)
 {
@@ -836,16 +1342,18 @@ PacketAnalyzerWindow::_UpdatePacketDetail(int32 index)
 	if (packet == NULL)
 		return;
 
-	// Build detail text
-	BString detail;
+	// === Section 1: Decoded (human-readable) ===
+	BString decoded;
+	_FormatDecodedSection(packet, decoded);
 
-	// Decoded fields
-	detail << "--- Packet #" << packet->index << " ---\n";
-	detail << "Type:      " << packet->typeStr;
-	detail << " (0x" ;
+	// === Section 2: Technical Details ===
+	BString technical;
+	technical << "\n--- Technical Details ---\n";
+
+	technical << "Type:      " << packet->typeStr;
 	char codeBuf[8];
 	snprintf(codeBuf, sizeof(codeBuf), "%02X", packet->code);
-	detail << codeBuf << ")\n";
+	technical << " (0x" << codeBuf << ")\n";
 
 	char timeBuf[32];
 	time_t t = (time_t)packet->timestamp;
@@ -854,42 +1362,86 @@ PacketAnalyzerWindow::_UpdatePacketDetail(int32 index)
 		strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", &tm);
 	else
 		snprintf(timeBuf, sizeof(timeBuf), "unknown");
-	detail << "Time:      " << timeBuf << "\n";
+	technical << "Time:      " << timeBuf << "\n";
 
 	if (packet->sourceStr[0] != '\0')
-		detail << "Source:    " << packet->sourceStr << "\n";
+		technical << "Source:    " << packet->sourceStr << "\n";
 	if (packet->snr != 0) {
 		char snrBuf[16];
 		snprintf(snrBuf, sizeof(snrBuf), "%d dB", packet->snr);
-		detail << "SNR:       " << snrBuf << "\n";
+		technical << "SNR:       " << snrBuf << "\n";
 	}
-	detail << "Size:      " << packet->payloadSize << " bytes\n";
+	technical << "Size:      " << packet->payloadSize << " bytes\n";
 	if (packet->summary[0] != '\0')
-		detail << "Summary:   " << packet->summary << "\n";
+		technical << "Summary:   " << packet->summary << "\n";
 
-	detail << "\n--- Hex Dump ---\n";
-
+	// === Section 3: Hex Dump ===
+	BString hexHeader("\n--- Hex Dump ---\n");
 	BString hexDump;
 	_FormatHexDump(packet->payload, packet->payloadSize, hexDump);
-	detail << hexDump;
+
+	// Combine all sections
+	BString detail;
+	detail << decoded << technical << hexHeader << hexDump;
 
 	fDetailView->SetText(detail.String());
 
-	// Apply colors to the detail view
+	// === Apply fonts and colors ===
+	BFont plainFont(be_plain_font);
+	plainFont.SetSize(11);
 	BFont monoFont(be_fixed_font);
 	monoFont.SetSize(11);
 
-	// Header section in normal text color
 	rgb_color textColor = DetailTextColor();
-	fDetailView->SetFontAndColor(0, detail.Length(), &monoFont,
-		B_FONT_ALL, &textColor);
+	rgb_color headerColor = SectionHeaderColor();
+	rgb_color categoryColor = _PacketCategoryColor(packet->code);
 
-	// Find hex dump section and color it
-	int32 hexStart = detail.FindFirst("--- Hex Dump ---");
-	if (hexStart >= 0) {
-		rgb_color headerColor = ui_color(B_CONTROL_HIGHLIGHT_COLOR);
-		fDetailView->SetFontAndColor(hexStart, hexStart + 16, &monoFont,
-			B_FONT_ALL, &headerColor);
+	int32 decodedLen = decoded.Length();
+	int32 techStart = decodedLen;
+	int32 techEnd = techStart + technical.Length();
+	int32 hexHdrStart = techEnd;
+	int32 totalLen = detail.Length();
+
+	// Section 1: proportional font, normal text color
+	if (decodedLen > 0) {
+		fDetailView->SetFontAndColor(0, decodedLen, &plainFont,
+			B_FONT_ALL, &textColor);
+
+		// Color the first line (title) with category color
+		int32 firstNewline = decoded.FindFirst('\n');
+		if (firstNewline > 0) {
+			BFont boldPlain(be_plain_font);
+			boldPlain.SetSize(12);
+			boldPlain.SetFace(B_BOLD_FACE);
+			fDetailView->SetFontAndColor(0, firstNewline, &boldPlain,
+				B_FONT_ALL, &categoryColor);
+		}
+	}
+
+	// Section 2: monospace, normal text color
+	if (techEnd > techStart) {
+		fDetailView->SetFontAndColor(techStart, techEnd, &monoFont,
+			B_FONT_ALL, &textColor);
+
+		// Color the "--- Technical Details ---" header
+		int32 hdrLine = detail.FindFirst("--- Technical Details ---");
+		if (hdrLine >= 0) {
+			fDetailView->SetFontAndColor(hdrLine,
+				hdrLine + 24, &monoFont, B_FONT_ALL, &headerColor);
+		}
+	}
+
+	// Section 3: monospace, normal text color
+	if (totalLen > hexHdrStart) {
+		fDetailView->SetFontAndColor(hexHdrStart, totalLen, &monoFont,
+			B_FONT_ALL, &textColor);
+
+		// Color the "--- Hex Dump ---" header
+		int32 hexLabel = detail.FindFirst("--- Hex Dump ---");
+		if (hexLabel >= 0) {
+			fDetailView->SetFontAndColor(hexLabel,
+				hexLabel + 16, &monoFont, B_FONT_ALL, &headerColor);
+		}
 	}
 }
 
@@ -1051,7 +1603,8 @@ PacketAnalyzerWindow::_RebuildFilteredList()
 
 		row->SetField(new BStringField(indexStr), kIndexColumn);
 		row->SetField(new BStringField(timeStr), kTimeColumn);
-		row->SetField(new BStringField(packet->typeStr), kTypeColumn);
+		row->SetField(new ColorStringField(packet->typeStr,
+			_PacketCategoryColor(packet->code)), kTypeColumn);
 		row->SetField(new BStringField(packet->sourceStr), kSourceColumn);
 		row->SetField(new BStringField(snrStr), kSNRColumn);
 		row->SetField(new BStringField(sizeStr), kSizeColumn);
