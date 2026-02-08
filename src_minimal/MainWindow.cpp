@@ -419,6 +419,9 @@ MainWindow::_BuildUI()
 	// Hide search bar initially
 	fSearchBar->Hide();
 
+	// Hide chat header initially — info panel shows the contact name
+	fChatHeader->Hide();
+
 	// === RIGHT: Contact Info Panel ===
 	fInfoPanel = new ContactInfoPanel("info_panel");
 
@@ -610,10 +613,19 @@ MainWindow::MessageReceived(BMessage* message)
 
 		case MSG_TOGGLE_INFO_PANEL:
 		{
-			bool collapsed = fMainSplit->IsItemCollapsed(
-				fMainSplit->CountChildren() - 1);
-			fMainSplit->SetItemCollapsed(
-				fMainSplit->CountChildren() - 1, !collapsed);
+			int32 infoIndex = fMainSplit->CountChildren() - 1;
+			bool collapsed = fMainSplit->IsItemCollapsed(infoIndex);
+			fMainSplit->SetItemCollapsed(infoIndex, !collapsed);
+			// Hide chat header when info panel is visible (avoids duplicate name)
+			if (collapsed) {
+				// Info panel is being opened
+				if (!fChatHeader->IsHidden())
+					fChatHeader->Hide();
+			} else {
+				// Info panel is being closed
+				if (fChatHeader->IsHidden())
+					fChatHeader->Show();
+			}
 			break;
 		}
 

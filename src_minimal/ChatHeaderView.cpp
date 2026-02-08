@@ -13,6 +13,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 
 
 // Avatar colors (same as ContactItem)
@@ -146,34 +147,58 @@ ChatHeaderView::Draw(BRect updateRect)
 	BString statusText;
 	if (fIsChannel) {
 		statusText = "Public channel";
+	} else if (fContact != NULL) {
+		// Type
+		switch (fContact->type) {
+			case 1: statusText = "Chat"; break;
+			case 2: statusText = "Repeater"; break;
+			case 3: statusText = "Room"; break;
+			default: statusText = "Node"; break;
+		}
+
+		// Path
+		if (fPathLen >= 0) {
+			if (fPathLen == 0 || fPathLen == kPathLenDirect)
+				statusText << " · Direct";
+			else
+				statusText << BString().SetToFormat(" · %d hop%s",
+					fPathLen, fPathLen > 1 ? "s" : "");
+		}
+
+		// SNR
+		if (fSnr != 0)
+			statusText << BString().SetToFormat(" · SNR %d", fSnr);
+
+		// Last seen
+		if (fContact->lastSeen > 0) {
+			uint32 now = (uint32)time(NULL);
+			uint32 age = (now > fContact->lastSeen)
+				? (now - fContact->lastSeen) : 0;
+			if (age < 60)
+				statusText << " · Just now";
+			else if (age < 3600)
+				statusText << BString().SetToFormat(" · %u min ago", age / 60);
+			else if (age < 86400)
+				statusText << BString().SetToFormat(" · %u hr ago", age / 3600);
+		}
 	} else if (fStatus.Length() > 0) {
 		statusText = fStatus;
-	} else if (fPathLen >= 0) {
-		if (fPathLen == 0 || fPathLen == kPathLenDirect) {
-			statusText = "direct";
-		} else {
-			statusText.SetToFormat("%d hop%s", fPathLen, fPathLen > 1 ? "s" : "");
-		}
-		if (fSnr != 0) {
-			BString snrStr;
-			snrStr.SetToFormat(" · SNR %d", fSnr);
-			statusText.Append(snrStr);
-		}
 	}
 
 	if (statusText.Length() > 0) {
-		// Green dot for "online" contacts
+		float statusY = bounds.bottom - kMargin - statusFh.descent;
+		float textMidY = statusY - statusFh.ascent / 2;
+
+		// Green dot for "online" contacts — centered on text
 		if (!fIsChannel && fContact != NULL) {
 			SetHighColor(kOnlineColor);
-			BRect dotRect(textLeft, bounds.bottom - kMargin - statusFh.descent - 4,
-				textLeft + 8, bounds.bottom - kMargin - statusFh.descent + 4);
-			FillEllipse(dotRect);
+			FillEllipse(BRect(textLeft, textMidY - 4,
+				textLeft + 8, textMidY + 4));
 			textLeft += 12;
 		}
 
 		SetHighColor(StatusColor());
-		DrawString(statusText.String(),
-			BPoint(textLeft, bounds.bottom - kMargin - statusFh.descent));
+		DrawString(statusText.String(), BPoint(textLeft, statusY));
 	}
 }
 
