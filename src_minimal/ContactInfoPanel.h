@@ -31,6 +31,8 @@ public:
 			void		SetContact(const ContactInfo* contact);
 	const ContactInfo*	GetContact() const { return fContact; }
 			void		SetChannel(bool isChannel);
+			void		SetChannelStats(int32 contactCount,
+							int32 onlineCount);
 			void		Clear();
 			void		RefreshSNRChart();
 
@@ -47,6 +49,8 @@ private:
 
 			const ContactInfo*	fContact;
 			bool		fIsChannel;
+			int32		fChannelContactCount;
+			int32		fChannelOnlineCount;
 			SNRChartView*	fSNRChart;
 };
 

@@ -1316,6 +1316,20 @@ MainWindow::_SelectContact(int32 index)
 		fChatHeader->SetChannel(true);
 		fChatView->SetCurrentContact(NULL);
 		fInfoPanel->SetChannel(true);
+
+		// Pass network stats to channel info panel
+		{
+			int32 totalContacts = fContacts.CountItems();
+			int32 onlineCount = 0;
+			uint32 now = (uint32)time(NULL);
+			for (int32 i = 0; i < totalContacts; i++) {
+				ContactInfo* c = fContacts.ItemAt(i);
+				if (c != NULL && c->lastSeen > 0
+					&& (now - c->lastSeen) < 300)
+					onlineCount++;
+			}
+			fInfoPanel->SetChannelStats(totalContacts, onlineCount);
+		}
 		fMessageInput->SetEnabled(fConnected);
 		fSendButton->SetEnabled(fConnected);
 

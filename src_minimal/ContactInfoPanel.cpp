@@ -85,6 +85,8 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	BView(name, B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE),
 	fContact(NULL),
 	fIsChannel(false),
+	fChannelContactCount(0),
+	fChannelOnlineCount(0),
 	fSNRChart(NULL)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
@@ -259,6 +261,71 @@ ContactInfoPanel::Draw(BRect updateRect)
 
 	if (fIsChannel) {
 		_DrawInfoRow(y, "Type", "Broadcast Channel", AccentColor());
+
+		// Message count from DB
+		int32 msgCount = DatabaseManager::Instance()->GetMessageCount("channel");
+		if (msgCount > 0) {
+			char countStr[16];
+			snprintf(countStr, sizeof(countStr), "%d", (int)msgCount);
+			_DrawInfoRow(y, "Msgs", countStr, TextColor());
+		}
+
+		// Network stats
+		if (fChannelContactCount > 0) {
+			char contactStr[32];
+			snprintf(contactStr, sizeof(contactStr), "%d",
+				(int)fChannelContactCount);
+			_DrawInfoRow(y, "Nodes", contactStr, TextColor());
+		}
+		if (fChannelOnlineCount > 0) {
+			char onlineStr[32];
+			snprintf(onlineStr, sizeof(onlineStr), "%d",
+				(int)fChannelOnlineCount);
+			_DrawInfoRow(y, "Online", onlineStr,
+				(rgb_color){77, 182, 172, 255});
+		}
+
+		// Separator
+		y += 4;
+		SetHighColor(BorderColor());
+		StrokeLine(BPoint(x, y), BPoint(bounds.right - kMargin, y));
+		y += kMargin;
+
+		// Description
+		BFont descFont;
+		GetFont(&descFont);
+		descFont.SetSize(10);
+		descFont.SetFace(B_REGULAR_FACE);
+		SetFont(&descFont);
+		SetHighColor(LabelColor());
+
+		font_height descFh;
+		descFont.GetHeight(&descFh);
+		float lineH = descFh.ascent + descFh.descent + 2;
+		float maxW = contentWidth;
+
+		const char* lines[] = {
+			"Messages sent here are",
+			"visible to all nodes",
+			"in radio range.",
+			"",
+			"Received messages show",
+			"sender name and SNR."
+		};
+		for (size_t i = 0; i < sizeof(lines) / sizeof(lines[0]); i++) {
+			if (lines[i][0] == '\0') {
+				y += lineH / 2;
+				continue;
+			}
+			// Truncate if wider than panel
+			BString line(lines[i]);
+			float tw = StringWidth(line.String());
+			if (tw > maxW)
+				descFont.TruncateString(&line, B_TRUNCATE_END, maxW);
+			DrawString(line.String(), BPoint(x, y + descFh.ascent));
+			y += lineH;
+		}
+
 		return;
 	}
 
@@ -369,6 +436,16 @@ ContactInfoPanel::SetChannel(bool isChannel)
 			fSNRChart->Hide();
 	}
 	Invalidate();
+}
+
+
+void
+ContactInfoPanel::SetChannelStats(int32 contactCount, int32 onlineCount)
+{
+	fChannelContactCount = contactCount;
+	fChannelOnlineCount = onlineCount;
+	if (fIsChannel)
+		Invalidate();
 }
 
 
