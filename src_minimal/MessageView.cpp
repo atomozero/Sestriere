@@ -205,9 +205,9 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	rgb_color bubbleColor;
 	rgb_color borderColor;
 	if (isCli) {
-		// Terminal-style: darker background for CLI messages
-		bubbleColor = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_2_TINT);
-		borderColor = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_3_TINT);
+		// Terminal-style: very dark background for CLI messages
+		bubbleColor = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_MAX_TINT);
+		borderColor = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_4_TINT);
 	} else {
 		bubbleColor = fOutgoing ? OutgoingBubbleColor() : IncomingBubbleColor();
 		borderColor = fOutgoing ? OutgoingBorderColor() : IncomingBorderColor();
@@ -248,11 +248,11 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 
 	// Draw message text
 	if (isCli && fOutgoing) {
-		// Amber prompt color for outgoing CLI commands
-		owner->SetHighColor((rgb_color){220, 180, 60, 255});
+		// Bright amber prompt for outgoing CLI commands
+		owner->SetHighColor((rgb_color){255, 210, 80, 255});
 	} else if (isCli) {
-		// Green-tinted text for incoming CLI responses
-		owner->SetHighColor((rgb_color){77, 182, 172, 255});
+		// Bright green text for incoming CLI responses (terminal-style)
+		owner->SetHighColor((rgb_color){130, 255, 200, 255});
 	} else {
 		owner->SetHighColor(BubbleTextColor());
 	}
