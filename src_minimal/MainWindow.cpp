@@ -1757,9 +1757,10 @@ MainWindow::_SelectContact(int32 index)
 		if (contact != NULL) {
 			fChatHeader->SetContact(contact);
 			// Enable console mode if logged into this contact
-			fChatHeader->SetConsoleMode(fLoggedIn &&
+			bool isLoggedInContact = fLoggedIn &&
 				memcmp(contact->publicKey, fLoggedInKey,
-					kPubKeyPrefixSize) == 0);
+					kPubKeyPrefixSize) == 0;
+			fChatHeader->SetConsoleMode(isLoggedInContact);
 			fChatView->SetCurrentContact(contact);
 			fInfoPanel->SetContact(contact);
 			fMessageInput->SetEnabled(fConnected);
@@ -1768,6 +1769,18 @@ MainWindow::_SelectContact(int32 index)
 			// Clear unread badge for this contact
 			selectedItem->ClearUnread();
 			fContactList->InvalidateItem(index);
+
+			// Auto-open login for repeater/room if not already logged in
+			if (fConnected && !isLoggedInContact
+				&& (contact->type == 2 || contact->type == 3)) {
+				// Recreate login window for the new target contact
+				if (fLoginWindow != NULL) {
+					fLoginWindow->Lock();
+					fLoginWindow->Quit();
+				}
+				fLoginWindow = new LoginWindow(this, contact);
+				fLoginWindow->Show();
+			}
 		}
 	} else {
 		// Nothing selected
