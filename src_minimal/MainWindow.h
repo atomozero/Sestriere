@@ -79,6 +79,11 @@ private:
 			void			_SendResetPath(const uint8* pubkey);
 			void			_SendRemoveContact(const uint8* pubkey);
 			void			_SendOtherParams();
+			void			_SendSyncNextMessage();
+			void			_SendGetChannel(uint8 index);
+			void			_SendSetChannel(uint8 index, const char* name,
+								const uint8* secret);
+			void			_SendRemoveChannel(uint8 index);
 
 			// Frame handling
 			void			_OnFrameReceived(BMessage* message);
@@ -102,6 +107,8 @@ private:
 			void			_HandleCmdErr(const uint8* data, size_t length);
 
 			// Push notification handlers
+			void			_HandleChannelInfo(const uint8* data, size_t length);
+
 			void			_HandlePushMsgWaiting(const uint8* data, size_t length);
 			void			_HandlePushAdvert(const uint8* data, size_t length);
 			void			_HandlePushTraceData(const uint8* data, size_t length);
@@ -192,9 +199,17 @@ private:
 			BObjectList<ContactInfo, true>	fContacts;
 			BObjectList<ContactInfo, true>	fOldContacts;  // Temp storage during sync
 			bool			fSyncingContacts;
+			bool			fSyncingMessages;
 
 			// Channel messages (public channel history)
 			BObjectList<ChatMessage, true>	fChannelMessages;
+
+			// Private channels
+			BObjectList<ChannelInfo, true>	fChannels;
+			uint8			fMaxChannels;
+			uint8			fChannelEnumIndex;   // Current index during enumeration
+			bool			fEnumeratingChannels;
+			int32			fSelectedChannelIdx; // -1 = none, >= 0 = channel slot
 
 			// Delivery tracking
 			int32			fPendingMsgIndex;

@@ -78,6 +78,7 @@ ContactItem::ContactItem(const ContactInfo& contact)
 	fLastMessageTime(0),
 	fUnreadCount(0),
 	fIsChannel(false),
+	fChannelIndex(-1),
 	fBaselineOffset(0)
 {
 }
@@ -90,6 +91,7 @@ ContactItem::ContactItem(const char* name, bool isChannel)
 	fLastMessageTime(0),
 	fUnreadCount(0),
 	fIsChannel(isChannel),
+	fChannelIndex(-1),
 	fBaselineOffset(0)
 {
 	fContact = ContactInfo();  // value-initialize

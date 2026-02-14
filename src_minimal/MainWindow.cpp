@@ -37,6 +37,7 @@
 #include <cstring>
 #include <ctime>
 
+#include "AddChannelWindow.h"
 #include "ChatHeaderView.h"
 #include "ChatView.h"
 #include "Constants.h"
@@ -87,6 +88,9 @@ enum {
 	MSG_CONTACT_CONTEXT = 'cctx',
 	MSG_CONTACT_REMOVE = 'crmv',
 	MSG_CONTACT_RESET_PATH = 'crsp',
+	MSG_ADD_CHANNEL = 'achn',
+	MSG_REMOVE_CHANNEL = 'rmch',
+	MSG_CREATE_CHANNEL = 'crcn',	// From AddChannelWindow
 };
 
 // Timer intervals
@@ -173,7 +177,13 @@ MainWindow::MainWindow()
 	fContacts(20),
 	fOldContacts(20),
 	fSyncingContacts(false),
+	fSyncingMessages(false),
 	fChannelMessages(50),
+	fChannels(10),
+	fMaxChannels(0),
+	fChannelEnumIndex(0),
+	fEnumeratingChannels(false),
+	fSelectedChannelIdx(-1),
 	fPendingMsgIndex(-1),
 	fSendingToChannel(false),
 	fLoginPending(false),
@@ -1055,6 +1065,213 @@ MainWindow::MessageReceived(BMessage* message)
 			_UpdateContactList();
 			break;
 
+		case MSG_CONTACT_CONTEXT:
+		{
+			int32 index;
+			BPoint screenPt;
+			if (message->FindInt32("index", &index) != B_OK
+				|| message->FindPoint("where", &screenPt) != B_OK)
+				break;
+
+			ContactItem* ctxItem = dynamic_cast<ContactItem*>(
+				fContactList->ItemAt(index));
+			if (ctxItem == NULL)
+				break;
+
+			BPopUpMenu* menu = new BPopUpMenu("context", false, false);
+
+			if (index == 0) {
+				// Public Channel context menu — offer "Add Channel"
+				menu->AddItem(new BMenuItem("Add Channel" B_UTF8_ELLIPSIS,
+					new BMessage(MSG_ADD_CHANNEL)));
+			} else if (ctxItem->IsChannel() && ctxItem->ChannelIndex() >= 0) {
+				// Private channel context menu
+				BMessage* removeMsg = new BMessage(MSG_REMOVE_CHANNEL);
+				removeMsg->AddInt32("channel_idx", ctxItem->ChannelIndex());
+				menu->AddItem(new BMenuItem("Remove Channel", removeMsg));
+			} else {
+				// Contact context menu
+				BMessage* resetMsg = new BMessage(MSG_CONTACT_RESET_PATH);
+				resetMsg->AddData("pubkey", B_RAW_TYPE,
+					ctxItem->GetContact().publicKey, kPubKeySize);
+				menu->AddItem(new BMenuItem("Reset Path", resetMsg));
+				menu->AddSeparatorItem();
+				BMessage* removeMsg = new BMessage(MSG_CONTACT_REMOVE);
+				removeMsg->AddData("pubkey", B_RAW_TYPE,
+					ctxItem->GetContact().publicKey, kPubKeySize);
+				menu->AddItem(new BMenuItem("Remove Contact", removeMsg));
+			}
+
+			menu->SetTargetForItems(this);
+			menu->Go(screenPt, true, true);
+			delete menu;
+			break;
+		}
+
+		case MSG_CONTACT_RESET_PATH:
+		{
+			const void* keyData;
+			ssize_t keySize;
+			if (message->FindData("pubkey", B_RAW_TYPE, &keyData, &keySize) == B_OK
+				&& keySize >= (ssize_t)kPubKeySize) {
+				_SendResetPath((const uint8*)keyData);
+			}
+			break;
+		}
+
+		case MSG_CONTACT_REMOVE:
+		{
+			const void* keyData;
+			ssize_t keySize;
+			if (message->FindData("pubkey", B_RAW_TYPE, &keyData, &keySize) != B_OK
+				|| keySize < (ssize_t)kPubKeySize)
+				break;
+
+			if (!fConnected) {
+				BAlert* alert = new BAlert("Error",
+					"Not connected to device.", "OK");
+				alert->Go();
+				break;
+			}
+
+			// Find contact name for confirmation
+			ContactInfo* target = _FindContactByPrefix((const uint8*)keyData, 6);
+			BString confirmText("Remove contact");
+			if (target != NULL)
+				confirmText.SetToFormat("Remove \"%s\" from device?", target->name);
+
+			BAlert* confirm = new BAlert("Confirm", confirmText.String(),
+				"Cancel", "Remove", NULL,
+				B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+			if (confirm->Go() == 1) {
+				_SendRemoveContact((const uint8*)keyData);
+				// Schedule auto-sync after 3s
+				delete fAutoSyncRunner;
+				BMessage syncMsg(MSG_AUTO_SYNC_CONTACTS);
+				fAutoSyncRunner = new BMessageRunner(this,
+					&syncMsg, kAutoSyncDelay, 1);
+			}
+			break;
+		}
+
+		case MSG_REMOVE_CHANNEL:
+		{
+			int32 chIdx;
+			if (message->FindInt32("channel_idx", &chIdx) != B_OK)
+				break;
+
+			if (!fConnected) {
+				BAlert* alert = new BAlert("Error",
+					"Not connected to device.", "OK");
+				alert->Go();
+				break;
+			}
+
+			// Find channel name
+			BString chName;
+			for (int32 i = 0; i < fChannels.CountItems(); i++) {
+				if (fChannels.ItemAt(i)->index == (uint8)chIdx) {
+					chName = fChannels.ItemAt(i)->name;
+					break;
+				}
+			}
+
+			BString confirmText;
+			confirmText.SetToFormat("Remove channel #%s?", chName.String());
+			BAlert* confirm = new BAlert("Confirm", confirmText.String(),
+				"Cancel", "Remove", NULL,
+				B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+			if (confirm->Go() == 1) {
+				_SendRemoveChannel((uint8)chIdx);
+				// Remove from local list and update UI
+				for (int32 i = 0; i < fChannels.CountItems(); i++) {
+					if (fChannels.ItemAt(i)->index == (uint8)chIdx) {
+						fChannels.RemoveItemAt(i);
+						break;
+					}
+				}
+				// Reset selection if we were viewing this channel
+				if (fSelectedChannelIdx == chIdx) {
+					fSelectedChannelIdx = -1;
+					_SelectContact(0);  // Switch to Public Channel
+				}
+				_UpdateContactList();
+			}
+			break;
+		}
+
+		case MSG_ADD_CHANNEL:
+		{
+			if (!fConnected) {
+				BAlert* alert = new BAlert("Error",
+					"Not connected to device.", "OK");
+				alert->Go();
+				break;
+			}
+			if (fMaxChannels == 0) {
+				BAlert* alert = new BAlert("Error",
+					"Device does not support private channels.", "OK");
+				alert->Go();
+				break;
+			}
+
+			AddChannelWindow* win = new AddChannelWindow(this);
+			win->Show();
+			break;
+		}
+
+		case MSG_CREATE_CHANNEL:
+		{
+			const char* name;
+			if (message->FindString("name", &name) != B_OK || name[0] == '\0')
+				break;
+			if (!fConnected)
+				break;
+
+			// Find first empty slot
+			int32 emptySlot = -1;
+			for (uint8 s = 0; s < fMaxChannels; s++) {
+				bool used = false;
+				for (int32 i = 0; i < fChannels.CountItems(); i++) {
+					if (fChannels.ItemAt(i)->index == s) {
+						used = true;
+						break;
+					}
+				}
+				if (!used) {
+					emptySlot = s;
+					break;
+				}
+			}
+			if (emptySlot < 0) {
+				BAlert* alert = new BAlert("Error",
+					"No empty channel slots available.", "OK");
+				alert->Go();
+				break;
+			}
+
+			// Generate a simple PSK from the channel name
+			uint8 secret[16];
+			memset(secret, 0, sizeof(secret));
+			size_t nameLen = strlen(name);
+			for (size_t i = 0; i < 16 && i < nameLen; i++)
+				secret[i] = (uint8)name[i];
+
+			_SendSetChannel((uint8)emptySlot, name, secret);
+
+			// Add to local list immediately
+			ChannelInfo* ch = new ChannelInfo();
+			ch->index = (uint8)emptySlot;
+			strlcpy(ch->name, name, sizeof(ch->name));
+			memcpy(ch->secret, secret, 16);
+			fChannels.AddItem(ch);
+			_UpdateContactList();
+
+			_LogMessage("OK", BString().SetToFormat(
+				"Created channel #%s (slot %d)", name, (int)emptySlot));
+			break;
+		}
+
 		case MSG_SET_NAME:
 		{
 			const char* name;
@@ -1430,10 +1647,16 @@ void
 MainWindow::_SelectContact(int32 index)
 {
 	fSelectedContact = index;
+	fSelectedChannelIdx = -1;
+
+	// Determine what was selected by checking the item
+	ContactItem* selectedItem = dynamic_cast<ContactItem*>(
+		fContactList->ItemAt(index));
 
 	if (index == 0) {
 		// Public Channel selected
 		fSendingToChannel = true;
+		fSelectedChannelIdx = -1;  // -1 = public channel (idx 0 on wire)
 		fChatHeader->SetChannel(true);
 		fChatView->SetCurrentContact(NULL);
 		fInfoPanel->SetChannel(true);
@@ -1474,27 +1697,68 @@ MainWindow::_SelectContact(int32 index)
 		fChannelItem->ClearUnread();
 		fContactList->InvalidateItem(0);
 
-	} else if (index > 0) {
-		// Contact selected (index - 1 because of Channel item)
-		fSendingToChannel = false;
-		int32 contactIndex = index - 1;  // Adjust for channel item
+	} else if (selectedItem != NULL && selectedItem->IsChannel()
+		&& selectedItem->ChannelIndex() >= 0) {
+		// Private channel selected
+		fSendingToChannel = true;
+		fSelectedChannelIdx = selectedItem->ChannelIndex();
 
-		if (contactIndex < fContacts.CountItems()) {
-			ContactInfo* contact = fContacts.ItemAt(contactIndex);
-			if (contact != NULL) {
-				fChatHeader->SetContact(contact);
-				fChatView->SetCurrentContact(contact);
-				fInfoPanel->SetContact(contact);
-				fMessageInput->SetEnabled(fConnected);
-				fSendButton->SetEnabled(fConnected);
+		// Find the ChannelInfo
+		ChannelInfo* ch = NULL;
+		for (int32 i = 0; i < fChannels.CountItems(); i++) {
+			if (fChannels.ItemAt(i)->index == (uint8)fSelectedChannelIdx) {
+				ch = fChannels.ItemAt(i);
+				break;
+			}
+		}
 
-				// Clear unread badge for this contact
-				ContactItem* item = dynamic_cast<ContactItem*>(fContactList->ItemAt(index));
-				if (item != NULL) {
-					item->ClearUnread();
-					fContactList->InvalidateItem(index);
+		BString headerName;
+		headerName.SetToFormat("#%s", ch ? ch->name : "Channel");
+		fChatHeader->SetChannelName(headerName.String());
+		fChatView->SetCurrentContact(NULL);
+		fInfoPanel->SetChannel(true);
+		fMessageInput->SetEnabled(fConnected);
+		fSendButton->SetEnabled(fConnected);
+
+		// Load private channel message history
+		fChatView->ClearMessages();
+		if (ch != NULL) {
+			for (int32 i = 0; i < ch->messages.CountItems(); i++) {
+				ChatMessage* msg = ch->messages.ItemAt(i);
+				if (msg != NULL) {
+					const char* senderName = msg->isOutgoing ? "Me" : "Channel";
+					if (!msg->isOutgoing) {
+						ContactInfo* sender = _FindContactByPrefix(
+							msg->pubKeyPrefix, 6);
+						if (sender != NULL)
+							senderName = sender->name;
+					}
+					fChatView->AddMessage(*msg, senderName);
 				}
 			}
+		}
+
+		// Clear unread badge
+		selectedItem->ClearUnread();
+		fContactList->InvalidateItem(index);
+
+	} else if (index > 0 && selectedItem != NULL && !selectedItem->IsChannel()) {
+		// Contact selected — find by pubkey (works correctly with filter)
+		fSendingToChannel = false;
+
+		const uint8* pubkey = selectedItem->GetContact().publicKey;
+		ContactInfo* contact = _FindContactByPrefix(pubkey, kPubKeyPrefixSize);
+
+		if (contact != NULL) {
+			fChatHeader->SetContact(contact);
+			fChatView->SetCurrentContact(contact);
+			fInfoPanel->SetContact(contact);
+			fMessageInput->SetEnabled(fConnected);
+			fSendButton->SetEnabled(fConnected);
+
+			// Clear unread badge for this contact
+			selectedItem->ClearUnread();
+			fContactList->InvalidateItem(index);
 		}
 	} else {
 		// Nothing selected
@@ -1977,8 +2241,12 @@ MainWindow::_SendChannelMessage(const char* text)
 	size_t pos = 0;
 
 	payload[pos++] = CMD_SEND_CHANNEL_TXT_MSG;
+	// Use selected channel index (0 = public, N = private channel slot)
+	uint8 wireChannelIdx = (fSelectedChannelIdx >= 0)
+		? (uint8)fSelectedChannelIdx : 0;
+
 	payload[pos++] = 0;  // txt_type: plain
-	payload[pos++] = 0;  // channel_idx (0 = default channel)
+	payload[pos++] = wireChannelIdx;
 
 	// Timestamp (4 bytes, little-endian)
 	uint32 timestamp = (uint32)time(NULL);
@@ -2004,19 +2272,49 @@ MainWindow::_SendChannelMessage(const char* text)
 	outMsg.snr = 0;
 	outMsg.deliveryStatus = DELIVERY_SENT;
 
-	// Store message
+	// Store message in appropriate channel list
 	ChatMessage* stored = new ChatMessage(outMsg);
-	fChannelMessages.AddItem(stored);
 
-	// Persist to database
-	DatabaseManager::Instance()->InsertMessage("channel", outMsg);
+	if (fSelectedChannelIdx >= 0) {
+		// Private channel
+		bool added = false;
+		for (int32 i = 0; i < fChannels.CountItems(); i++) {
+			ChannelInfo* ch = fChannels.ItemAt(i);
+			if (ch->index == wireChannelIdx) {
+				ch->messages.AddItem(stored);
+				added = true;
+				break;
+			}
+		}
+		if (!added)
+			delete stored;
+		BString dbKey;
+		dbKey.SetToFormat("channel_%d", wireChannelIdx);
+		DatabaseManager::Instance()->InsertMessage(dbKey.String(), outMsg);
+	} else {
+		// Public channel
+		fChannelMessages.AddItem(stored);
+		DatabaseManager::Instance()->InsertMessage("channel", outMsg);
+	}
 
 	// Display in chat
 	fChatView->AddMessage(outMsg, "Me");
 
-	// Update channel item preview
-	fChannelItem->SetLastMessage(text, timestamp);
-	fContactList->InvalidateItem(0);
+	// Update sidebar item preview
+	if (fSelectedChannelIdx < 0) {
+		fChannelItem->SetLastMessage(text, timestamp);
+		fContactList->InvalidateItem(0);
+	} else {
+		for (int32 i = 1; i < fContactList->CountItems(); i++) {
+			ContactItem* ci = dynamic_cast<ContactItem*>(fContactList->ItemAt(i));
+			if (ci != NULL && ci->IsChannel()
+				&& ci->ChannelIndex() == fSelectedChannelIdx) {
+				ci->SetLastMessage(text, timestamp);
+				fContactList->InvalidateItem(i);
+				break;
+			}
+		}
+	}
 }
 
 
@@ -2105,11 +2403,30 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			_LogMessage("OK", "Command successful");
 			break;
 		case RSP_ERR:
-			if (length == 2 && data[1] <= 3) {
+			if (fEnumeratingChannels && length >= 2 && data[1] == 2) {
+				// ERR_CODE_NOT_FOUND during channel enumeration = done
+				fEnumeratingChannels = false;
+				_LogMessage("OK", BString().SetToFormat(
+					"Found %d configured channels",
+					(int)fChannels.CountItems()));
+
+				// Load private channel messages from DB
+				DatabaseManager* db = DatabaseManager::Instance();
+				if (db->IsOpen()) {
+					for (int32 ci = 0; ci < fChannels.CountItems(); ci++) {
+						ChannelInfo* ch = fChannels.ItemAt(ci);
+						if (ch == NULL)
+							continue;
+						BString dbKey;
+						dbKey.SetToFormat("channel_%d", ch->index);
+						db->LoadMessages(dbKey.String(), ch->messages);
+					}
+				}
+
+				_UpdateContactList();
+			} else if (!fHasDeviceInfo && length == 2 && data[1] <= 3) {
 				_LogMessage("OK", BString().SetToFormat(
 					"APP_START acknowledged, protocol version: %d", data[1]));
-				// If a login is pending, this APP_START means the
-				// repeater rejected the login and reset the connection
 				if (fLoginPending) {
 					fLoginPending = false;
 					if (fLoginWindow != NULL) {
@@ -2153,6 +2470,12 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 		case RSP_CHANNEL_MSG_RECV_V3:
 			_HandleChannelMsgRecv(data, length, true);
 			break;
+		case RSP_NO_MORE_MESSAGES:
+			if (fSyncingMessages) {
+				fSyncingMessages = false;
+				_LogMessage("OK", "Offline message sync complete");
+			}
+			break;
 		case RSP_DEVICE_INFO:
 			_HandleDeviceInfo(data, length);
 			break;
@@ -2164,6 +2487,9 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			break;
 		case RSP_STATS:
 			_HandleStats(data, length);
+			break;
+		case RSP_CHANNEL_INFO:
+			_HandleChannelInfo(data, length);
 			break;
 
 		// Push notifications
@@ -2256,11 +2582,11 @@ MainWindow::_HandleDeviceInfo(const uint8* data, size_t length)
 	if (length >= 4) {
 		uint8 fwVer = data[1];
 		uint8 maxContacts = data[2] * 2;
-		uint8 maxChannels = data[3];
+		fMaxChannels = data[3];
 
 		info << BString().SetToFormat("Protocol version: %d\n", fwVer);
 		info << BString().SetToFormat("Max contacts: %d\nMax channels: %d\n",
-			maxContacts, maxChannels);
+			maxContacts, fMaxChannels);
 	}
 
 	if (length >= 20) {
@@ -2297,6 +2623,14 @@ MainWindow::_HandleDeviceInfo(const uint8* data, size_t length)
 	_LogMessage("INFO", info.String());
 
 	_UpdateSidebarDeviceLabel();
+
+	// Start enumerating channels if device supports them
+	if (fMaxChannels > 0) {
+		fChannels.MakeEmpty();
+		fChannelEnumIndex = 0;
+		fEnumeratingChannels = true;
+		_SendGetChannel(0);
+	}
 }
 
 
@@ -2464,6 +2798,9 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 
 	// Load saved messages after contacts are available
 	_LoadMessages();
+
+	// Start offline message sync to drain any queued messages
+	_SendSyncNextMessage();
 
 	// Forward contact list to RepeaterAdminWindow if open
 	if (fRepeaterAdminWindow != NULL) {
@@ -2738,6 +3075,10 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 			"DM", senderPrefix, 6,
 			(const uint8*)text, textLen);
 	}
+
+	// Continue offline message sync loop
+	if (fSyncingMessages)
+		_SendSyncNextMessage();
 }
 
 
@@ -2778,8 +3119,6 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 		timestamp = data[4] | (data[5] << 8) | (data[6] << 16) | (data[7] << 24);
 		textOffset = 8;
 	}
-	(void)channelIdx;  // Unused for now
-
 	size_t textLen = length - textOffset;
 	char fullText[256];
 	if (textLen > 255) textLen = 255;
@@ -2833,11 +3172,30 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 	chatMsg.isChannel = true;
 
 	ChatMessage* stored = new ChatMessage(chatMsg);
-	fChannelMessages.AddItem(stored);
-
-	// Persist channel message to database
 	DatabaseManager* db = DatabaseManager::Instance();
-	db->InsertMessage("channel", chatMsg);
+
+	// Store in appropriate channel list
+	if (channelIdx > 0) {
+		// Private channel
+		bool added = false;
+		for (int32 i = 0; i < fChannels.CountItems(); i++) {
+			ChannelInfo* ch = fChannels.ItemAt(i);
+			if (ch->index == channelIdx) {
+				ch->messages.AddItem(stored);
+				added = true;
+				break;
+			}
+		}
+		if (!added)
+			delete stored;
+		BString dbKey;
+		dbKey.SetToFormat("channel_%d", channelIdx);
+		db->InsertMessage(dbKey.String(), chatMsg);
+	} else {
+		// Public channel
+		fChannelMessages.AddItem(stored);
+		db->InsertMessage("channel", chatMsg);
+	}
 
 	// Record SNR data point for sender contact
 	if (sender != NULL && snr != 0) {
@@ -2856,17 +3214,37 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 		}
 	}
 
-	// Add to chat if channel is selected
+	// Add to chat if this channel is currently selected
+	bool isCurrentChannel = false;
 	if (fSendingToChannel) {
+		if (channelIdx == 0 && fSelectedChannelIdx < 0)
+			isCurrentChannel = true;  // Viewing public, message is public
+		else if (channelIdx > 0 && fSelectedChannelIdx == (int32)channelIdx)
+			isCurrentChannel = true;  // Viewing this private channel
+	}
+	if (isCurrentChannel)
 		fChatView->AddMessage(chatMsg, senderName.String());
-	}
 
-	// Update channel item
-	fChannelItem->SetLastMessage(messageText, timestamp);
-	if (!fSendingToChannel) {
-		fChannelItem->IncrementUnread();
+	// Update sidebar item
+	if (channelIdx == 0) {
+		fChannelItem->SetLastMessage(messageText, timestamp);
+		if (!isCurrentChannel)
+			fChannelItem->IncrementUnread();
+		fContactList->InvalidateItem(0);
+	} else {
+		// Update private channel sidebar item
+		for (int32 i = 1; i < fContactList->CountItems(); i++) {
+			ContactItem* ci = dynamic_cast<ContactItem*>(fContactList->ItemAt(i));
+			if (ci != NULL && ci->IsChannel()
+				&& ci->ChannelIndex() == (int32)channelIdx) {
+				ci->SetLastMessage(messageText, timestamp);
+				if (!isCurrentChannel)
+					ci->IncrementUnread();
+				fContactList->InvalidateItem(i);
+				break;
+			}
+		}
 	}
-	fContactList->InvalidateItem(0);
 
 	// Desktop notification if window not active
 	if (!IsActive()) {
@@ -2881,6 +3259,10 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 			"CH", fromKey, 6,
 			(const uint8*)messageText, strlen(messageText));
 	}
+
+	// Continue offline message sync loop
+	if (fSyncingMessages)
+		_SendSyncNextMessage();
 }
 
 
@@ -3024,10 +3406,138 @@ void
 MainWindow::_HandlePushMsgWaiting(const uint8* data, size_t length)
 {
 	_LogMessage("INFO", "Messages waiting - fetching...");
-	if (fSerialHandler->IsConnected()) {
-		uint8 payload[1];
-		payload[0] = CMD_SYNC_NEXT_MESSAGE;
-		fSerialHandler->SendFrame(payload, 1);
+	_SendSyncNextMessage();
+}
+
+
+void
+MainWindow::_SendSyncNextMessage()
+{
+	if (!fSerialHandler->IsConnected())
+		return;
+
+	fSyncingMessages = true;
+	uint8 payload[1];
+	payload[0] = CMD_SYNC_NEXT_MESSAGE;
+	fSerialHandler->SendFrame(payload, 1);
+}
+
+
+void
+MainWindow::_SendGetChannel(uint8 index)
+{
+	if (!fSerialHandler->IsConnected())
+		return;
+
+	uint8 payload[2];
+	payload[0] = CMD_GET_CHANNEL;
+	payload[1] = index;
+	fSerialHandler->SendFrame(payload, 2);
+}
+
+
+void
+MainWindow::_SendSetChannel(uint8 index, const char* name, const uint8* secret)
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+
+	uint8 payload[50];
+	payload[0] = CMD_SET_CHANNEL;
+	payload[1] = index;
+	memset(payload + 2, 0, 32);
+	strlcpy((char*)(payload + 2), name, 32);
+	memcpy(payload + 34, secret, 16);
+	fSerialHandler->SendFrame(payload, sizeof(payload));
+
+	_LogMessage("INFO", BString().SetToFormat(
+		"Setting channel %d: %s", index, name));
+}
+
+
+void
+MainWindow::_SendRemoveChannel(uint8 index)
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+
+	// Remove = set with empty name and zero secret
+	uint8 payload[50];
+	memset(payload, 0, sizeof(payload));
+	payload[0] = CMD_SET_CHANNEL;
+	payload[1] = index;
+	fSerialHandler->SendFrame(payload, sizeof(payload));
+
+	_LogMessage("INFO", BString().SetToFormat("Removing channel %d", index));
+}
+
+
+void
+MainWindow::_HandleChannelInfo(const uint8* data, size_t length)
+{
+	// RSP_CHANNEL_INFO format:
+	// [0] = code (0x12)
+	// [1] = channel_idx
+	// [2-33] = name (32 bytes, null-terminated)
+	// [34-49] = secret (16 bytes PSK)
+
+	if (length < 50)
+		return;
+
+	uint8 idx = data[1];
+	char name[33];
+	memset(name, 0, sizeof(name));
+	memcpy(name, data + 2, 32);
+
+	if (name[0] != '\0') {
+		// Non-empty channel — add to list
+		ChannelInfo* channel = new ChannelInfo();
+		channel->index = idx;
+		strlcpy(channel->name, name, sizeof(channel->name));
+		memcpy(channel->secret, data + 34, 16);
+		fChannels.AddItem(channel);
+
+		_LogMessage("INFO", BString().SetToFormat(
+			"Channel %d: %s", idx, name));
+	}
+
+	// Continue enumeration
+	if (fEnumeratingChannels) {
+		fChannelEnumIndex = idx + 1;
+		if (fChannelEnumIndex < fMaxChannels) {
+			_SendGetChannel(fChannelEnumIndex);
+		} else {
+			fEnumeratingChannels = false;
+			_LogMessage("OK", BString().SetToFormat(
+				"Found %d configured channels",
+				(int)fChannels.CountItems()));
+
+			// Load private channel messages from DB
+			// (channel enumeration happens after contact sync)
+			DatabaseManager* db = DatabaseManager::Instance();
+			if (db->IsOpen()) {
+				int32 loaded = 0;
+				for (int32 i = 0; i < fChannels.CountItems(); i++) {
+					ChannelInfo* ch = fChannels.ItemAt(i);
+					if (ch == NULL)
+						continue;
+					BString dbKey;
+					dbKey.SetToFormat("channel_%d", ch->index);
+					loaded += db->LoadMessages(dbKey.String(), ch->messages);
+				}
+				if (loaded > 0) {
+					_LogMessage("INFO", BString().SetToFormat(
+						"Loaded %d private channel messages from database",
+						loaded));
+				}
+			}
+
+			_UpdateContactList();
+		}
 	}
 }
 
@@ -3349,6 +3859,8 @@ MainWindow::_OnDisconnected()
 {
 	fConnected = false;
 	fHasDeviceInfo = false;  // Reset for next connection
+	fSyncingMessages = false;
+	fEnumeratingChannels = false;
 	fPendingMsgIndex = -1;
 
 	// Stop periodic stats timer
@@ -3415,6 +3927,28 @@ MainWindow::_FilterContacts(const char* filter)
 	}
 
 	bool hasFilter = (filter != NULL && filter[0] != '\0');
+
+	// Add private channels after Public Channel
+	for (int32 i = 0; i < fChannels.CountItems(); i++) {
+		ChannelInfo* ch = fChannels.ItemAt(i);
+		if (ch == NULL || ch->IsEmpty())
+			continue;
+
+		if (hasFilter) {
+			BString name(ch->name);
+			BString query(filter);
+			name.ToLower();
+			query.ToLower();
+			if (name.FindFirst(query) < 0)
+				continue;
+		}
+
+		BString label;
+		label.SetToFormat("#%s", ch->name);
+		ContactItem* item = new ContactItem(label.String(), true);
+		item->SetChannelIndex(ch->index);
+		fContactList->AddItem(item);
+	}
 
 	// Add contacts that match the filter
 	for (int32 i = 0; i < fContacts.CountItems(); i++) {
@@ -3631,8 +4165,12 @@ MainWindow::_LoadMessages()
 	if (!db->IsOpen())
 		return;
 
-	// Load channel messages from database
+	// Load public channel messages from database
 	int32 loadedChannel = db->LoadChannelMessages(fChannelMessages);
+
+	// Note: private channel messages are loaded when channel enumeration
+	// completes (in _HandleChannelInfo / RSP_ERR handler), because channel
+	// enumeration runs after the contact sync that triggers _LoadMessages.
 
 	// Load DM messages for each contact
 	int32 loadedDM = 0;

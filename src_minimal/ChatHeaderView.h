@@ -25,6 +25,7 @@ public:
 
 			void			SetContact(const ContactInfo* contact);
 			void			SetChannel(bool isChannel);
+			void			SetChannelName(const char* name);
 			void			SetStatus(const char* status);
 			void			SetConnectionInfo(int8 pathLen, int8 snr);
 

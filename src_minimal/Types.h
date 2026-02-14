@@ -102,6 +102,23 @@ struct ContactInfo {
 	}
 };
 
+// Channel information (private/custom channels)
+struct ChannelInfo {
+	uint8	index;				// Channel slot index (0-based)
+	char	name[32];			// Channel name (null-terminated)
+	uint8	secret[16];			// PSK encryption key
+
+	// Message history for this channel (owning = true)
+	BObjectList<ChatMessage, true>	messages;
+
+	ChannelInfo() : index(0) {
+		memset(name, 0, sizeof(name));
+		memset(secret, 0, sizeof(secret));
+	}
+
+	bool IsEmpty() const { return name[0] == '\0'; }
+};
+
 // Captured raw radio packet for Packet Analyzer
 struct CapturedPacket {
 	uint32		index;				// Sequential packet number

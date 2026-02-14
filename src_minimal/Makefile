@@ -7,6 +7,7 @@ TYPE = APP
 SRCS = \
 	Sestriere.cpp \
 	MainWindow.cpp \
+	AddChannelWindow.cpp \
 	SerialHandler.cpp \
 	ChatView.cpp \
 	ChatHeaderView.cpp \

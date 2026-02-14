@@ -262,6 +262,16 @@ ChatHeaderView::SetChannel(bool isChannel)
 
 
 void
+ChatHeaderView::SetChannelName(const char* name)
+{
+	fIsChannel = true;
+	fContact = NULL;
+	fDisplayName = name;
+	Invalidate();
+}
+
+
+void
 ChatHeaderView::SetStatus(const char* status)
 {
 	fStatus = status;

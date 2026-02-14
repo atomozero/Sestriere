@@ -34,6 +34,8 @@ public:
 
 			bool			IsChannel() const { return fIsChannel; }
 			int32			UnreadCount() const { return fUnreadCount; }
+			void			SetChannelIndex(int32 index) { fChannelIndex = index; }
+			int32			ChannelIndex() const { return fChannelIndex; }
 
 private:
 			void			_DrawAvatar(BView* owner, BRect rect);
@@ -46,6 +48,7 @@ private:
 			uint32			fLastMessageTime;
 			int32			fUnreadCount;
 			bool			fIsChannel;
+			int32			fChannelIndex;	// -1 = public ch, >= 0 = private ch slot
 
 			float			fBaselineOffset;
 };
