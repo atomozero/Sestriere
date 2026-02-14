@@ -8,6 +8,7 @@
 #ifndef TOPBARVIEW_H
 #define TOPBARVIEW_H
 
+#include <Bitmap.h>
 #include <View.h>
 #include <String.h>
 
@@ -17,6 +18,7 @@ public:
 	virtual				~TopBarView();
 
 	virtual void		Draw(BRect updateRect);
+	virtual void		MessageReceived(BMessage* message);
 	virtual void		MouseDown(BPoint where);
 	virtual void		MouseMoved(BPoint where, uint32 transit,
 						const BMessage* dragMessage);
@@ -32,8 +34,11 @@ public:
 		void			SetUptime(uint32 seconds);
 		void			SetMqttStatus(bool connected);
 		void			SetMqttEnabled(bool enabled);
+		void			FlashTx();
+		void			FlashRx();
 
 private:
+		void			_LoadIcons();
 		void			_DrawNetworkMapIcon(BPoint center);
 		void			_DrawGeoMapIcon(BPoint center);
 		void			_DrawStatsIcon(BPoint center);
@@ -74,6 +79,14 @@ private:
 
 		int32			fHoverArea;
 		mutable BString	fToolTipText;
+
+		// TX/RX activity LEDs (modem-style)
+		bigtime_t		fTxFlashTime;
+		bigtime_t		fRxFlashTime;
+
+		// HVIF icons rendered to bitmaps
+		BBitmap*		fMapsIcon;
+		BBitmap*		fEarthIcon;
 };
 
 #endif // TOPBARVIEW_H

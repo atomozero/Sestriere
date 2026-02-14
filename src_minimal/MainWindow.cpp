@@ -2236,6 +2236,7 @@ MainWindow::_SendTextMessage(const char* text)
 	pos += textLen;
 
 	fSerialHandler->SendFrame(payload, pos);
+	fTopBar->FlashTx();
 
 	// Add to chat view as outgoing message (pending delivery)
 	ChatMessage outMsg;
@@ -2311,6 +2312,7 @@ MainWindow::_SendChannelMessage(const char* text)
 	pos += textLen;
 
 	fSerialHandler->SendFrame(payload, pos);
+	fTopBar->FlashTx();
 
 	// Add to chat view as outgoing message (sent immediately for channel)
 	ChatMessage outMsg;
@@ -3001,6 +3003,8 @@ MainWindow::_HandleSelfInfo(const uint8* data, size_t length)
 void
 MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 {
+	fTopBar->FlashRx();
+
 	// V2 format: [0]=code [1-6]=pubkey [7]=pathLen [8]=txtType [9-12]=timestamp [13+]=text
 	// V3 format: [0]=code [1]=snr [2-3]=reserved [4-9]=pubkey [10]=pathLen [11]=txtType
 	//            [12-15]=timestamp [16+]=text
@@ -3153,6 +3157,8 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 void
 MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 {
+	fTopBar->FlashRx();
+
 	// V2 format: [0]=code [1]=channelIdx [2]=pathLen [3]=txtType
 	//            [4-7]=timestamp [8+]=text (includes "SenderName: message")
 	// V3 format: [0]=code [1]=snr [2-3]=reserved [4]=channelIdx [5]=pathLen
@@ -3613,6 +3619,7 @@ MainWindow::_HandleChannelInfo(const uint8* data, size_t length)
 void
 MainWindow::_HandlePushAdvert(const uint8* data, size_t length)
 {
+	fTopBar->FlashRx();
 	_LogMessage("INFO", "New advertisement received");
 
 	if (length < 7)

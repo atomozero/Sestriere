@@ -7,8 +7,13 @@
 
 #include "TopBarView.h"
 
+#include <Application.h>
 #include <ControlLook.h>
 #include <Font.h>
+#include <IconUtils.h>
+#include <MessageRunner.h>
+#include <OS.h>
+#include <Resources.h>
 #include <Window.h>
 
 #include <cmath>
@@ -16,6 +21,9 @@
 
 #include "Constants.h"
 
+
+static const uint32 MSG_LED_OFF = 'loff';
+static const bigtime_t kLedFlashDuration = 300000;  // 300ms
 
 static const float kPadding = 8.0f;
 static const float kIconSize = 16.0f;
@@ -74,16 +82,23 @@ TopBarView::TopBarView(const char* name)
 	fUptime(0),
 	fMqttConnected(false),
 	fMqttEnabled(false),
-	fHoverArea(-1)
+	fHoverArea(-1),
+	fTxFlashTime(0),
+	fRxFlashTime(0),
+	fMapsIcon(NULL),
+	fEarthIcon(NULL)
 {
 	SetViewUIColor(B_MENU_BACKGROUND_COLOR);
 	SetExplicitMinSize(BSize(350, kBarHeight));
 	SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, kBarHeight));
+	_LoadIcons();
 }
 
 
 TopBarView::~TopBarView()
 {
+	delete fMapsIcon;
+	delete fEarthIcon;
 }
 
 
@@ -105,6 +120,42 @@ BSize
 TopBarView::PreferredSize()
 {
 	return BSize(B_SIZE_UNLIMITED, kBarHeight);
+}
+
+
+void
+TopBarView::_LoadIcons()
+{
+	BResources* res = BApplication::AppResources();
+	if (res == NULL)
+		return;
+
+	int32 iconSize = (int32)kIconSize;
+
+	// Load "Maps" HVIF icon (resource ID 1)
+	size_t dataSize;
+	const void* data = res->LoadResource('VICN', 1, &dataSize);
+	if (data != NULL) {
+		fMapsIcon = new BBitmap(BRect(0, 0, iconSize - 1, iconSize - 1),
+			B_RGBA32);
+		if (BIconUtils::GetVectorIcon((const uint8*)data, dataSize,
+				fMapsIcon) != B_OK) {
+			delete fMapsIcon;
+			fMapsIcon = NULL;
+		}
+	}
+
+	// Load "Earth" HVIF icon (resource ID 2)
+	data = res->LoadResource('VICN', 2, &dataSize);
+	if (data != NULL) {
+		fEarthIcon = new BBitmap(BRect(0, 0, iconSize - 1, iconSize - 1),
+			B_RGBA32);
+		if (BIconUtils::GetVectorIcon((const uint8*)data, dataSize,
+				fEarthIcon) != B_OK) {
+			delete fEarthIcon;
+			fEarthIcon = NULL;
+		}
+	}
 }
 
 
@@ -333,24 +384,40 @@ TopBarView::Draw(BRect updateRect)
 	// === LEFT: Icon buttons ===
 	float x = kPadding;
 
-	// Network Map icon
+	// Network Map icon (HVIF or fallback)
 	float iconCenterX = x + kIconSize / 2;
 	fNetworkMapRect.Set(x, 0, x + kIconSize, bounds.bottom);
 	if (fHoverArea == kAreaNetworkMap) {
 		SetHighColor(hoverColor);
 		FillRoundRect(fNetworkMapRect, 3, 3);
 	}
-	_DrawNetworkMapIcon(BPoint(iconCenterX, iconY));
+	if (fMapsIcon != NULL) {
+		SetDrawingMode(B_OP_ALPHA);
+		SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
+		DrawBitmap(fMapsIcon,
+			BPoint(x, iconY - kIconSize / 2));
+		SetDrawingMode(B_OP_COPY);
+	} else {
+		_DrawNetworkMapIcon(BPoint(iconCenterX, iconY));
+	}
 	x += kIconSize + kIconSpacing;
 
-	// Geographic Map icon
+	// Geographic Map icon (HVIF or fallback)
 	iconCenterX = x + kIconSize / 2;
 	fGeoMapRect.Set(x, 0, x + kIconSize, bounds.bottom);
 	if (fHoverArea == kAreaGeoMap) {
 		SetHighColor(hoverColor);
 		FillRoundRect(fGeoMapRect, 3, 3);
 	}
-	_DrawGeoMapIcon(BPoint(iconCenterX, iconY));
+	if (fEarthIcon != NULL) {
+		SetDrawingMode(B_OP_ALPHA);
+		SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
+		DrawBitmap(fEarthIcon,
+			BPoint(x, iconY - kIconSize / 2));
+		SetDrawingMode(B_OP_COPY);
+	} else {
+		_DrawGeoMapIcon(BPoint(iconCenterX, iconY));
+	}
 	x += kIconSize + kIconSpacing;
 
 	// Stats icon
@@ -416,6 +483,50 @@ TopBarView::Draw(BRect updateRect)
 	FillEllipse(dotRect);
 	fConnectionDotRect.Set(x - 2, 0, x + 8, bounds.bottom);
 	x += 10;
+
+	// TX/RX activity LEDs (modem-style)
+	if (fConnected) {
+		bigtime_t now = system_time();
+		bool txOn = (now - fTxFlashTime) < kLedFlashDuration;
+		bool rxOn = (now - fRxFlashTime) < kLedFlashDuration;
+
+		rgb_color ledOff = tint_color(bg, B_DARKEN_2_TINT);
+
+		// TX label
+		BFont ledFont;
+		GetFont(&ledFont);
+		ledFont.SetSize(8);
+		SetFont(&ledFont);
+		SetHighColor(dimColor);
+		DrawString("T", BPoint(x, textY));
+		x += ledFont.StringWidth("T") + 2;
+
+		// TX LED (blue)
+		if (txOn)
+			SetHighColor(100, 180, 255, 255);
+		else
+			SetHighColor(ledOff);
+		BRect txDot(x, iconY - 3.5f, x + 7, iconY + 3.5f);
+		FillEllipse(txDot);
+		x += 10;
+
+		// RX label
+		SetHighColor(dimColor);
+		DrawString("R", BPoint(x, textY));
+		x += ledFont.StringWidth("R") + 2;
+
+		// RX LED (orange)
+		if (rxOn)
+			SetHighColor(255, 160, 40, 255);
+		else
+			SetHighColor(ledOff);
+		BRect rxDot(x, iconY - 3.5f, x + 7, iconY + 3.5f);
+		FillEllipse(rxDot);
+		x += 10;
+
+		// Restore font
+		SetFont(&font);
+	}
 
 	// === RIGHT: Status indicators (drawn right-to-left) ===
 	float rx = bounds.right - kPadding;
@@ -631,6 +742,43 @@ TopBarView::SetMqttEnabled(bool enabled)
 {
 	fMqttEnabled = enabled;
 	Invalidate();
+}
+
+
+void
+TopBarView::FlashTx()
+{
+	fTxFlashTime = system_time();
+	Invalidate();
+	// Schedule redraw to turn LED off
+	BMessage msg(MSG_LED_OFF);
+	BMessageRunner::StartSending(BMessenger(this),
+		&msg, kLedFlashDuration, 1);
+}
+
+
+void
+TopBarView::FlashRx()
+{
+	fRxFlashTime = system_time();
+	Invalidate();
+	BMessage msg(MSG_LED_OFF);
+	BMessageRunner::StartSending(BMessenger(this),
+		&msg, kLedFlashDuration, 1);
+}
+
+
+void
+TopBarView::MessageReceived(BMessage* message)
+{
+	switch (message->what) {
+		case MSG_LED_OFF:
+			Invalidate();
+			break;
+		default:
+			BView::MessageReceived(message);
+			break;
+	}
 }
 
 
