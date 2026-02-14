@@ -20,6 +20,7 @@
 #include <Menu.h>
 #include <MenuBar.h>
 #include <MenuItem.h>
+#include <PopUpMenu.h>
 #include <SeparatorItem.h>
 #include <MessageRunner.h>
 #include <MimeType.h>
@@ -82,11 +83,50 @@ enum {
 	MSG_SEARCH_MESSAGES = 'srch',
 	MSG_SEARCH_QUERY = 'srqy',
 	MSG_SEARCH_CLOSE = 'srcl',
+	MSG_AUTO_SYNC_CONTACTS = 'asnc',
+	MSG_CONTACT_CONTEXT = 'cctx',
+	MSG_CONTACT_REMOVE = 'crmv',
+	MSG_CONTACT_RESET_PATH = 'crsp',
 };
 
 // Timer intervals
 static const bigtime_t kAutoConnectDelay = 1000000;     // 1 second
 static const bigtime_t kStatsRefreshInterval = 10000000; // 10 seconds
+static const bigtime_t kAutoSyncDelay = 3000000;         // 3 seconds
+
+
+// Thin BListView subclass to detect right-clicks
+class ContactListView : public BListView {
+public:
+	ContactListView(const char* name)
+		:
+		BListView(name)
+	{
+	}
+
+	virtual void MouseDown(BPoint where)
+	{
+		BMessage* current = Window()->CurrentMessage();
+		int32 buttons = 0;
+		if (current != NULL)
+			current->FindInt32("buttons", &buttons);
+
+		if (buttons & B_SECONDARY_MOUSE_BUTTON) {
+			int32 index = IndexOf(where);
+			if (index >= 0) {
+				BPoint screenPt = where;
+				ConvertToScreen(&screenPt);
+				BMessage msg(MSG_CONTACT_CONTEXT);
+				msg.AddInt32("index", index);
+				msg.AddPoint("where", screenPt);
+				Window()->PostMessage(&msg);
+			}
+			return;
+		}
+
+		BListView::MouseDown(where);
+	}
+};
 
 
 static void
@@ -153,6 +193,7 @@ MainWindow::MainWindow()
 	fLastRawPacketTime(0),
 	fAutoConnectTimer(NULL),
 	fStatsRefreshTimer(NULL),
+	fAutoSyncRunner(NULL),
 	fBatteryMv(0),
 	fLastRssi(0),
 	fLastSnr(0),
@@ -169,6 +210,12 @@ MainWindow::MainWindow()
 	fSelfNodeId = 0;
 	memset(fLoginTargetKey, 0, sizeof(fLoginTargetKey));
 	fHasDeviceInfo = false;
+	fRadioFreq = 0;
+	fRadioBw = 0;
+	fRadioSf = 0;
+	fRadioCr = 0;
+	fRadioTxPower = 0;
+	fHasRadioParams = false;
 	_BuildUI();
 
 	// Initialize SQLite database
@@ -211,6 +258,7 @@ MainWindow::~MainWindow()
 	// Stop timers
 	delete fAutoConnectTimer;
 	delete fStatsRefreshTimer;
+	delete fAutoSyncRunner;
 
 	// Serial handler cleanup (if not already done in QuitRequested)
 	if (fSerialHandler != NULL) {
@@ -338,7 +386,7 @@ MainWindow::_BuildUI()
 	fSearchField->SetModificationMessage(new BMessage(MSG_CONTACT_FILTER));
 	fSearchField->TextView()->SetExplicitMinSize(BSize(100, B_SIZE_UNSET));
 
-	fContactList = new BListView("contacts");
+	fContactList = new ContactListView("contacts");
 	fContactList->SetSelectionMessage(new BMessage(MSG_CONTACT_SELECTED));
 
 	// Add Public Channel as first item
@@ -688,9 +736,20 @@ MainWindow::MessageReceived(BMessage* message)
 					fSettingsWindow->SetLatitude(fMqttSettings.latitude);
 					fSettingsWindow->SetLongitude(fMqttSettings.longitude);
 				}
+				if (fHasRadioParams) {
+					fSettingsWindow->SetRadioParams(fRadioFreq, fRadioBw,
+						fRadioSf, fRadioCr, fRadioTxPower);
+				}
 				fSettingsWindow->SetMqttSettings(fMqttSettings);
 				fSettingsWindow->Show();
 			} else {
+				if (fSettingsWindow->LockLooper()) {
+					if (fHasRadioParams) {
+						fSettingsWindow->SetRadioParams(fRadioFreq, fRadioBw,
+							fRadioSf, fRadioCr, fRadioTxPower);
+					}
+					fSettingsWindow->UnlockLooper();
+				}
 				_ShowWindow(fSettingsWindow);
 			}
 			break;
@@ -975,13 +1034,37 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_AUTO_SYNC_CONTACTS:
+		{
+			delete fAutoSyncRunner;
+			fAutoSyncRunner = NULL;
+			if (fConnected) {
+				_LogMessage("INFO", "Auto-syncing contacts after new node discovery");
+				_SendGetContacts();
+			}
+			break;
+		}
+
 		case MSG_UPDATE_CONTACTS:
 			// Update contact list (called after loading from People files)
 			_UpdateContactList();
 			break;
 
+		case MSG_SET_NAME:
+		{
+			const char* name;
+			if (message->FindString("name", &name) == B_OK)
+				_SendSetName(name);
+			break;
+		}
+
 		case MSG_APPLY_SETTINGS:
 		{
+			if (!fSerialHandler->IsConnected()) {
+				_LogMessage("ERROR", "Cannot apply settings: not connected");
+				break;
+			}
+
 			// Handle radio parameters from SettingsWindow
 			uint32 freq;
 			if (message->FindUInt32("frequency", &freq) == B_OK) {
@@ -990,24 +1073,42 @@ MainWindow::MessageReceived(BMessage* message)
 				if (message->FindUInt32("bandwidth", &bw) == B_OK &&
 					message->FindUInt8("sf", &sf) == B_OK &&
 					message->FindUInt8("cr", &cr) == B_OK) {
-					// freq and bw are already in Hz from SettingsWindow
+					// freq and bw arrive in Hz from SettingsWindow
+					// Protocol wire format: freq in kHz, bw in Hz
+					uint32 freqKHz = freq / 1000;
 					_LogMessage("INFO", BString().SetToFormat(
-						"Setting radio: %.3f MHz, %u kHz BW, SF%u, CR%u",
-						freq / 1000000.0, bw / 1000, sf, cr));
+						"Setting radio: %.3f MHz, %.1f kHz BW, SF%u, CR%u",
+						freq / 1000000.0, bw / 1000.0, sf, cr));
 
 					uint8 payload[11];
 					payload[0] = CMD_SET_RADIO_PARAMS;
-					payload[1] = freq & 0xFF;
-					payload[2] = (freq >> 8) & 0xFF;
-					payload[3] = (freq >> 16) & 0xFF;
-					payload[4] = (freq >> 24) & 0xFF;
+					payload[1] = freqKHz & 0xFF;
+					payload[2] = (freqKHz >> 8) & 0xFF;
+					payload[3] = (freqKHz >> 16) & 0xFF;
+					payload[4] = (freqKHz >> 24) & 0xFF;
 					payload[5] = bw & 0xFF;
 					payload[6] = (bw >> 8) & 0xFF;
 					payload[7] = (bw >> 16) & 0xFF;
 					payload[8] = (bw >> 24) & 0xFF;
 					payload[9] = sf;
 					payload[10] = cr;
-					fSerialHandler->SendFrame(payload, sizeof(payload));
+					status_t err = fSerialHandler->SendFrame(payload,
+						sizeof(payload));
+					if (err == B_OK) {
+						// Update local state so settings window shows new values
+						fRadioFreq = freq;
+						fRadioBw = bw;
+						fRadioSf = sf;
+						fRadioCr = cr;
+						fHasRadioParams = true;
+						_LogMessage("OK", BString().SetToFormat(
+							"Radio params applied: %.3f MHz, %.1f kHz BW, SF%u, CR%u",
+							freq / 1000000.0, bw / 1000.0, sf, cr));
+					} else {
+						_LogMessage("ERROR", BString().SetToFormat(
+							"Failed to send radio params: %s",
+							strerror(err)));
+					}
 				}
 			}
 
