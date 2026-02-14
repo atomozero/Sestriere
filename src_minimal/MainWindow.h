@@ -78,6 +78,7 @@ private:
 			void			_SendFactoryReset();
 			void			_SendResetPath(const uint8* pubkey);
 			void			_SendRemoveContact(const uint8* pubkey);
+			void			_SendOtherParams();
 
 			// Frame handling
 			void			_OnFrameReceived(BMessage* message);
@@ -227,6 +228,7 @@ private:
 			// Timers
 			BMessageRunner*	fAutoConnectTimer;
 			BMessageRunner*	fStatsRefreshTimer;
+			BMessageRunner*	fAutoSyncRunner;
 
 			// Cached stats for status bar
 			uint16			fBatteryMv;
@@ -244,6 +246,20 @@ private:
 			char			fPublicKey[65];  // 64 hex + null
 			uint32			fSelfNodeId;     // First 4 bytes of pubkey as uint32
 			bool			fHasDeviceInfo;  // True after RSP_SELF_INFO received
+
+			// Radio parameters from RSP_SELF_INFO
+			uint32			fRadioFreq;      // Hz
+			uint32			fRadioBw;        // Hz
+			uint8			fRadioSf;
+			uint8			fRadioCr;
+			uint8			fRadioTxPower;
+			bool			fHasRadioParams;
+
+			// Other params from RSP_SELF_INFO (for CMD_SET_OTHER_PARAMS)
+			uint8			fMultiAcks;
+			uint8			fAdvertLocPolicy;
+			uint8			fTelemetryModes;
+			uint8			fManualAddContacts;
 };
 
 

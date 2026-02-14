@@ -216,6 +216,11 @@ MainWindow::MainWindow()
 	fRadioCr = 0;
 	fRadioTxPower = 0;
 	fHasRadioParams = false;
+	fMultiAcks = 0;
+	fAdvertLocPolicy = 0;
+	fTelemetryModes = 0;
+	fManualAddContacts = 0;
+	fAutoSyncRunner = NULL;
 	_BuildUI();
 
 	// Initialize SQLite database
@@ -1730,6 +1735,35 @@ MainWindow::_SendSetLatLon(double lat, double lon)
 	payload[8] = (lonInt >> 24) & 0xFF;
 
 	fSerialHandler->SendFrame(payload, sizeof(payload));
+
+	// Also enable location sharing in adverts if not already on
+	if (fAdvertLocPolicy == 0 && (lat != 0.0 || lon != 0.0)) {
+		_LogMessage("INFO", "Enabling advert_loc_policy to share GPS in adverts");
+		fAdvertLocPolicy = 1;
+		_SendOtherParams();
+	}
+}
+
+
+void
+MainWindow::_SendOtherParams()
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+
+	_LogMessage("INFO", BString().SetToFormat(
+		"Sending other params: manualAdd=%d telemetry=%d locPolicy=%d multiAcks=%d",
+		fManualAddContacts, fTelemetryModes, fAdvertLocPolicy, fMultiAcks));
+
+	uint8 payload[5];
+	payload[0] = CMD_SET_OTHER_PARAMS;
+	payload[1] = fManualAddContacts;
+	payload[2] = fTelemetryModes;
+	payload[3] = fAdvertLocPolicy;
+	payload[4] = fMultiAcks;
+	fSerialHandler->SendFrame(payload, sizeof(payload));
 }
 
 
@@ -2467,10 +2501,10 @@ MainWindow::_HandleSelfInfo(const uint8* data, size_t length)
 	if (length >= 36) {
 		// Extract type and power info
 		uint8 advType = data[1];
-		uint8 txPower = data[2];
+		fRadioTxPower = data[2];
 		uint8 maxTxPower = data[3];
 		_LogMessage("INFO", BString().SetToFormat(
-			"Self type:%d txPower:%d maxTxPower:%d", advType, txPower, maxTxPower));
+			"Self type:%d txPower:%d maxTxPower:%d", advType, fRadioTxPower, maxTxPower));
 
 		// Extract and store public key as hex string (offset 4-35)
 		for (int i = 0; i < 32; i++) {
@@ -2503,15 +2537,31 @@ MainWindow::_HandleSelfInfo(const uint8* data, size_t length)
 		}
 	}
 
+	if (length >= 48) {
+		// Extract other params (bytes 44-47)
+		fMultiAcks = data[44];
+		fAdvertLocPolicy = data[45];
+		fTelemetryModes = data[46];
+		fManualAddContacts = data[47];
+		_LogMessage("INFO", BString().SetToFormat(
+			"Other params: locPolicy=%d multiAcks=%d telemetry=%d manualAdd=%d",
+			fAdvertLocPolicy, fMultiAcks, fTelemetryModes, fManualAddContacts));
+	}
+
 	if (length >= 58) {
 		// Extract current radio parameters
-		uint32 radioFreq = data[48] | (data[49] << 8) | (data[50] << 16) | (data[51] << 24);
-		uint32 radioBw = data[52] | (data[53] << 8) | (data[54] << 16) | (data[55] << 24);
-		uint8 radioSf = data[56];
-		uint8 radioCr = data[57];
+		// RSP_SELF_INFO returns freq in kHz, BW in Hz (same as wire format)
+		// We store everything in Hz internally
+		uint32 freqKHz = data[48] | (data[49] << 8) | (data[50] << 16)
+			| (data[51] << 24);
+		fRadioFreq = freqKHz * 1000;  // kHz → Hz
+		fRadioBw = data[52] | (data[53] << 8) | (data[54] << 16) | (data[55] << 24);
+		fRadioSf = data[56];
+		fRadioCr = data[57];
+		fHasRadioParams = true;
 		_LogMessage("INFO", BString().SetToFormat(
-			"Radio: %.3f MHz, %u kHz BW, SF%u, CR%u",
-			radioFreq / 1000000.0, radioBw / 1000, radioSf, radioCr));
+			"Radio: %.3f MHz, %.1f kHz BW, SF%u, CR%u",
+			fRadioFreq / 1000000.0, fRadioBw / 1000.0, fRadioSf, fRadioCr));
 	}
 
 	if (length > 58) {

@@ -32,6 +32,8 @@ public:
 			void			SetLatitude(double lat);
 			void			SetLongitude(double lon);
 			void			SetRadioPreset(int32 preset);
+			void			SetRadioParams(uint32 freqHz, uint32 bwHz,
+								uint8 sf, uint8 cr, uint8 txPower);
 			void			SetMqttSettings(const MqttSettings& settings);
 
 private:

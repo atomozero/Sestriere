@@ -224,6 +224,28 @@ SettingsWindow::SetRadioPreset(int32 preset)
 
 
 void
+SettingsWindow::SetRadioParams(uint32 freqHz, uint32 bwHz, uint8 sf, uint8 cr,
+	uint8 txPower)
+{
+	char buf[32];
+
+	snprintf(buf, sizeof(buf), "%.3f", freqHz / 1000000.0);
+	fFrequencyControl->SetText(buf);
+
+	snprintf(buf, sizeof(buf), "%.1f", bwHz / 1000.0);
+	fBandwidthControl->SetText(buf);
+
+	snprintf(buf, sizeof(buf), "%u", sf);
+	fSpreadingFactorControl->SetText(buf);
+
+	snprintf(buf, sizeof(buf), "%u", cr);
+	fCodingRateControl->SetText(buf);
+
+	fTxPowerSlider->SetValue(txPower);
+}
+
+
+void
 SettingsWindow::_BuildDeviceTab(BView* parent)
 {
 	fNodeNameControl = new BTextControl("node_name", "Node Name:", "",
