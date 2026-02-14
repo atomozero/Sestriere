@@ -33,7 +33,6 @@
 #include <StringView.h>
 #include <TextControl.h>
 
-#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -2398,17 +2397,6 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 {
 	if (length < 1)
 		return;
-
-	// Debug: log every incoming frame command byte
-	if (length >= 1) {
-		BString hexDump;
-		size_t dumpLen = std::min(length, (size_t)16);
-		for (size_t i = 0; i < dumpLen; i++)
-			hexDump << BString().SetToFormat("%02X ", data[i]);
-		_LogMessage("FRAME", BString().SetToFormat(
-			"cmd=0x%02X len=%zu [%s]", data[0], length,
-			hexDump.String()));
-	}
 
 	// Forward every frame to the Packet Analyzer window
 	if (fPacketAnalyzerWindow != NULL) {
