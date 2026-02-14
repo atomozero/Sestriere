@@ -33,6 +33,7 @@
 #include <StringView.h>
 #include <TextControl.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -187,6 +188,7 @@ MainWindow::MainWindow()
 	fPendingMsgIndex(-1),
 	fSendingToChannel(false),
 	fLoginPending(false),
+	fLoggedIn(false),
 	fSettingsWindow(NULL),
 	fStatsWindow(NULL),
 	fTracePathWindow(NULL),
@@ -219,6 +221,7 @@ MainWindow::MainWindow()
 	memset(fPublicKey, 0, sizeof(fPublicKey));
 	fSelfNodeId = 0;
 	memset(fLoginTargetKey, 0, sizeof(fLoginTargetKey));
+	memset(fLoggedInKey, 0, sizeof(fLoggedInKey));
 	fHasDeviceInfo = false;
 	fRadioFreq = 0;
 	fRadioBw = 0;
@@ -1658,6 +1661,7 @@ MainWindow::_SelectContact(int32 index)
 		fSendingToChannel = true;
 		fSelectedChannelIdx = -1;  // -1 = public channel (idx 0 on wire)
 		fChatHeader->SetChannel(true);
+		fChatHeader->SetConsoleMode(false);
 		fChatView->SetCurrentContact(NULL);
 		fInfoPanel->SetChannel(true);
 
@@ -1715,6 +1719,7 @@ MainWindow::_SelectContact(int32 index)
 		BString headerName;
 		headerName.SetToFormat("#%s", ch ? ch->name : "Channel");
 		fChatHeader->SetChannelName(headerName.String());
+		fChatHeader->SetConsoleMode(false);
 		fChatView->SetCurrentContact(NULL);
 		fInfoPanel->SetChannel(true);
 		fMessageInput->SetEnabled(fConnected);
@@ -1751,6 +1756,10 @@ MainWindow::_SelectContact(int32 index)
 
 		if (contact != NULL) {
 			fChatHeader->SetContact(contact);
+			// Enable console mode if logged into this contact
+			fChatHeader->SetConsoleMode(fLoggedIn &&
+				memcmp(contact->publicKey, fLoggedInKey,
+					kPubKeyPrefixSize) == 0);
 			fChatView->SetCurrentContact(contact);
 			fInfoPanel->SetContact(contact);
 			fMessageInput->SetEnabled(fConnected);
@@ -1764,6 +1773,7 @@ MainWindow::_SelectContact(int32 index)
 		// Nothing selected
 		fSendingToChannel = false;
 		fChatHeader->SetContact(NULL);
+		fChatHeader->SetConsoleMode(false);
 		fChatView->SetCurrentContact(NULL);
 		fInfoPanel->Clear();
 		fMessageInput->SetEnabled(false);
@@ -1825,7 +1835,7 @@ MainWindow::_SendDeviceQuery()
 	_LogMessage("INFO", "Querying device info...");
 	uint8 payload[2];
 	payload[0] = CMD_DEVICE_QUERY;
-	payload[1] = 1;
+	payload[1] = 3;  // Request V3 protocol (SNR, RSSI, pathLen in messages)
 	fSerialHandler->SendFrame(payload, 2);
 }
 
@@ -2067,7 +2077,13 @@ MainWindow::_SendLogin(const uint8* pubkey, const char* password)
 	payload[33 + passLen] = '\0';
 
 	fSerialHandler->SendFrame(payload, 34 + passLen);
-	_LogMessage("INFO", "Sending login request...");
+
+	char hexKey[13];
+	for (int i = 0; i < 6; i++)
+		snprintf(hexKey + i * 2, 3, "%02X", pubkey[i]);
+	_LogMessage("INFO", BString().SetToFormat(
+		"Login sent to %s, frame size=%zu, waiting for 0x85/0x86...",
+		hexKey, 34 + passLen));
 }
 
 
@@ -2151,8 +2167,16 @@ MainWindow::_SendTextMessage(const char* text)
 		return;
 	}
 
-	int32 contactIndex = fSelectedContact - 1;
-	ContactInfo* contact = fContacts.ItemAt(contactIndex);
+	// Look up contact by pubkey from the selected list item
+	// (can't use fSelectedContact-1 as index — private channels shift indices)
+	ContactItem* selItem = dynamic_cast<ContactItem*>(
+		fContactList->ItemAt(fSelectedContact));
+	if (selItem == NULL || selItem->IsChannel()) {
+		_LogMessage("ERROR", "No contact selected");
+		return;
+	}
+	ContactInfo* contact = _FindContactByPrefix(
+		selItem->GetContact().publicKey, kPubKeyPrefixSize);
 	if (contact == NULL) {
 		_LogMessage("ERROR", "Invalid contact");
 		return;
@@ -2164,13 +2188,27 @@ MainWindow::_SendTextMessage(const char* text)
 		return;
 	}
 
-	_LogMessage("INFO", BString("Sending DM to ") << contact->name << ": " << text);
+	{
+		char hex[13];
+		for (int i = 0; i < 6; i++)
+			snprintf(hex + i * 2, 3, "%02X", contact->publicKey[i]);
+		_LogMessage("INFO", BString().SetToFormat(
+			"Sending DM to %s [%s] (idx %d, cli=%d): %s",
+			contact->name, hex, (int)fSelectedContact,
+			(int)(fLoggedIn && memcmp(contact->publicKey,
+				fLoggedInKey, kPubKeyPrefixSize) == 0),
+			text));
+	}
 
 	uint8 payload[256];
 	size_t pos = 0;
 
+	// Use CLI txt_type when logged into this contact
+	bool isCli = (fLoggedIn &&
+		memcmp(contact->publicKey, fLoggedInKey, kPubKeyPrefixSize) == 0);
+
 	payload[pos++] = CMD_SEND_TXT_MSG;
-	payload[pos++] = 0;  // txt_type: plain
+	payload[pos++] = isCli ? TXT_TYPE_CLI_DATA : TXT_TYPE_PLAIN;
 	payload[pos++] = 0;  // attempt
 
 	uint32 timestamp = (uint32)time(NULL);
@@ -2196,6 +2234,7 @@ MainWindow::_SendTextMessage(const char* text)
 	outMsg.isChannel = false;
 	outMsg.pathLen = 0;
 	outMsg.snr = 0;
+	outMsg.txtType = isCli ? TXT_TYPE_CLI_DATA : TXT_TYPE_PLAIN;
 	outMsg.deliveryStatus = DELIVERY_PENDING;
 	fChatView->AddMessage(outMsg, "Me");
 
@@ -2346,6 +2385,17 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 {
 	if (length < 1)
 		return;
+
+	// Debug: log every incoming frame command byte
+	if (length >= 1) {
+		BString hexDump;
+		size_t dumpLen = std::min(length, (size_t)16);
+		for (size_t i = 0; i < dumpLen; i++)
+			hexDump << BString().SetToFormat("%02X ", data[i]);
+		_LogMessage("FRAME", BString().SetToFormat(
+			"cmd=0x%02X len=%zu [%s]", data[0], length,
+			hexDump.String()));
+	}
 
 	// Forward every frame to the Packet Analyzer window
 	if (fPacketAnalyzerWindow != NULL) {
@@ -2799,6 +2849,21 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 	// Load saved messages after contacts are available
 	_LoadMessages();
 
+	// Re-select logged-in contact after list rebuild (login + resync race)
+	if (fLoggedIn) {
+		for (int32 i = 1; i < fContactList->CountItems(); i++) {
+			ContactItem* item = dynamic_cast<ContactItem*>(
+				fContactList->ItemAt(i));
+			if (item != NULL && !item->IsChannel() &&
+				memcmp(item->GetContact().publicKey,
+					fLoggedInKey, kPubKeyPrefixSize) == 0) {
+				fContactList->Select(i);
+				_SelectContact(i);
+				break;
+			}
+		}
+	}
+
 	// Start offline message sync to drain any queued messages
 	_SendSyncNextMessage();
 
@@ -2942,6 +3007,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 	const uint8* senderPrefix;
 	uint8 pathLen;
 	int8 snr;
+	uint8 txtType;
 	uint32 timestamp;
 	size_t textOffset;
 
@@ -2953,7 +3019,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 		snr = (int8)data[1];
 		senderPrefix = data + 4;
 		pathLen = data[10];
-		// data[11] = txt_type (0=plain, 1=cli_data, 2=signed_plain)
+		txtType = data[11];  // 0=plain, 1=cli_data, 2=signed_plain
 		timestamp = data[12] | (data[13] << 8) | (data[14] << 16) | (data[15] << 24);
 		textOffset = 16;
 	} else {
@@ -2964,7 +3030,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 		senderPrefix = data + 1;
 		pathLen = data[7];
 		snr = 0;  // V2 does not include SNR
-		// data[8] = txt_type
+		txtType = data[8];  // 0=plain, 1=cli_data
 		timestamp = data[9] | (data[10] << 8) | (data[11] << 16) | (data[12] << 24);
 		textOffset = 13;
 	}
@@ -3001,6 +3067,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 	strlcpy(chatMsg.text, text, sizeof(chatMsg.text));
 	chatMsg.isOutgoing = false;
 	chatMsg.isChannel = false;
+	chatMsg.txtType = txtType;
 
 	// Add to chat if this contact is selected
 	if (fChatView->CurrentContact() != NULL) {
@@ -3721,10 +3788,16 @@ MainWindow::_HandlePushLoginResult(uint8 code)
 	fLoginPending = false;
 	bool success = (code == PUSH_LOGIN_SUCCESS);
 
-	if (success)
-		_LogMessage("OK", "Login successful!");
-	else
-		_LogMessage("ERROR", "Login failed.");
+	if (success) {
+		char hex[13];
+		for (int i = 0; i < 6; i++)
+			snprintf(hex + i * 2, 3, "%02X", fLoginTargetKey[i]);
+		_LogMessage("OK", BString().SetToFormat(
+			"Login successful! (0x%02X) target=%s", code, hex));
+	} else {
+		_LogMessage("ERROR", BString().SetToFormat(
+			"Login failed (0x%02X)", code));
+	}
 
 	// Forward result to login window if open
 	if (fLoginWindow != NULL) {
@@ -3740,6 +3813,10 @@ MainWindow::_HandlePushLoginResult(uint8 code)
 	// After successful login, select the target contact so the user
 	// can see the room/repeater menu messages, and refresh contacts
 	if (success) {
+		// Track active login session for CLI console mode
+		fLoggedIn = true;
+		memcpy(fLoggedInKey, fLoginTargetKey, kPubKeyPrefixSize);
+
 		// Auto-select the contact we just logged into
 		for (int32 i = 1; i < fContactList->CountItems(); i++) {
 			ContactItem* item = dynamic_cast<ContactItem*>(
@@ -3749,6 +3826,7 @@ MainWindow::_HandlePushLoginResult(uint8 code)
 					fLoginTargetKey, kPubKeyPrefixSize) == 0) {
 				fContactList->Select(i);
 				_SelectContact(i);
+				fChatHeader->SetConsoleMode(true);
 				break;
 			}
 		}
@@ -3862,6 +3940,9 @@ MainWindow::_OnDisconnected()
 	fSyncingMessages = false;
 	fEnumeratingChannels = false;
 	fPendingMsgIndex = -1;
+	fLoggedIn = false;
+	memset(fLoggedInKey, 0, kPubKeyPrefixSize);
+	fChatHeader->SetConsoleMode(false);
 
 	// Stop periodic stats timer
 	delete fStatsRefreshTimer;
@@ -3903,9 +3984,40 @@ MainWindow::_UpdateSidebarDeviceLabel()
 void
 MainWindow::_UpdateContactList()
 {
+	// Save current selection's pubkey so we can restore it after the
+	// list rebuild.  _FilterContacts() destroys all ContactItem objects
+	// and recreates them, which invalidates fSelectedContact's index.
+	uint8 savedKey[kPubKeyPrefixSize] = {};
+	bool hadContactSelected = false;
+
+	if (fSelectedContact > 0 && !fSendingToChannel) {
+		ContactItem* sel = dynamic_cast<ContactItem*>(
+			fContactList->ItemAt(fSelectedContact));
+		if (sel != NULL && !sel->IsChannel()) {
+			memcpy(savedKey, sel->GetContact().publicKey,
+				kPubKeyPrefixSize);
+			hadContactSelected = true;
+		}
+	}
+
 	// Get current filter text
 	const char* filter = (fSearchField != NULL) ? fSearchField->Text() : "";
 	_FilterContacts(filter);
+
+	// Restore contact selection by pubkey (index may have shifted)
+	if (hadContactSelected) {
+		for (int32 i = 1; i < fContactList->CountItems(); i++) {
+			ContactItem* item = dynamic_cast<ContactItem*>(
+				fContactList->ItemAt(i));
+			if (item != NULL && !item->IsChannel()
+				&& memcmp(item->GetContact().publicKey,
+					savedKey, kPubKeyPrefixSize) == 0) {
+				fContactList->Select(i);
+				_SelectContact(i);
+				break;
+			}
+		}
+	}
 
 	// Update network map if open
 	if (fNetworkMapWindow != NULL && !fNetworkMapWindow->IsHidden()) {
@@ -3920,6 +4032,10 @@ MainWindow::_UpdateContactList()
 void
 MainWindow::_FilterContacts(const char* filter)
 {
+	// Suppress selection messages while rebuilding the list to avoid
+	// queued MSG_CONTACT_SELECTED overriding programmatic re-selection
+	fContactList->SetSelectionMessage(NULL);
+
 	// Remove all items except the Channel item (index 0)
 	while (fContactList->CountItems() > 1) {
 		BListItem* item = fContactList->RemoveItem(1);
@@ -3969,6 +4085,9 @@ MainWindow::_FilterContacts(const char* filter)
 		ContactItem* item = new ContactItem(*contact);
 		fContactList->AddItem(item);
 	}
+
+	// Re-enable selection messages
+	fContactList->SetSelectionMessage(new BMessage(MSG_CONTACT_SELECTED));
 }
 
 
@@ -4288,10 +4407,15 @@ MainWindow::_CloseSearch()
 			}
 		}
 	} else if (fSelectedContact > 0) {
-		int32 contactIndex = fSelectedContact - 1;
-		ContactInfo* contact = fContacts.ItemAt(contactIndex);
-		if (contact != NULL)
-			fChatView->SetCurrentContact(contact);
+		// Look up contact by pubkey from list item (not by index arithmetic)
+		ContactItem* selItem = dynamic_cast<ContactItem*>(
+			fContactList->ItemAt(fSelectedContact));
+		if (selItem != NULL && !selItem->IsChannel()) {
+			ContactInfo* contact = _FindContactByPrefix(
+				selItem->GetContact().publicKey, kPubKeyPrefixSize);
+			if (contact != NULL)
+				fChatView->SetCurrentContact(contact);
+		}
 	}
 }
 

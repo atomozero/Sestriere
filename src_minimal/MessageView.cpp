@@ -65,6 +65,7 @@ MessageView::MessageView(const ChatMessage& message, const char* senderName)
 	fSnr(message.snr),
 	fDeliveryStatus(message.deliveryStatus),
 	fRoundTripMs(message.roundTripMs),
+	fTxtType(message.txtType),
 	fBaselineOffset(0)
 {
 }
@@ -86,6 +87,12 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	owner->SetLowColor(chatBg);
 	owner->FillRect(frame, B_SOLID_LOW);
 
+	bool isCli = (fTxtType == 1);
+
+	// Use monospace font for CLI messages
+	if (isCli)
+		owner->SetFont(be_fixed_font);
+
 	font_height fh;
 	owner->GetFontHeight(&fh);
 	float lineHeight = fh.ascent + fh.descent + fh.leading;
@@ -93,9 +100,15 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	// Calculate bubble dimensions — use owner bounds (same as Update)
 	float maxBubbleWidth = owner->Bounds().Width() * kBubbleMaxWidthRatio;
 
+	// For CLI messages, prepend "> " to outgoing commands
+	BString displayText = fText;
+	if (isCli && fOutgoing)
+		displayText.Prepend("> ");
+
 	// Wrap text if needed
 	std::vector<BString> lines;
-	_WrapText(owner, fText, maxBubbleWidth - kBubblePadding * 2, lines);
+	_WrapText(owner, isCli ? displayText : fText,
+		maxBubbleWidth - kBubblePadding * 2, lines);
 
 	// Calculate actual bubble width based on longest line
 	float maxLineWidth = 0;
@@ -189,8 +202,16 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	bubbleRect.bottom = bubbleRect.top + bubbleHeight;
 
 	// Draw bubble background with Haiku-style subtle shadow
-	rgb_color bubbleColor = fOutgoing ? OutgoingBubbleColor() : IncomingBubbleColor();
-	rgb_color borderColor = fOutgoing ? OutgoingBorderColor() : IncomingBorderColor();
+	rgb_color bubbleColor;
+	rgb_color borderColor;
+	if (isCli) {
+		// Terminal-style: darker background for CLI messages
+		bubbleColor = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_2_TINT);
+		borderColor = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_3_TINT);
+	} else {
+		bubbleColor = fOutgoing ? OutgoingBubbleColor() : IncomingBubbleColor();
+		borderColor = fOutgoing ? OutgoingBorderColor() : IncomingBorderColor();
+	}
 
 	// Subtle shadow (offset by 1 pixel)
 	owner->SetHighColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_2_TINT));
@@ -226,7 +247,15 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	}
 
 	// Draw message text
-	owner->SetHighColor(BubbleTextColor());
+	if (isCli && fOutgoing) {
+		// Amber prompt color for outgoing CLI commands
+		owner->SetHighColor((rgb_color){220, 180, 60, 255});
+	} else if (isCli) {
+		// Green-tinted text for incoming CLI responses
+		owner->SetHighColor((rgb_color){77, 182, 172, 255});
+	} else {
+		owner->SetHighColor(BubbleTextColor());
+	}
 
 	for (const auto& line : lines) {
 		owner->DrawString(line.String(),
@@ -273,8 +302,13 @@ MessageView::Update(BView* owner, const BFont* font)
 {
 	BListItem::Update(owner, font);
 
+	bool isCli = (fTxtType == 1);
+
+	// Use monospace font metrics for CLI messages
+	const BFont* measureFont = isCli ? be_fixed_font : font;
+
 	font_height fontHeight;
-	font->GetHeight(&fontHeight);
+	measureFont->GetHeight(&fontHeight);
 
 	fBaselineOffset = fontHeight.ascent + fontHeight.leading + 2;
 
@@ -285,9 +319,31 @@ MessageView::Update(BView* owner, const BFont* font)
 	BRect ownerBounds = owner->Bounds();
 	float maxBubbleWidth = ownerBounds.Width() * kBubbleMaxWidthRatio;
 
+	// For CLI messages, prepend "> " to outgoing commands
+	BString displayText = fText;
+	if (isCli && fOutgoing)
+		displayText.Prepend("> ");
+
 	// Wrap text to calculate actual height
+	// NOTE: Do NOT call owner->SetFont() here — it triggers
+	// BListView::_UpdateItems() → Update() infinite recursion.
+	// For CLI, estimate wrapping using monospace font directly.
 	std::vector<BString> lines;
-	_WrapText(owner, fText, maxBubbleWidth - kBubblePadding * 2, lines);
+	if (isCli) {
+		// Estimate line count using monospace font width
+		float availWidth = maxBubbleWidth - kBubblePadding * 2;
+		float textWidth = be_fixed_font->StringWidth(
+			displayText.String());
+		int32 lineCount = (textWidth > availWidth)
+			? (int32)(textWidth / availWidth) + 1 : 1;
+		for (int32 i = 0; i < lineCount; i++)
+			lines.push_back("");
+		if (lines.empty())
+			lines.push_back("");
+	} else {
+		_WrapText(owner, fText,
+			maxBubbleWidth - kBubblePadding * 2, lines);
+	}
 
 	// Calculate total height
 	float textHeight = lines.size() * lineHeight;

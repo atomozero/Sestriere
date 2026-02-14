@@ -28,6 +28,7 @@ public:
 			void			SetChannelName(const char* name);
 			void			SetStatus(const char* status);
 			void			SetConnectionInfo(int8 pathLen, int8 snr);
+			void			SetConsoleMode(bool console);
 
 private:
 			void			_DrawAvatar(BRect rect);
@@ -37,6 +38,7 @@ private:
 			BString			fDisplayName;
 			BString			fStatus;
 			bool			fIsChannel;
+			bool			fConsoleMode;
 			int8			fPathLen;
 			int8			fSnr;
 };

@@ -49,6 +49,7 @@ private:
 			int8			fSnr;
 			uint8			fDeliveryStatus;
 			uint32			fRoundTripMs;
+			uint8			fTxtType;
 
 			float			fBaselineOffset;
 };

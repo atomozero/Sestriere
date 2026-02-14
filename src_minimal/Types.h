@@ -74,10 +74,12 @@ struct ChatMessage {
 	bool	isChannel;			// True if channel message (vs DM)
 	uint8	deliveryStatus;		// DeliveryStatus enum value
 	uint32	roundTripMs;		// Round-trip time from PUSH_SEND_CONFIRMED
+	uint8	txtType;			// 0=plain, 1=CLI data
 
 	ChatMessage() : pathLen(kPathLenDirect), snr(0), timestamp(0),
 					isOutgoing(false), isChannel(false),
-					deliveryStatus(DELIVERY_SENT), roundTripMs(0) {
+					deliveryStatus(DELIVERY_SENT), roundTripMs(0),
+					txtType(0) {
 		memset(pubKeyPrefix, 0, sizeof(pubKeyPrefix));
 		memset(text, 0, sizeof(text));
 	}

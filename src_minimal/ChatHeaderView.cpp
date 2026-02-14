@@ -65,6 +65,7 @@ ChatHeaderView::ChatHeaderView(const char* name)
 	fDisplayName("Select a contact"),
 	fStatus(""),
 	fIsChannel(false),
+	fConsoleMode(false),
 	fPathLen(-1),
 	fSnr(0)
 {
@@ -133,6 +134,33 @@ ChatHeaderView::Draw(BRect updateRect)
 	SetHighColor(fIsChannel ? ChannelColor() : NameColor());
 	DrawString(fDisplayName.String(),
 		BPoint(textLeft, bounds.top + kMargin + nameFh.ascent));
+
+	// Console mode badge
+	if (fConsoleMode) {
+		float nameWidth = nameFont.StringWidth(fDisplayName.String());
+		BFont badgeFont;
+		GetFont(&badgeFont);
+		badgeFont.SetSize(11);
+		badgeFont.SetFace(B_BOLD_FACE);
+		SetFont(&badgeFont);
+
+		const char* badge = "[Console]";
+		float badgeWidth = badgeFont.StringWidth(badge);
+		float badgeX = textLeft + nameWidth + 8;
+		float badgeY = bounds.top + kMargin + nameFh.ascent;
+
+		// Draw badge pill background
+		rgb_color consoleGreen = {77, 182, 172, 255};
+		font_height badgeFh;
+		badgeFont.GetHeight(&badgeFh);
+		BRect pillRect(badgeX - 4, badgeY - badgeFh.ascent - 1,
+			badgeX + badgeWidth + 4, badgeY + badgeFh.descent + 1);
+		SetHighColor(tint_color(consoleGreen, B_LIGHTEN_2_TINT));
+		FillRoundRect(pillRect, 3, 3);
+
+		SetHighColor(consoleGreen);
+		DrawString(badge, BPoint(badgeX, badgeY));
+	}
 
 	// Status line
 	BFont statusFont;
@@ -284,6 +312,14 @@ ChatHeaderView::SetConnectionInfo(int8 pathLen, int8 snr)
 {
 	fPathLen = pathLen;
 	fSnr = snr;
+	Invalidate();
+}
+
+
+void
+ChatHeaderView::SetConsoleMode(bool console)
+{
+	fConsoleMode = console;
 	Invalidate();
 }
 

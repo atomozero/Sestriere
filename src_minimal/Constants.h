@@ -106,6 +106,10 @@ const uint8 PUSH_TELEMETRY_RESPONSE = 0x8B;
 const uint8 PUSH_BINARY_RESPONSE = 0x8C;
 const uint8 PUSH_CONTROL_DATA = 0x8E;
 
+// Text message types
+const uint8 TXT_TYPE_PLAIN = 0;
+const uint8 TXT_TYPE_CLI_DATA = 1;
+
 // Message field names
 const char* const kFieldPort = "port";
 const char* const kFieldData = "data";

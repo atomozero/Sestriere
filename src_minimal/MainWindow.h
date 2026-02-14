@@ -218,6 +218,8 @@ private:
 			bool			fSendingToChannel;
 			bool			fLoginPending;
 			uint8			fLoginTargetKey[6];
+			bool			fLoggedIn;
+			uint8			fLoggedInKey[6];
 
 			// Child windows
 			SettingsWindow*	fSettingsWindow;
