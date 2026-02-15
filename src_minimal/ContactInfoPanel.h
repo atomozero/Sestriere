@@ -61,7 +61,7 @@ private:
 							const char* title);
 			void		_DrawAdminSections(float& y);
 			void		_BuildAdminTabs();
-			void		_PositionAdminTabs(float y);
+			void		_PositionAdminTabs(float& y);
 			void		_ShowAdminTabs(bool show);
 
 			const ContactInfo*	fContact;

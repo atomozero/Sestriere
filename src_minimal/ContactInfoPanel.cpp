@@ -1091,7 +1091,7 @@ ContactInfoPanel::_BuildAdminTabs()
 
 
 void
-ContactInfoPanel::_PositionAdminTabs(float y)
+ContactInfoPanel::_PositionAdminTabs(float& y)
 {
 	if (fAdminTabView == NULL)
 		return;
@@ -1110,6 +1110,7 @@ ContactInfoPanel::_PositionAdminTabs(float y)
 	y += 4;
 	fAdminTabView->MoveTo(x, y);
 	fAdminTabView->ResizeTo(w, h);
+	y += h + 4;
 }
 
 
