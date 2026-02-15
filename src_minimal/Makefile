@@ -32,8 +32,7 @@ SRCS = \
 	GrowingTextView.cpp \
 	DatabaseManager.cpp \
 	SNRChartView.cpp \
-	PacketAnalyzerWindow.cpp \
-	RepeaterAdminWindow.cpp
+	PacketAnalyzerWindow.cpp
 
 RDEFS = Sestriere.rdef
 

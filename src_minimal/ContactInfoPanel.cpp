@@ -21,7 +21,6 @@
 
 #include "Constants.h"
 #include "DatabaseManager.h"
-#include "RepeaterAdminWindow.h"
 #include "SNRChartView.h"
 
 

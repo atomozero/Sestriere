@@ -182,6 +182,8 @@ enum {
 
 	// Admin panel (inline in ContactInfoPanel)
 	MSG_ADMIN_REFRESH_TICK = 'artk',
+	MSG_ADMIN_REBOOT = 'arbt',
+	MSG_ADMIN_FACTORY_RESET = 'arfr',
 };
 
 #endif // CONSTANTS_H

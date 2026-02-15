@@ -55,7 +55,6 @@
 #include "MqttSettingsWindow.h"
 #include "NetworkMapWindow.h"
 #include "PacketAnalyzerWindow.h"
-#include "RepeaterAdminWindow.h"
 #include "NotificationManager.h"
 #include "SerialHandler.h"
 #include "SettingsWindow.h"
@@ -200,7 +199,6 @@ MainWindow::MainWindow()
 	fMapWindow(NULL),
 	fContactExportWindow(NULL),
 	fPacketAnalyzerWindow(NULL),
-	fRepeaterAdminWindow(NULL),
 	fMqttLogWindow(NULL),
 	fMqttClient(NULL),
 	fRawPacketCount(0),
@@ -1412,37 +1410,6 @@ MainWindow::MessageReceived(BMessage* message)
 					_SendStatusRequest(target->publicKey);
 			}
 			break;
-
-		case MSG_ADMIN_REMOVE_CONTACT:
-		{
-			const char* contactKey;
-			if (message->FindString("contact_key", &contactKey) == B_OK) {
-				// Parse hex key back to bytes
-				uint8 keyBytes[6];
-				for (int i = 0; i < 6 && contactKey[i * 2] != '\0'; i++) {
-					unsigned int byte;
-					sscanf(contactKey + i * 2, "%02X", &byte);
-					keyBytes[i] = (uint8)byte;
-				}
-				_SendRemoveContact(keyBytes);
-			}
-			break;
-		}
-
-		case MSG_ADMIN_RESET_PATH:
-		{
-			const char* contactKey;
-			if (message->FindString("contact_key", &contactKey) == B_OK) {
-				uint8 keyBytes[6];
-				for (int i = 0; i < 6 && contactKey[i * 2] != '\0'; i++) {
-					unsigned int byte;
-					sscanf(contactKey + i * 2, "%02X", &byte);
-					keyBytes[i] = (uint8)byte;
-				}
-				_SendResetPath(keyBytes);
-			}
-			break;
-		}
 
 		case MSG_REQUEST_TELEMETRY:
 		{

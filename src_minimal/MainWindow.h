@@ -35,7 +35,6 @@ class LoginWindow;
 class MapWindow;
 class NetworkMapWindow;
 class PacketAnalyzerWindow;
-class RepeaterAdminWindow;
 class SerialHandler;
 class SettingsWindow;
 class StatsWindow;
@@ -238,7 +237,6 @@ private:
 			MapWindow*		fMapWindow;
 			ContactExportWindow* fContactExportWindow;
 			PacketAnalyzerWindow* fPacketAnalyzerWindow;
-			RepeaterAdminWindow* fRepeaterAdminWindow;
 			MqttLogWindow*	fMqttLogWindow;
 
 			// MQTT client
