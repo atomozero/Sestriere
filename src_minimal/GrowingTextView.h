@@ -28,11 +28,14 @@ public:
 			void		SetSendMessage(BMessage* message);
 			void		SetEnabled(bool enabled);
 			bool		IsEnabled() const { return fEnabled; }
+			void		SetModificationMessage(BMessage* message);
 
 private:
 			void		_RecalcHeight();
+			void		_NotifyModification();
 
 			BMessage*	fEnterMessage;
+			BMessage*	fModificationMessage;
 			bool		fEnabled;
 			float		fMinHeight;
 			float		fMaxHeight;

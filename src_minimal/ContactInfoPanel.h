@@ -36,6 +36,15 @@ public:
 			void		Clear();
 			void		RefreshSNRChart();
 
+			// Admin session (repeater/room management)
+			void		SetAdminSession(bool active);
+			void		SetBatteryInfo(uint16 battMv,
+							uint32 usedKb, uint32 totalKb);
+			void		SetRadioStats(uint32 uptime,
+							uint32 txPkts, uint32 rxPkts,
+							int8 rssi, int8 snr, int8 noise);
+			bool		IsAdminSession() const { return fAdminActive; }
+
 private:
 			void		_DrawAvatar(BRect rect);
 			void		_DrawInfoRow(float& y, const char* label,
@@ -46,12 +55,32 @@ private:
 			void		_FormatPubKey(char* buffer, size_t size) const;
 			void		_UpdateSNRChart();
 			void		_PositionChart(float y);
+			void		_DrawSectionHeader(float& y,
+							const char* title);
+			void		_DrawAdminSections(float& y);
+			void		_PositionButtons(float& y);
 
 			const ContactInfo*	fContact;
 			bool		fIsChannel;
 			int32		fChannelContactCount;
 			int32		fChannelOnlineCount;
 			SNRChartView*	fSNRChart;
+
+			// Admin state
+			bool		fAdminActive;
+			uint16		fBattMv;
+			uint32		fUsedKb;
+			uint32		fTotalKb;
+			uint32		fAdminUptime;
+			uint32		fAdminTxPkts;
+			uint32		fAdminRxPkts;
+			int8		fAdminRssi;
+			int8		fAdminSnr;
+			int8		fAdminNoise;
+
+			// Admin buttons
+			BButton*	fRebootButton;
+			BButton*	fFactoryResetButton;
 };
 
 #endif // CONTACTINFOPANEL_H

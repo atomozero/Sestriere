@@ -176,6 +176,12 @@ enum {
 	MSG_MQTT_TOGGLE = 'mqtg',
 	MSG_SHOW_MQTT_LOG = 'mqlg',
 	MSG_MQTT_LOG_ENTRY = 'mqle',
+
+	// Input
+	MSG_INPUT_MODIFIED = 'inmd',
+
+	// Admin panel (inline in ContactInfoPanel)
+	MSG_ADMIN_REFRESH_TICK = 'artk',
 };
 
 #endif // CONSTANTS_H

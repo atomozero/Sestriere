@@ -84,6 +84,7 @@ private:
 			void			_SendSetChannel(uint8 index, const char* name,
 								const uint8* secret);
 			void			_SendRemoveChannel(uint8 index);
+			void			_SendStatusRequest(const uint8* pubkey);
 
 			// Frame handling
 			void			_OnFrameReceived(BMessage* message);
@@ -114,6 +115,8 @@ private:
 			void			_HandlePushTraceData(const uint8* data, size_t length);
 			void			_HandlePushTelemetry(const uint8* data, size_t length);
 			void			_HandlePushLoginResult(uint8 code);
+			void			_HandlePushStatusResponse(const uint8* data,
+								size_t length);
 			void			_HandleRawPacket(const uint8* data, size_t length);
 
 			// Connection events
@@ -146,6 +149,9 @@ private:
 			void			_PerformSearch(const char* query);
 			void			_CloseSearch();
 
+			// Input char counter
+			void			_UpdateCharCounter();
+
 			// MQTT settings
 			void			_SaveMqttSettings();
 			void			_LoadMqttSettings();
@@ -176,6 +182,7 @@ private:
 			BScrollView*	fChatScroll;
 			GrowingTextView*	fMessageInput;
 			BButton*		fSendButton;
+			BStringView*	fCharCounter;
 
 			// UI elements - Message search
 			BView*			fSearchBar;
@@ -246,6 +253,7 @@ private:
 			BMessageRunner*	fAutoConnectTimer;
 			BMessageRunner*	fStatsRefreshTimer;
 			BMessageRunner*	fAutoSyncRunner;
+			BMessageRunner*	fAdminRefreshTimer;
 
 			// Cached stats for status bar
 			uint16			fBatteryMv;

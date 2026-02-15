@@ -17,9 +17,17 @@
 #include <cstring>
 #include <ctime>
 
+#include <Alert.h>
+
 #include "Constants.h"
 #include "DatabaseManager.h"
+#include "RepeaterAdminWindow.h"
 #include "SNRChartView.h"
+
+
+// Internal message codes for admin buttons
+static const uint32 kMsgRebootClicked = 'arbc';
+static const uint32 kMsgResetClicked = 'arfc';
 
 
 // Avatar colors (same palette as ContactItem/ChatHeaderView)
@@ -87,7 +95,19 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fIsChannel(false),
 	fChannelContactCount(0),
 	fChannelOnlineCount(0),
-	fSNRChart(NULL)
+	fSNRChart(NULL),
+	fAdminActive(false),
+	fBattMv(0),
+	fUsedKb(0),
+	fTotalKb(0),
+	fAdminUptime(0),
+	fAdminTxPkts(0),
+	fAdminRxPkts(0),
+	fAdminRssi(0),
+	fAdminSnr(0),
+	fAdminNoise(0),
+	fRebootButton(NULL),
+	fFactoryResetButton(NULL)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	SetExplicitMinSize(BSize(kPanelMinWidth, B_SIZE_UNSET));
@@ -99,6 +119,21 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fSNRChart->ResizeTo(kPanelMinWidth - kMargin * 2, 100);
 	fSNRChart->Hide();
 	AddChild(fSNRChart);
+
+	// Admin action buttons — hidden until admin session active
+	fRebootButton = new BButton("reboot", "Reboot",
+		new BMessage(kMsgRebootClicked));
+	fRebootButton->MoveTo(kMargin, 500);
+	fRebootButton->ResizeTo(80, 24);
+	fRebootButton->Hide();
+	AddChild(fRebootButton);
+
+	fFactoryResetButton = new BButton("factory_reset", "Factory Reset",
+		new BMessage(kMsgResetClicked));
+	fFactoryResetButton->MoveTo(kMargin + 88, 500);
+	fFactoryResetButton->ResizeTo(100, 24);
+	fFactoryResetButton->Hide();
+	AddChild(fFactoryResetButton);
 }
 
 
@@ -111,6 +146,8 @@ void
 ContactInfoPanel::AttachedToWindow()
 {
 	BView::AttachedToWindow();
+	fRebootButton->SetTarget(this);
+	fFactoryResetButton->SetTarget(this);
 }
 
 
@@ -126,6 +163,41 @@ void
 ContactInfoPanel::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
+		case kMsgRebootClicked:
+		{
+			BAlert* alert = new BAlert("Reboot",
+				"Reboot this device?\n\n"
+				"The device will restart and briefly go offline.",
+				"Cancel", "Reboot", NULL,
+				B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+			if (alert->Go() == 1) {
+				BMessage cmd(MSG_ADMIN_REBOOT);
+				Window()->PostMessage(&cmd);
+			}
+			break;
+		}
+
+		case kMsgResetClicked:
+		{
+			BAlert* alert1 = new BAlert("Factory Reset",
+				"Factory reset this device?\n\n"
+				"ALL contacts, messages, and settings will be erased!",
+				"Cancel", "Continue", NULL,
+				B_WIDTH_AS_USUAL, B_STOP_ALERT);
+			if (alert1->Go() == 1) {
+				BAlert* alert2 = new BAlert("Confirm Reset",
+					"Are you SURE?\n\n"
+					"This cannot be undone!",
+					"Cancel", "Reset", NULL,
+					B_WIDTH_AS_USUAL, B_STOP_ALERT);
+				if (alert2->Go() == 1) {
+					BMessage cmd(MSG_ADMIN_FACTORY_RESET);
+					Window()->PostMessage(&cmd);
+				}
+			}
+			break;
+		}
+
 		default:
 			BView::MessageReceived(message);
 			break;
@@ -385,6 +457,10 @@ ContactInfoPanel::Draw(BRect updateRect)
 		_DrawInfoRow(y, "Flags", flagsStr, LabelColor());
 	}
 
+	// === Admin sections (repeater/room) ===
+	if (fAdminActive && fContact->type >= 2)
+		_DrawAdminSections(y);
+
 	// === SNR Chart section ===
 	y += 4;
 
@@ -420,6 +496,21 @@ ContactInfoPanel::SetContact(const ContactInfo* contact)
 	_UpdateSNRChart();
 	if (fSNRChart != NULL && fSNRChart->IsHidden())
 		fSNRChart->Show();
+
+	// Show admin buttons only for repeater/room contacts
+	bool showAdmin = (fAdminActive && contact != NULL && contact->type >= 2);
+	if (showAdmin) {
+		if (fRebootButton->IsHidden())
+			fRebootButton->Show();
+		if (fFactoryResetButton->IsHidden())
+			fFactoryResetButton->Show();
+	} else {
+		if (!fRebootButton->IsHidden())
+			fRebootButton->Hide();
+		if (!fFactoryResetButton->IsHidden())
+			fFactoryResetButton->Hide();
+	}
+
 	Invalidate();
 }
 
@@ -435,6 +526,11 @@ ContactInfoPanel::SetChannel(bool isChannel)
 		if (!fSNRChart->IsHidden())
 			fSNRChart->Hide();
 	}
+	// Hide admin buttons on channel view
+	if (!fRebootButton->IsHidden())
+		fRebootButton->Hide();
+	if (!fFactoryResetButton->IsHidden())
+		fFactoryResetButton->Hide();
 	Invalidate();
 }
 
@@ -454,6 +550,11 @@ ContactInfoPanel::Clear()
 {
 	fContact = NULL;
 	fIsChannel = false;
+	fAdminActive = false;
+	if (fRebootButton != NULL && !fRebootButton->IsHidden())
+		fRebootButton->Hide();
+	if (fFactoryResetButton != NULL && !fFactoryResetButton->IsHidden())
+		fFactoryResetButton->Hide();
 	if (fSNRChart != NULL) {
 		fSNRChart->ClearData();
 		if (!fSNRChart->IsHidden())
@@ -660,4 +761,215 @@ ContactInfoPanel::_PositionChart(float y)
 	fSNRChart->MoveTo(chartLeft, y);
 	fSNRChart->ResizeTo(chartWidth, chartHeight);
 	fSNRChart->Invalidate();
+}
+
+
+// === Admin session methods ===
+
+void
+ContactInfoPanel::SetAdminSession(bool active)
+{
+	fAdminActive = active;
+
+	// Only show buttons if current contact is a repeater/room
+	bool showButtons = (active && fContact != NULL && fContact->type >= 2);
+	if (showButtons) {
+		if (fRebootButton->IsHidden())
+			fRebootButton->Show();
+		if (fFactoryResetButton->IsHidden())
+			fFactoryResetButton->Show();
+	} else {
+		if (!fRebootButton->IsHidden())
+			fRebootButton->Hide();
+		if (!fFactoryResetButton->IsHidden())
+			fFactoryResetButton->Hide();
+	}
+	Invalidate();
+}
+
+
+void
+ContactInfoPanel::SetBatteryInfo(uint16 battMv, uint32 usedKb, uint32 totalKb)
+{
+	fBattMv = battMv;
+	fUsedKb = usedKb;
+	fTotalKb = totalKb;
+	if (fAdminActive)
+		Invalidate();
+}
+
+
+void
+ContactInfoPanel::SetRadioStats(uint32 uptime, uint32 txPkts, uint32 rxPkts,
+	int8 rssi, int8 snr, int8 noise)
+{
+	fAdminUptime = uptime;
+	fAdminTxPkts = txPkts;
+	fAdminRxPkts = rxPkts;
+	fAdminRssi = rssi;
+	fAdminSnr = snr;
+	fAdminNoise = noise;
+	if (fAdminActive)
+		Invalidate();
+}
+
+
+void
+ContactInfoPanel::_DrawSectionHeader(float& y, const char* title)
+{
+	BRect bounds = Bounds();
+	float x = bounds.left + kMargin;
+
+	// Separator line
+	SetHighColor(BorderColor());
+	StrokeLine(BPoint(x, y), BPoint(bounds.right - kMargin, y));
+	y += 6;
+
+	// Section title
+	BFont headerFont;
+	GetFont(&headerFont);
+	headerFont.SetSize(10);
+	headerFont.SetFace(B_BOLD_FACE);
+	SetFont(&headerFont);
+
+	font_height hfh;
+	headerFont.GetHeight(&hfh);
+	SetHighColor(AccentColor());
+	DrawString(title, BPoint(x, y + hfh.ascent));
+	y += hfh.ascent + hfh.descent + 6;
+
+	// Restore info font
+	BFont infoFont;
+	GetFont(&infoFont);
+	infoFont.SetSize(11);
+	infoFont.SetFace(B_REGULAR_FACE);
+	SetFont(&infoFont);
+}
+
+
+void
+ContactInfoPanel::_DrawAdminSections(float& y)
+{
+	y += 4;
+
+	// === Device section ===
+	_DrawSectionHeader(y, "Device");
+
+	// Battery — percentage with color
+	int battPct = 0;
+	if (fBattMv > 0)
+		battPct = ((int)fBattMv - 3000) * 100 / 1200;
+	if (battPct < 0) battPct = 0;
+	if (battPct > 100) battPct = 100;
+
+	rgb_color battColor;
+	if (battPct > 50)
+		battColor = (rgb_color){77, 182, 77, 255};   // Green
+	else if (battPct > 20)
+		battColor = (rgb_color){220, 180, 60, 255};   // Yellow
+	else
+		battColor = (rgb_color){220, 80, 80, 255};    // Red
+
+	char battStr[32];
+	snprintf(battStr, sizeof(battStr), "%d%% (%u mV)", battPct, fBattMv);
+	_DrawInfoRow(y, "Batt", battStr, battColor);
+
+	// Battery bar (compact)
+	BRect bounds = Bounds();
+	float x = bounds.left + kMargin;
+	float barW = bounds.Width() - kMargin * 2;
+	float barH = 4;
+	float barY = y - 2;
+
+	SetHighColor(tint_color(PanelBg(), B_DARKEN_2_TINT));
+	BRect barBg(x, barY, x + barW, barY + barH);
+	FillRoundRect(barBg, 2, 2);
+
+	SetHighColor(battColor);
+	BRect barFill(x, barY, x + barW * battPct / 100.0f, barY + barH);
+	FillRoundRect(barFill, 2, 2);
+	y += barH + 4;
+
+	// Storage
+	if (fTotalKb > 0) {
+		char storStr[32];
+		float usedMb = fUsedKb / 1024.0f;
+		float totalMb = fTotalKb / 1024.0f;
+		snprintf(storStr, sizeof(storStr), "%.1f / %.1f MB",
+			usedMb, totalMb);
+		_DrawInfoRow(y, "Store", storStr, TextColor());
+	}
+
+	// Uptime
+	if (fAdminUptime > 0) {
+		char uptStr[32];
+		uint32 d = fAdminUptime / 86400;
+		uint32 h = (fAdminUptime % 86400) / 3600;
+		uint32 m = (fAdminUptime % 3600) / 60;
+		if (d > 0)
+			snprintf(uptStr, sizeof(uptStr), "%ud%uh%um", d, h, m);
+		else if (h > 0)
+			snprintf(uptStr, sizeof(uptStr), "%uh%um", h, m);
+		else
+			snprintf(uptStr, sizeof(uptStr), "%um", m);
+		_DrawInfoRow(y, "Up", uptStr, TextColor());
+	}
+
+	// === Radio section ===
+	_DrawSectionHeader(y, "Radio");
+
+	// TX / RX
+	char pktStr[32];
+	snprintf(pktStr, sizeof(pktStr), "%u / %u",
+		fAdminTxPkts, fAdminRxPkts);
+	_DrawInfoRow(y, "TX/RX", pktStr, TextColor());
+
+	// RSSI
+	char rssiStr[16];
+	snprintf(rssiStr, sizeof(rssiStr), "%d dBm", fAdminRssi);
+	_DrawInfoRow(y, "RSSI", rssiStr, TextColor());
+
+	// SNR (colored)
+	char snrStr[16];
+	snprintf(snrStr, sizeof(snrStr), "%d dB", fAdminSnr);
+	rgb_color snrColor;
+	if (fAdminSnr > 0)
+		snrColor = (rgb_color){77, 182, 77, 255};
+	else if (fAdminSnr > -10)
+		snrColor = (rgb_color){220, 180, 60, 255};
+	else
+		snrColor = (rgb_color){220, 80, 80, 255};
+	_DrawInfoRow(y, "SNR", snrStr, snrColor);
+
+	// Noise floor
+	char noiseStr[16];
+	snprintf(noiseStr, sizeof(noiseStr), "%d dBm", fAdminNoise);
+	_DrawInfoRow(y, "Noise", noiseStr, TextColor());
+
+	// Position buttons
+	_PositionButtons(y);
+}
+
+
+void
+ContactInfoPanel::_PositionButtons(float& y)
+{
+	y += 4;
+	BRect bounds = Bounds();
+	float x = bounds.left + kMargin;
+	float contentW = bounds.Width() - kMargin * 2;
+	float btnH = 24;
+	float gap = 8;
+	float btnW = (contentW - gap) / 2;
+
+	if (btnW < 60)
+		btnW = 60;
+
+	fRebootButton->MoveTo(x, y);
+	fRebootButton->ResizeTo(btnW, btnH);
+
+	fFactoryResetButton->MoveTo(x + btnW + gap, y);
+	fFactoryResetButton->ResizeTo(btnW, btnH);
+
+	y += btnH + 8;
 }

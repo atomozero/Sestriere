@@ -19,6 +19,7 @@ GrowingTextView::GrowingTextView(const char* name, BMessage* enterMessage)
 	:
 	BTextView(name, B_WILL_DRAW | B_PULSE_NEEDED),
 	fEnterMessage(enterMessage),
+	fModificationMessage(NULL),
 	fEnabled(true),
 	fMinHeight(0),
 	fMaxHeight(0)
@@ -47,6 +48,7 @@ GrowingTextView::GrowingTextView(const char* name, BMessage* enterMessage)
 GrowingTextView::~GrowingTextView()
 {
 	delete fEnterMessage;
+	delete fModificationMessage;
 }
 
 
@@ -87,6 +89,7 @@ GrowingTextView::InsertText(const char* text, int32 length, int32 offset,
 {
 	BTextView::InsertText(text, length, offset, runs);
 	_RecalcHeight();
+	_NotifyModification();
 }
 
 
@@ -95,6 +98,7 @@ GrowingTextView::DeleteText(int32 fromOffset, int32 toOffset)
 {
 	BTextView::DeleteText(fromOffset, toOffset);
 	_RecalcHeight();
+	_NotifyModification();
 }
 
 
@@ -130,6 +134,14 @@ GrowingTextView::SetSendMessage(BMessage* message)
 
 
 void
+GrowingTextView::SetModificationMessage(BMessage* message)
+{
+	delete fModificationMessage;
+	fModificationMessage = message;
+}
+
+
+void
 GrowingTextView::SetEnabled(bool enabled)
 {
 	fEnabled = enabled;
@@ -144,6 +156,16 @@ GrowingTextView::SetEnabled(bool enabled)
 	}
 
 	Invalidate();
+}
+
+
+void
+GrowingTextView::_NotifyModification()
+{
+	if (fModificationMessage != NULL && Window() != NULL) {
+		BMessage copy(*fModificationMessage);
+		Window()->PostMessage(&copy);
+	}
 }
 
 

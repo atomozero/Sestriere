@@ -15,6 +15,7 @@
 #include <Entry.h>
 #include <File.h>
 #include <FindDirectory.h>
+#include <Font.h>
 #include <LayoutBuilder.h>
 #include <ListView.h>
 #include <Menu.h>
@@ -97,6 +98,7 @@ enum {
 static const bigtime_t kAutoConnectDelay = 1000000;     // 1 second
 static const bigtime_t kStatsRefreshInterval = 10000000; // 10 seconds
 static const bigtime_t kAutoSyncDelay = 3000000;         // 3 seconds
+static const bigtime_t kAdminRefreshInterval = 15000000; // 15 seconds
 
 
 // Thin BListView subclass to detect right-clicks
@@ -164,6 +166,7 @@ MainWindow::MainWindow()
 	fChatScroll(NULL),
 	fMessageInput(NULL),
 	fSendButton(NULL),
+	fCharCounter(NULL),
 	fSearchBar(NULL),
 	fMsgSearchField(NULL),
 	fSearchCloseButton(NULL),
@@ -205,6 +208,7 @@ MainWindow::MainWindow()
 	fAutoConnectTimer(NULL),
 	fStatsRefreshTimer(NULL),
 	fAutoSyncRunner(NULL),
+	fAdminRefreshTimer(NULL),
 	fBatteryMv(0),
 	fLastRssi(0),
 	fLastSnr(0),
@@ -460,12 +464,26 @@ MainWindow::_BuildUI()
 		new BMessage(MSG_SEND_MESSAGE));
 	fSendButton->SetEnabled(false);
 
-	// Input bar
+	// Character counter (shows remaining chars)
+	fCharCounter = new BStringView("char_counter", "0/160");
+	fCharCounter->SetAlignment(B_ALIGN_CENTER);
+	fCharCounter->SetExplicitMinSize(BSize(48, B_SIZE_UNSET));
+	{
+		BFont counterFont(be_plain_font);
+		counterFont.SetSize(be_plain_font->Size() * 0.85);
+		fCharCounter->SetFont(&counterFont);
+	}
+	fCharCounter->SetHighUIColor(B_PANEL_TEXT_COLOR);
+
+	fMessageInput->SetModificationMessage(new BMessage(MSG_INPUT_MODIFIED));
+
+	// Input bar: [input] [counter] [send]
 	BView* inputBar = new BView("input_bar", 0);
 	inputBar->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	BLayoutBuilder::Group<>(inputBar, B_HORIZONTAL, B_USE_SMALL_SPACING)
 		.SetInsets(B_USE_SMALL_SPACING)
 		.Add(inputScroll, 1.0)
+		.Add(fCharCounter)
 		.Add(fSendButton)
 	.End();
 
@@ -658,6 +676,10 @@ MainWindow::MessageReceived(BMessage* message)
 			}
 			break;
 		}
+
+		case MSG_INPUT_MODIFIED:
+			_UpdateCharCounter();
+			break;
 
 		case MSG_CONTACT_FILTER:
 		{
@@ -1382,6 +1404,15 @@ MainWindow::MessageReceived(BMessage* message)
 			_SendFactoryReset();
 			break;
 
+		case MSG_ADMIN_REFRESH_TICK:
+			if (fConnected && fLoggedIn && fInfoPanel->IsAdminSession()) {
+				ContactInfo* target = _FindContactByPrefix(
+					fLoggedInKey, kPubKeyPrefixSize);
+				if (target != NULL)
+					_SendStatusRequest(target->publicKey);
+			}
+			break;
+
 		case MSG_ADMIN_REMOVE_CONTACT:
 		{
 			const char* contactKey;
@@ -1791,6 +1822,8 @@ MainWindow::_SelectContact(int32 index)
 		fMessageInput->SetEnabled(false);
 		fSendButton->SetEnabled(false);
 	}
+
+	_UpdateCharCounter();
 }
 
 
@@ -2126,6 +2159,19 @@ MainWindow::_SendFactoryReset()
 	payload[0] = CMD_FACTORY_RESET;
 	fSerialHandler->SendFrame(payload, 1);
 	_LogMessage("INFO", "Sending factory reset command...");
+}
+
+
+void
+MainWindow::_SendStatusRequest(const uint8* pubkey)
+{
+	if (!fSerialHandler->IsConnected())
+		return;
+
+	uint8 payload[33];
+	payload[0] = CMD_SEND_STATUS_REQ;
+	memcpy(&payload[1], pubkey, 32);
+	fSerialHandler->SendFrame(payload, 33);
 }
 
 
@@ -2608,6 +2654,9 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 		case PUSH_RAW_RADIO_PACKET:
 			_HandleRawPacket(data, length);
 			break;
+		case PUSH_STATUS_RESPONSE:
+			_HandlePushStatusResponse(data, length);
+			break;
 
 		default:
 			_LogMessage("WARN", BString().SetToFormat("Unknown response: 0x%02X", cmd));
@@ -2870,13 +2919,8 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 	// Start offline message sync to drain any queued messages
 	_SendSyncNextMessage();
 
-	// Forward contact list to RepeaterAdminWindow if open
-	if (fRepeaterAdminWindow != NULL) {
-		if (fRepeaterAdminWindow->LockLooper()) {
-			fRepeaterAdminWindow->UpdateContactList(&fContacts);
-			fRepeaterAdminWindow->UnlockLooper();
-		}
-	}
+	// Contact list no longer forwarded to separate window;
+	// admin data shown inline in ContactInfoPanel
 }
 
 
@@ -3386,13 +3430,6 @@ MainWindow::_HandleBattAndStorage(const uint8* data, size_t length)
 			}
 		}
 
-		// Forward to RepeaterAdminWindow if open
-		if (fRepeaterAdminWindow != NULL) {
-			if (fRepeaterAdminWindow->LockLooper()) {
-				fRepeaterAdminWindow->SetBatteryInfo(battMv, usedKb, totalKb);
-				fRepeaterAdminWindow->UnlockLooper();
-			}
-		}
 	}
 }
 
@@ -3465,14 +3502,6 @@ MainWindow::_HandleStats(const uint8* data, size_t length)
 		}
 	}
 
-	// Forward to RepeaterAdminWindow if open
-	if (fRepeaterAdminWindow != NULL) {
-		if (fRepeaterAdminWindow->LockLooper()) {
-			fRepeaterAdminWindow->SetStats(fDeviceUptime, fTxPackets,
-				fRxPackets, fLastRssi, fLastSnr, fNoiseFloor);
-			fRepeaterAdminWindow->UnlockLooper();
-		}
-	}
 }
 
 
@@ -3843,25 +3872,81 @@ MainWindow::_HandlePushLoginResult(uint8 code)
 		_SendGetBattery();
 		_SendGetStats();
 
-		// Open Repeater Admin window for repeater/room
+		// Show admin sections in ContactInfoPanel for repeater/room
 		ContactInfo* targetContact = _FindContactByPrefix(
 			fLoginTargetKey, kPubKeyPrefixSize);
 		if (targetContact != NULL
 			&& (targetContact->type == 2 || targetContact->type == 3)) {
-			if (fRepeaterAdminWindow == NULL) {
-				fRepeaterAdminWindow = new RepeaterAdminWindow(this,
-					targetContact->publicKey, targetContact->name,
-					targetContact->type);
-				fRepeaterAdminWindow->Show();
-			} else {
-				if (fRepeaterAdminWindow->LockLooper()) {
-					fRepeaterAdminWindow->SetSessionActive(true);
-					fRepeaterAdminWindow->UnlockLooper();
-				}
-				_ShowWindow(fRepeaterAdminWindow);
-			}
+			fInfoPanel->SetAdminSession(true);
+
+			// Request remote repeater status
+			_SendStatusRequest(targetContact->publicKey);
+
+			// Uncollapse info panel if collapsed
+			float infoW = fMainSplit->ItemWeight(2);
+			if (infoW < 0.05f)
+				fMainSplit->SetItemWeight(2, 0.2f, true);
+
+			// Start admin auto-refresh timer (15s)
+			delete fAdminRefreshTimer;
+			fAdminRefreshTimer = new BMessageRunner(this,
+				new BMessage(MSG_ADMIN_REFRESH_TICK),
+				kAdminRefreshInterval);
 		}
 	}
+}
+
+
+void
+MainWindow::_HandlePushStatusResponse(const uint8* data, size_t length)
+{
+	// PUSH_STATUS_RESPONSE format (from meshcore_py parse_status):
+	// [0]     = 0x87 (code)
+	// [1]     = reserved
+	// [2-7]   = pubkey prefix (6 bytes)
+	// [8-9]   = bat_mV (uint16 LE)
+	// [10-11] = tx_queue_len (uint16 LE)
+	// [12-13] = noise_floor (int16 LE, signed)
+	// [14-15] = last_rssi (int16 LE, signed)
+	// [16-19] = nb_recv (uint32 LE)
+	// [20-23] = nb_sent (uint32 LE)
+	// [24-27] = airtime (uint32 LE)
+	// [28-31] = uptime (uint32 LE)
+	// ...
+	// [50-51] = last_snr (int16 LE, signed, value/4)
+
+	if (length < 32)
+		return;
+
+	const uint8* prefix = &data[2];
+
+	// Verify this is from the repeater we're logged into
+	if (!fLoggedIn || memcmp(prefix, fLoggedInKey, kPubKeyPrefixSize) != 0)
+		return;
+
+	uint16 battMv = data[8] | (data[9] << 8);
+	int16 noiseFloor = (int16)(data[12] | (data[13] << 8));
+	int16 rssi = (int16)(data[14] | (data[15] << 8));
+	uint32 rxPkts = data[16] | (data[17] << 8) | (data[18] << 16) | (data[19] << 24);
+	uint32 txPkts = data[20] | (data[21] << 8) | (data[22] << 16) | (data[23] << 24);
+	uint32 uptime = data[28] | (data[29] << 8) | (data[30] << 16) | (data[31] << 24);
+
+	int16 snrRaw = 0;
+	if (length >= 52)
+		snrRaw = (int16)(data[50] | (data[51] << 8));
+	int8 snr = (int8)(snrRaw / 4);
+
+	// Forward to ContactInfoPanel
+	fInfoPanel->SetBatteryInfo(battMv, 0, 0);
+	fInfoPanel->SetRadioStats(uptime, txPkts, rxPkts,
+		(int8)rssi, snr, (int8)noiseFloor);
+
+	char hex[13];
+	for (int i = 0; i < 6; i++)
+		snprintf(hex + i * 2, 3, "%02X", prefix[i]);
+	_LogMessage("INFO", BString().SetToFormat(
+		"Remote status [%s]: %umV, up %us, rssi %d, snr %d",
+		hex, battMv, uptime, (int)rssi, snr));
 }
 
 
@@ -3955,6 +4040,11 @@ MainWindow::_OnDisconnected()
 	// Stop periodic stats timer
 	delete fStatsRefreshTimer;
 	fStatsRefreshTimer = NULL;
+
+	// Stop admin refresh timer and clear admin session
+	delete fAdminRefreshTimer;
+	fAdminRefreshTimer = NULL;
+	fInfoPanel->SetAdminSession(false);
 
 	_UpdateConnectionUI();
 	_LogMessage("INFO", "Disconnected");
@@ -4425,6 +4515,28 @@ MainWindow::_CloseSearch()
 				fChatView->SetCurrentContact(contact);
 		}
 	}
+}
+
+
+void
+MainWindow::_UpdateCharCounter()
+{
+	int32 maxChars = fSendingToChannel ? 200 : 160;
+	int32 current = fMessageInput->TextLength();
+	int32 remaining = maxChars - current;
+
+	BString label;
+	label.SetToFormat("%ld/%ld", (long)current, (long)maxChars);
+	fCharCounter->SetText(label.String());
+
+	// Color: red when over limit, warning when close, normal otherwise
+	if (remaining < 0)
+		fCharCounter->SetHighColor(ui_color(B_FAILURE_COLOR));
+	else if (remaining <= 20)
+		fCharCounter->SetHighColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR),
+			B_DARKEN_MAX_TINT));
+	else
+		fCharCounter->SetHighUIColor(B_PANEL_TEXT_COLOR, 0.6);
 }
 
 
