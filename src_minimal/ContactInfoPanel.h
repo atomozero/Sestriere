@@ -14,6 +14,7 @@
 #include "Types.h"
 
 class BButton;
+class BTextControl;
 class SNRChartView;
 
 class ContactInfoPanel : public BView {
@@ -87,6 +88,10 @@ private:
 			BButton*	fNeighborsButton;
 			BButton*	fClockButton;
 			BButton*	fClearStatsButton;
+
+			// CLI input fields + buttons
+			BTextControl*	fSetNameField;
+			BButton*	fSetNameButton;
 };
 
 

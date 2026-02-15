@@ -10,6 +10,7 @@
 #include <Button.h>
 #include <Font.h>
 #include <LayoutBuilder.h>
+#include <TextControl.h>
 #include <Window.h>
 
 #include <cctype>
@@ -31,6 +32,7 @@ static const uint32 kMsgVersionClicked = 'cver';
 static const uint32 kMsgNeighborsClicked = 'cnbr';
 static const uint32 kMsgClockClicked = 'cclk';
 static const uint32 kMsgClearStatsClicked = 'ccls';
+static const uint32 kMsgSetNameClicked = 'csnm';
 
 
 // Avatar colors (same palette as ContactItem/ChatHeaderView)
@@ -114,7 +116,9 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fVersionButton(NULL),
 	fNeighborsButton(NULL),
 	fClockButton(NULL),
-	fClearStatsButton(NULL)
+	fClearStatsButton(NULL),
+	fSetNameField(NULL),
+	fSetNameButton(NULL)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	SetExplicitMinSize(BSize(kPanelMinWidth, B_SIZE_UNSET));
@@ -170,6 +174,21 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fClearStatsButton->ResizeTo(80, 24);
 	fClearStatsButton->Hide();
 	AddChild(fClearStatsButton);
+
+	// "Set Name" input field + button
+	fSetNameField = new BTextControl("set_name_field", NULL, "",
+		NULL);
+	fSetNameField->MoveTo(kMargin, 650);
+	fSetNameField->ResizeTo(120, 22);
+	fSetNameField->Hide();
+	AddChild(fSetNameField);
+
+	fSetNameButton = new BButton("set_name", "Set Name",
+		new BMessage(kMsgSetNameClicked));
+	fSetNameButton->MoveTo(kMargin + 128, 650);
+	fSetNameButton->ResizeTo(60, 24);
+	fSetNameButton->Hide();
+	AddChild(fSetNameButton);
 }
 
 
@@ -188,6 +207,7 @@ ContactInfoPanel::AttachedToWindow()
 	fNeighborsButton->SetTarget(this);
 	fClockButton->SetTarget(this);
 	fClearStatsButton->SetTarget(this);
+	fSetNameButton->SetTarget(this);
 }
 
 
@@ -267,6 +287,20 @@ ContactInfoPanel::MessageReceived(BMessage* message)
 			BMessage cmd(MSG_ADMIN_SEND_CLI);
 			cmd.AddString("command", "clear stats");
 			Window()->PostMessage(&cmd);
+			break;
+		}
+
+		case kMsgSetNameClicked:
+		{
+			const char* text = fSetNameField->Text();
+			if (text != NULL && text[0] != '\0') {
+				BString command("set name ");
+				command << text;
+				BMessage cmd(MSG_ADMIN_SEND_CLI);
+				cmd.AddString("command", command.String());
+				Window()->PostMessage(&cmd);
+				fSetNameField->SetText("");
+			}
 			break;
 		}
 
@@ -584,6 +618,10 @@ ContactInfoPanel::SetContact(const ContactInfo* contact)
 			fClockButton->Show();
 		if (fClearStatsButton->IsHidden())
 			fClearStatsButton->Show();
+		if (fSetNameField->IsHidden())
+			fSetNameField->Show();
+		if (fSetNameButton->IsHidden())
+			fSetNameButton->Show();
 	} else {
 		if (!fRebootButton->IsHidden())
 			fRebootButton->Hide();
@@ -597,6 +635,10 @@ ContactInfoPanel::SetContact(const ContactInfo* contact)
 			fClockButton->Hide();
 		if (!fClearStatsButton->IsHidden())
 			fClearStatsButton->Hide();
+		if (!fSetNameField->IsHidden())
+			fSetNameField->Hide();
+		if (!fSetNameButton->IsHidden())
+			fSetNameButton->Hide();
 	}
 
 	Invalidate();
@@ -627,6 +669,10 @@ ContactInfoPanel::SetChannel(bool isChannel)
 		fClockButton->Hide();
 	if (!fClearStatsButton->IsHidden())
 		fClearStatsButton->Hide();
+	if (!fSetNameField->IsHidden())
+		fSetNameField->Hide();
+	if (!fSetNameButton->IsHidden())
+		fSetNameButton->Hide();
 	Invalidate();
 }
 
@@ -659,6 +705,10 @@ ContactInfoPanel::Clear()
 		fClockButton->Hide();
 	if (fClearStatsButton != NULL && !fClearStatsButton->IsHidden())
 		fClearStatsButton->Hide();
+	if (fSetNameField != NULL && !fSetNameField->IsHidden())
+		fSetNameField->Hide();
+	if (fSetNameButton != NULL && !fSetNameButton->IsHidden())
+		fSetNameButton->Hide();
 	if (fSNRChart != NULL) {
 		fSNRChart->ClearData();
 		if (!fSNRChart->IsHidden())
@@ -890,6 +940,10 @@ ContactInfoPanel::SetAdminSession(bool active)
 			fClockButton->Show();
 		if (fClearStatsButton->IsHidden())
 			fClearStatsButton->Show();
+		if (fSetNameField->IsHidden())
+			fSetNameField->Show();
+		if (fSetNameButton->IsHidden())
+			fSetNameButton->Show();
 	} else {
 		if (!fRebootButton->IsHidden())
 			fRebootButton->Hide();
@@ -903,6 +957,10 @@ ContactInfoPanel::SetAdminSession(bool active)
 			fClockButton->Hide();
 		if (!fClearStatsButton->IsHidden())
 			fClearStatsButton->Hide();
+		if (!fSetNameField->IsHidden())
+			fSetNameField->Hide();
+		if (!fSetNameButton->IsHidden())
+			fSetNameButton->Hide();
 	}
 	Invalidate();
 }
@@ -1099,6 +1157,19 @@ ContactInfoPanel::_PositionButtons(float& y)
 	// Second CLI row
 	fClearStatsButton->MoveTo(x, y);
 	fClearStatsButton->ResizeTo(contentW, btnH);
+	y += btnH + gap;
+
+	// Set Name row (field + button)
+	float setNameBtnW = 60;
+	float fieldW = contentW - setNameBtnW - gap;
+	if (fieldW < 60)
+		fieldW = 60;
+
+	fSetNameField->MoveTo(x, y);
+	fSetNameField->ResizeTo(fieldW, btnH);
+
+	fSetNameButton->MoveTo(x + fieldW + gap, y);
+	fSetNameButton->ResizeTo(setNameBtnW, btnH);
 	y += btnH + gap;
 
 	// Dangerous actions row (Reboot / Factory Reset)
