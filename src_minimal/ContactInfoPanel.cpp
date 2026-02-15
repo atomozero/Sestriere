@@ -10,6 +10,7 @@
 #include <Button.h>
 #include <Font.h>
 #include <LayoutBuilder.h>
+#include <TabView.h>
 #include <TextControl.h>
 #include <Window.h>
 
@@ -112,8 +113,7 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fAdminRssi(0),
 	fAdminSnr(0),
 	fAdminNoise(0),
-	fRebootButton(NULL),
-	fFactoryResetButton(NULL),
+	fAdminTabView(NULL),
 	fVersionButton(NULL),
 	fNeighborsButton(NULL),
 	fClockButton(NULL),
@@ -121,7 +121,9 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fSetNameField(NULL),
 	fSetNameButton(NULL),
 	fPasswordField(NULL),
-	fPasswordButton(NULL)
+	fPasswordButton(NULL),
+	fRebootButton(NULL),
+	fFactoryResetButton(NULL)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	SetExplicitMinSize(BSize(kPanelMinWidth, B_SIZE_UNSET));
@@ -134,79 +136,8 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fSNRChart->Hide();
 	AddChild(fSNRChart);
 
-	// Admin action buttons — hidden until admin session active
-	fRebootButton = new BButton("reboot", "Reboot",
-		new BMessage(kMsgRebootClicked));
-	fRebootButton->MoveTo(kMargin, 500);
-	fRebootButton->ResizeTo(80, 24);
-	fRebootButton->Hide();
-	AddChild(fRebootButton);
-
-	fFactoryResetButton = new BButton("factory_reset", "Factory Reset",
-		new BMessage(kMsgResetClicked));
-	fFactoryResetButton->MoveTo(kMargin + 88, 500);
-	fFactoryResetButton->ResizeTo(100, 24);
-	fFactoryResetButton->Hide();
-	AddChild(fFactoryResetButton);
-
-	// CLI command buttons
-	fVersionButton = new BButton("version", "Version",
-		new BMessage(kMsgVersionClicked));
-	fVersionButton->MoveTo(kMargin, 530);
-	fVersionButton->ResizeTo(80, 24);
-	fVersionButton->Hide();
-	AddChild(fVersionButton);
-
-	fNeighborsButton = new BButton("neighbors", "Neighbors",
-		new BMessage(kMsgNeighborsClicked));
-	fNeighborsButton->MoveTo(kMargin, 560);
-	fNeighborsButton->ResizeTo(80, 24);
-	fNeighborsButton->Hide();
-	AddChild(fNeighborsButton);
-
-	fClockButton = new BButton("clock", "Clock",
-		new BMessage(kMsgClockClicked));
-	fClockButton->MoveTo(kMargin, 590);
-	fClockButton->ResizeTo(80, 24);
-	fClockButton->Hide();
-	AddChild(fClockButton);
-
-	fClearStatsButton = new BButton("clear_stats", "Clear Stats",
-		new BMessage(kMsgClearStatsClicked));
-	fClearStatsButton->MoveTo(kMargin, 620);
-	fClearStatsButton->ResizeTo(80, 24);
-	fClearStatsButton->Hide();
-	AddChild(fClearStatsButton);
-
-	// "Set Name" input field + button
-	fSetNameField = new BTextControl("set_name_field", NULL, "",
-		NULL);
-	fSetNameField->MoveTo(kMargin, 650);
-	fSetNameField->ResizeTo(120, 22);
-	fSetNameField->Hide();
-	AddChild(fSetNameField);
-
-	fSetNameButton = new BButton("set_name", "Set Name",
-		new BMessage(kMsgSetNameClicked));
-	fSetNameButton->MoveTo(kMargin + 128, 650);
-	fSetNameButton->ResizeTo(60, 24);
-	fSetNameButton->Hide();
-	AddChild(fSetNameButton);
-
-	// "Password" input field + button
-	fPasswordField = new BTextControl("password_field", NULL, "",
-		NULL);
-	fPasswordField->MoveTo(kMargin, 680);
-	fPasswordField->ResizeTo(120, 22);
-	fPasswordField->Hide();
-	AddChild(fPasswordField);
-
-	fPasswordButton = new BButton("set_password", "Set Pwd",
-		new BMessage(kMsgPasswordClicked));
-	fPasswordButton->MoveTo(kMargin + 128, 680);
-	fPasswordButton->ResizeTo(60, 24);
-	fPasswordButton->Hide();
-	AddChild(fPasswordButton);
+	// Build admin BTabView (hidden until admin session)
+	_BuildAdminTabs();
 }
 
 
@@ -642,51 +573,9 @@ ContactInfoPanel::SetContact(const ContactInfo* contact)
 	if (fSNRChart != NULL && fSNRChart->IsHidden())
 		fSNRChart->Show();
 
-	// Show admin buttons only for repeater/room contacts
+	// Show admin tabs only for repeater/room contacts
 	bool showAdmin = (fAdminActive && contact != NULL && contact->type >= 2);
-	if (showAdmin) {
-		if (fRebootButton->IsHidden())
-			fRebootButton->Show();
-		if (fFactoryResetButton->IsHidden())
-			fFactoryResetButton->Show();
-		if (fVersionButton->IsHidden())
-			fVersionButton->Show();
-		if (fNeighborsButton->IsHidden())
-			fNeighborsButton->Show();
-		if (fClockButton->IsHidden())
-			fClockButton->Show();
-		if (fClearStatsButton->IsHidden())
-			fClearStatsButton->Show();
-		if (fSetNameField->IsHidden())
-			fSetNameField->Show();
-		if (fSetNameButton->IsHidden())
-			fSetNameButton->Show();
-		if (fPasswordField->IsHidden())
-			fPasswordField->Show();
-		if (fPasswordButton->IsHidden())
-			fPasswordButton->Show();
-	} else {
-		if (!fRebootButton->IsHidden())
-			fRebootButton->Hide();
-		if (!fFactoryResetButton->IsHidden())
-			fFactoryResetButton->Hide();
-		if (!fVersionButton->IsHidden())
-			fVersionButton->Hide();
-		if (!fNeighborsButton->IsHidden())
-			fNeighborsButton->Hide();
-		if (!fClockButton->IsHidden())
-			fClockButton->Hide();
-		if (!fClearStatsButton->IsHidden())
-			fClearStatsButton->Hide();
-		if (!fSetNameField->IsHidden())
-			fSetNameField->Hide();
-		if (!fSetNameButton->IsHidden())
-			fSetNameButton->Hide();
-		if (!fPasswordField->IsHidden())
-			fPasswordField->Hide();
-		if (!fPasswordButton->IsHidden())
-			fPasswordButton->Hide();
-	}
+	_ShowAdminTabs(showAdmin);
 
 	Invalidate();
 }
@@ -703,27 +592,7 @@ ContactInfoPanel::SetChannel(bool isChannel)
 		if (!fSNRChart->IsHidden())
 			fSNRChart->Hide();
 	}
-	// Hide admin buttons on channel view
-	if (!fRebootButton->IsHidden())
-		fRebootButton->Hide();
-	if (!fFactoryResetButton->IsHidden())
-		fFactoryResetButton->Hide();
-	if (!fVersionButton->IsHidden())
-		fVersionButton->Hide();
-	if (!fNeighborsButton->IsHidden())
-		fNeighborsButton->Hide();
-	if (!fClockButton->IsHidden())
-		fClockButton->Hide();
-	if (!fClearStatsButton->IsHidden())
-		fClearStatsButton->Hide();
-	if (!fSetNameField->IsHidden())
-		fSetNameField->Hide();
-	if (!fSetNameButton->IsHidden())
-		fSetNameButton->Hide();
-	if (!fPasswordField->IsHidden())
-		fPasswordField->Hide();
-	if (!fPasswordButton->IsHidden())
-		fPasswordButton->Hide();
+	_ShowAdminTabs(false);
 	Invalidate();
 }
 
@@ -744,26 +613,7 @@ ContactInfoPanel::Clear()
 	fContact = NULL;
 	fIsChannel = false;
 	fAdminActive = false;
-	if (fRebootButton != NULL && !fRebootButton->IsHidden())
-		fRebootButton->Hide();
-	if (fFactoryResetButton != NULL && !fFactoryResetButton->IsHidden())
-		fFactoryResetButton->Hide();
-	if (fVersionButton != NULL && !fVersionButton->IsHidden())
-		fVersionButton->Hide();
-	if (fNeighborsButton != NULL && !fNeighborsButton->IsHidden())
-		fNeighborsButton->Hide();
-	if (fClockButton != NULL && !fClockButton->IsHidden())
-		fClockButton->Hide();
-	if (fClearStatsButton != NULL && !fClearStatsButton->IsHidden())
-		fClearStatsButton->Hide();
-	if (fSetNameField != NULL && !fSetNameField->IsHidden())
-		fSetNameField->Hide();
-	if (fSetNameButton != NULL && !fSetNameButton->IsHidden())
-		fSetNameButton->Hide();
-	if (fPasswordField != NULL && !fPasswordField->IsHidden())
-		fPasswordField->Hide();
-	if (fPasswordButton != NULL && !fPasswordButton->IsHidden())
-		fPasswordButton->Hide();
+	_ShowAdminTabs(false);
 	if (fSNRChart != NULL) {
 		fSNRChart->ClearData();
 		if (!fSNRChart->IsHidden())
@@ -980,51 +830,9 @@ ContactInfoPanel::SetAdminSession(bool active)
 {
 	fAdminActive = active;
 
-	// Only show buttons if current contact is a repeater/room
-	bool showButtons = (active && fContact != NULL && fContact->type >= 2);
-	if (showButtons) {
-		if (fRebootButton->IsHidden())
-			fRebootButton->Show();
-		if (fFactoryResetButton->IsHidden())
-			fFactoryResetButton->Show();
-		if (fVersionButton->IsHidden())
-			fVersionButton->Show();
-		if (fNeighborsButton->IsHidden())
-			fNeighborsButton->Show();
-		if (fClockButton->IsHidden())
-			fClockButton->Show();
-		if (fClearStatsButton->IsHidden())
-			fClearStatsButton->Show();
-		if (fSetNameField->IsHidden())
-			fSetNameField->Show();
-		if (fSetNameButton->IsHidden())
-			fSetNameButton->Show();
-		if (fPasswordField->IsHidden())
-			fPasswordField->Show();
-		if (fPasswordButton->IsHidden())
-			fPasswordButton->Show();
-	} else {
-		if (!fRebootButton->IsHidden())
-			fRebootButton->Hide();
-		if (!fFactoryResetButton->IsHidden())
-			fFactoryResetButton->Hide();
-		if (!fVersionButton->IsHidden())
-			fVersionButton->Hide();
-		if (!fNeighborsButton->IsHidden())
-			fNeighborsButton->Hide();
-		if (!fClockButton->IsHidden())
-			fClockButton->Hide();
-		if (!fClearStatsButton->IsHidden())
-			fClearStatsButton->Hide();
-		if (!fSetNameField->IsHidden())
-			fSetNameField->Hide();
-		if (!fSetNameButton->IsHidden())
-			fSetNameButton->Hide();
-		if (!fPasswordField->IsHidden())
-			fPasswordField->Hide();
-		if (!fPasswordButton->IsHidden())
-			fPasswordButton->Hide();
-	}
+	// Only show tabs if current contact is a repeater/room
+	bool showTabs = (active && fContact != NULL && fContact->type >= 2);
+	_ShowAdminTabs(showTabs);
 	Invalidate();
 }
 
@@ -1187,72 +995,135 @@ ContactInfoPanel::_DrawAdminSections(float& y)
 	snprintf(noiseStr, sizeof(noiseStr), "%d dBm", fAdminNoise);
 	_DrawInfoRow(y, "Noise", noiseStr, TextColor());
 
-	// Position buttons
-	_PositionButtons(y);
+	// Position admin tabs below stats
+	_PositionAdminTabs(y);
 }
 
 
 void
-ContactInfoPanel::_PositionButtons(float& y)
+ContactInfoPanel::_BuildAdminTabs()
 {
+	fAdminTabView = new BTabView("admin_tabs", B_WIDTH_FROM_WIDEST);
+	fAdminTabView->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+
+	// === Query tab ===
+	BView* queryTab = new BView("query_tab", B_SUPPORTS_LAYOUT);
+	queryTab->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+
+	fVersionButton = new BButton("version", "Version",
+		new BMessage(kMsgVersionClicked));
+	fNeighborsButton = new BButton("neighbors", "Neighbors",
+		new BMessage(kMsgNeighborsClicked));
+	fClockButton = new BButton("clock", "Clock",
+		new BMessage(kMsgClockClicked));
+	fClearStatsButton = new BButton("clear_stats", "Clear Stats",
+		new BMessage(kMsgClearStatsClicked));
+
+	BLayoutBuilder::Group<>(queryTab, B_VERTICAL, 4)
+		.SetInsets(4, 4, 4, 4)
+		.AddGroup(B_HORIZONTAL, 4)
+			.Add(fVersionButton)
+			.Add(fNeighborsButton)
+		.End()
+		.AddGroup(B_HORIZONTAL, 4)
+			.Add(fClockButton)
+			.Add(fClearStatsButton)
+		.End()
+		.AddGlue();
+
+	fAdminTabView->AddTab(queryTab, new BTab());
+	fAdminTabView->TabAt(0)->SetLabel("Query");
+
+	// === Config tab ===
+	BView* configTab = new BView("config_tab", B_SUPPORTS_LAYOUT);
+	configTab->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+
+	fSetNameField = new BTextControl("set_name_field", "Name:", "",
+		NULL);
+	fSetNameButton = new BButton("set_name", "Set",
+		new BMessage(kMsgSetNameClicked));
+	fPasswordField = new BTextControl("password_field", "Pwd:", "",
+		NULL);
+	fPasswordButton = new BButton("set_password", "Set",
+		new BMessage(kMsgPasswordClicked));
+
+	BLayoutBuilder::Group<>(configTab, B_VERTICAL, 4)
+		.SetInsets(4, 4, 4, 4)
+		.AddGroup(B_HORIZONTAL, 4)
+			.Add(fSetNameField)
+			.Add(fSetNameButton)
+		.End()
+		.AddGroup(B_HORIZONTAL, 4)
+			.Add(fPasswordField)
+			.Add(fPasswordButton)
+		.End()
+		.AddGlue();
+
+	fAdminTabView->AddTab(configTab, new BTab());
+	fAdminTabView->TabAt(1)->SetLabel("Config");
+
+	// === Actions tab ===
+	BView* actionsTab = new BView("actions_tab", B_SUPPORTS_LAYOUT);
+	actionsTab->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+
+	fRebootButton = new BButton("reboot", "Reboot",
+		new BMessage(kMsgRebootClicked));
+	fFactoryResetButton = new BButton("factory_reset", "Factory Reset",
+		new BMessage(kMsgResetClicked));
+
+	BLayoutBuilder::Group<>(actionsTab, B_VERTICAL, 4)
+		.SetInsets(4, 4, 4, 4)
+		.AddGroup(B_HORIZONTAL, 4)
+			.Add(fRebootButton)
+			.Add(fFactoryResetButton)
+		.End()
+		.AddGlue();
+
+	fAdminTabView->AddTab(actionsTab, new BTab());
+	fAdminTabView->TabAt(2)->SetLabel("Actions");
+
+	// Initially hidden, positioned off-screen
+	fAdminTabView->MoveTo(kMargin, 500);
+	fAdminTabView->ResizeTo(kPanelMinWidth - kMargin * 2, 100);
+	fAdminTabView->Hide();
+	AddChild(fAdminTabView);
+}
+
+
+void
+ContactInfoPanel::_PositionAdminTabs(float y)
+{
+	if (fAdminTabView == NULL)
+		return;
+
 	BRect bounds = Bounds();
 	float x = bounds.left + kMargin;
-	float contentW = bounds.Width() - kMargin * 2;
-	float btnH = 24;
-	float gap = 8;
+	float w = bounds.Width() - kMargin * 2;
 
-	// CLI command buttons row
+	// Ensure minimum width
+	if (w < 60)
+		w = 60;
+
+	// Tab height: tab bar (~22px) + content (2 rows of buttons ~60px)
+	float h = 100;
+
 	y += 4;
-	float cliBtnW = (contentW - gap * 2) / 3;
-	if (cliBtnW < 45)
-		cliBtnW = 45;
+	fAdminTabView->MoveTo(x, y);
+	fAdminTabView->ResizeTo(w, h);
+}
 
-	fVersionButton->MoveTo(x, y);
-	fVersionButton->ResizeTo(cliBtnW, btnH);
 
-	fNeighborsButton->MoveTo(x + cliBtnW + gap, y);
-	fNeighborsButton->ResizeTo(cliBtnW, btnH);
+void
+ContactInfoPanel::_ShowAdminTabs(bool show)
+{
+	if (fAdminTabView == NULL)
+		return;
 
-	fClockButton->MoveTo(x + (cliBtnW + gap) * 2, y);
-	fClockButton->ResizeTo(cliBtnW, btnH);
-	y += btnH + gap;
-
-	// Second CLI row
-	fClearStatsButton->MoveTo(x, y);
-	fClearStatsButton->ResizeTo(contentW, btnH);
-	y += btnH + gap;
-
-	// Set Name row (field + button)
-	float setNameBtnW = 60;
-	float fieldW = contentW - setNameBtnW - gap;
-	if (fieldW < 60)
-		fieldW = 60;
-
-	fSetNameField->MoveTo(x, y);
-	fSetNameField->ResizeTo(fieldW, btnH);
-
-	fSetNameButton->MoveTo(x + fieldW + gap, y);
-	fSetNameButton->ResizeTo(setNameBtnW, btnH);
-	y += btnH + gap;
-
-	// Password row (field + button)
-	fPasswordField->MoveTo(x, y);
-	fPasswordField->ResizeTo(fieldW, btnH);
-
-	fPasswordButton->MoveTo(x + fieldW + gap, y);
-	fPasswordButton->ResizeTo(setNameBtnW, btnH);
-	y += btnH + gap;
-
-	// Dangerous actions row (Reboot / Factory Reset)
-	float btnW = (contentW - gap) / 2;
-	if (btnW < 60)
-		btnW = 60;
-
-	fRebootButton->MoveTo(x, y);
-	fRebootButton->ResizeTo(btnW, btnH);
-
-	fFactoryResetButton->MoveTo(x + btnW + gap, y);
-	fFactoryResetButton->ResizeTo(btnW, btnH);
-
-	y += btnH + 8;
+	if (show) {
+		if (fAdminTabView->IsHidden())
+			fAdminTabView->Show();
+	} else {
+		if (!fAdminTabView->IsHidden())
+			fAdminTabView->Hide();
+	}
 }
