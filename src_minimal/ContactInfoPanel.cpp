@@ -28,6 +28,7 @@
 static const uint32 kMsgRebootClicked = 'arbc';
 static const uint32 kMsgResetClicked = 'arfc';
 static const uint32 kMsgVersionClicked = 'cver';
+static const uint32 kMsgNeighborsClicked = 'cnbr';
 
 
 // Avatar colors (same palette as ContactItem/ChatHeaderView)
@@ -108,7 +109,8 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fAdminNoise(0),
 	fRebootButton(NULL),
 	fFactoryResetButton(NULL),
-	fVersionButton(NULL)
+	fVersionButton(NULL),
+	fNeighborsButton(NULL)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	SetExplicitMinSize(BSize(kPanelMinWidth, B_SIZE_UNSET));
@@ -143,6 +145,13 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fVersionButton->ResizeTo(80, 24);
 	fVersionButton->Hide();
 	AddChild(fVersionButton);
+
+	fNeighborsButton = new BButton("neighbors", "Neighbors",
+		new BMessage(kMsgNeighborsClicked));
+	fNeighborsButton->MoveTo(kMargin, 560);
+	fNeighborsButton->ResizeTo(80, 24);
+	fNeighborsButton->Hide();
+	AddChild(fNeighborsButton);
 }
 
 
@@ -158,6 +167,7 @@ ContactInfoPanel::AttachedToWindow()
 	fRebootButton->SetTarget(this);
 	fFactoryResetButton->SetTarget(this);
 	fVersionButton->SetTarget(this);
+	fNeighborsButton->SetTarget(this);
 }
 
 
@@ -212,6 +222,14 @@ ContactInfoPanel::MessageReceived(BMessage* message)
 		{
 			BMessage cmd(MSG_ADMIN_SEND_CLI);
 			cmd.AddString("command", "ver");
+			Window()->PostMessage(&cmd);
+			break;
+		}
+
+		case kMsgNeighborsClicked:
+		{
+			BMessage cmd(MSG_ADMIN_SEND_CLI);
+			cmd.AddString("command", "neighbors");
 			Window()->PostMessage(&cmd);
 			break;
 		}
@@ -524,6 +542,8 @@ ContactInfoPanel::SetContact(const ContactInfo* contact)
 			fFactoryResetButton->Show();
 		if (fVersionButton->IsHidden())
 			fVersionButton->Show();
+		if (fNeighborsButton->IsHidden())
+			fNeighborsButton->Show();
 	} else {
 		if (!fRebootButton->IsHidden())
 			fRebootButton->Hide();
@@ -531,6 +551,8 @@ ContactInfoPanel::SetContact(const ContactInfo* contact)
 			fFactoryResetButton->Hide();
 		if (!fVersionButton->IsHidden())
 			fVersionButton->Hide();
+		if (!fNeighborsButton->IsHidden())
+			fNeighborsButton->Hide();
 	}
 
 	Invalidate();
@@ -555,6 +577,8 @@ ContactInfoPanel::SetChannel(bool isChannel)
 		fFactoryResetButton->Hide();
 	if (!fVersionButton->IsHidden())
 		fVersionButton->Hide();
+	if (!fNeighborsButton->IsHidden())
+		fNeighborsButton->Hide();
 	Invalidate();
 }
 
@@ -581,6 +605,8 @@ ContactInfoPanel::Clear()
 		fFactoryResetButton->Hide();
 	if (fVersionButton != NULL && !fVersionButton->IsHidden())
 		fVersionButton->Hide();
+	if (fNeighborsButton != NULL && !fNeighborsButton->IsHidden())
+		fNeighborsButton->Hide();
 	if (fSNRChart != NULL) {
 		fSNRChart->ClearData();
 		if (!fSNRChart->IsHidden())
@@ -806,6 +832,8 @@ ContactInfoPanel::SetAdminSession(bool active)
 			fFactoryResetButton->Show();
 		if (fVersionButton->IsHidden())
 			fVersionButton->Show();
+		if (fNeighborsButton->IsHidden())
+			fNeighborsButton->Show();
 	} else {
 		if (!fRebootButton->IsHidden())
 			fRebootButton->Hide();
@@ -813,6 +841,8 @@ ContactInfoPanel::SetAdminSession(bool active)
 			fFactoryResetButton->Hide();
 		if (!fVersionButton->IsHidden())
 			fVersionButton->Hide();
+		if (!fNeighborsButton->IsHidden())
+			fNeighborsButton->Hide();
 	}
 	Invalidate();
 }
@@ -992,8 +1022,15 @@ ContactInfoPanel::_PositionButtons(float& y)
 
 	// CLI command buttons row
 	y += 4;
+	float cliBtnW = (contentW - gap) / 2;
+	if (cliBtnW < 60)
+		cliBtnW = 60;
+
 	fVersionButton->MoveTo(x, y);
-	fVersionButton->ResizeTo(contentW, btnH);
+	fVersionButton->ResizeTo(cliBtnW, btnH);
+
+	fNeighborsButton->MoveTo(x + cliBtnW + gap, y);
+	fNeighborsButton->ResizeTo(cliBtnW, btnH);
 	y += btnH + gap;
 
 	// Dangerous actions row (Reboot / Factory Reset)

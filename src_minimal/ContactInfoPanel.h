@@ -84,6 +84,7 @@ private:
 
 			// CLI command buttons
 			BButton*	fVersionButton;
+			BButton*	fNeighborsButton;
 };
 
 
