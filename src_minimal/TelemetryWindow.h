@@ -54,6 +54,7 @@ enum SensorType {
 struct SensorInfo {
 	BString		name;
 	BString		unit;
+	BString		displayName;
 	SensorType	type;
 	uint32		nodeId;
 	float		currentValue;
@@ -141,7 +142,8 @@ public:
 	void				AddTelemetryData(uint32 nodeId,
 							const BString& sensorName,
 							SensorType type, float value,
-							const BString& unit);
+							const BString& unit,
+							const char* contactName = NULL);
 	void				LoadHistoryFromDB();
 	void				ClearAllData();
 
@@ -182,6 +184,7 @@ private:
 	BButton*			fExportButton;
 	BButton*			fClearButton;
 	BButton*			fLoadHistoryButton;
+	BButton*			fRequestAllButton;
 
 	// Data
 	int32				fSelectedSensor;

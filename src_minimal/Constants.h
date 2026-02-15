@@ -184,6 +184,13 @@ enum {
 	MSG_ADMIN_REFRESH_TICK = 'artk',
 	MSG_ADMIN_REBOOT = 'arbt',
 	MSG_ADMIN_FACTORY_RESET = 'arfr',
+
+	// Remote telemetry polling
+	MSG_REQUEST_ALL_TELEMETRY = 'rqat',
+	MSG_TELEMETRY_POLL_TICK   = 'tptk',
+
+	// Admin CLI commands (sent as TXT_TYPE_CLI_DATA to logged-in repeater/room)
+	MSG_ADMIN_SEND_CLI = 'ascl',
 };
 
 #endif // CONSTANTS_H

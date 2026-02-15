@@ -207,6 +207,7 @@ MainWindow::MainWindow()
 	fStatsRefreshTimer(NULL),
 	fAutoSyncRunner(NULL),
 	fAdminRefreshTimer(NULL),
+	fTelemetryPollTimer(NULL),
 	fBatteryMv(0),
 	fLastRssi(0),
 	fLastSnr(0),
@@ -222,6 +223,7 @@ MainWindow::MainWindow()
 	memset(fPublicKey, 0, sizeof(fPublicKey));
 	fSelfNodeId = 0;
 	memset(fLoginTargetKey, 0, sizeof(fLoginTargetKey));
+	fTelemetryPollIndex = 0;
 	memset(fLoggedInKey, 0, sizeof(fLoggedInKey));
 	fHasDeviceInfo = false;
 	fRadioFreq = 0;
@@ -1394,6 +1396,14 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 
 		// Repeater admin commands
+		case MSG_ADMIN_SEND_CLI:
+		{
+			const char* command;
+			if (message->FindString("command", &command) == B_OK)
+				_SendCliCommand(command);
+			break;
+		}
+
 		case MSG_ADMIN_REBOOT:
 			_SendReboot();
 			break;
@@ -1425,14 +1435,65 @@ MainWindow::MessageReceived(BMessage* message)
 			ContactItem* item = dynamic_cast<ContactItem*>(
 				fContactList->ItemAt(fSelectedContact));
 			if (item != NULL && !item->IsChannel()) {
-				uint8 payload[7];
-				payload[0] = CMD_SEND_TELEMETRY_REQ;
-				memcpy(payload + 1, item->GetContact().publicKey, 6);
-				fSerialHandler->SendFrame(payload, 7);
+				_SendTelemetryRequest(item->GetContact().publicKey);
 				_LogMessage("INFO", "Requesting telemetry data...");
 
 				// Open telemetry window
 				PostMessage(MSG_SHOW_TELEMETRY);
+			}
+			break;
+		}
+
+		case MSG_REQUEST_ALL_TELEMETRY:
+		{
+			if (!fConnected) {
+				_LogMessage("ERROR", "Not connected");
+				break;
+			}
+			if (fContacts.CountItems() == 0) {
+				_LogMessage("WARN", "No contacts to poll");
+				break;
+			}
+			// Start polling all contacts at 2s intervals
+			fTelemetryPollIndex = 0;
+			delete fTelemetryPollTimer;
+			BMessage pollMsg(MSG_TELEMETRY_POLL_TICK);
+			fTelemetryPollTimer = new BMessageRunner(BMessenger(this),
+				&pollMsg, 2000000, -1);
+			// Send first request immediately
+			PostMessage(MSG_TELEMETRY_POLL_TICK);
+			// Open telemetry window
+			PostMessage(MSG_SHOW_TELEMETRY);
+			_LogMessage("INFO", "Requesting telemetry from all contacts...");
+			break;
+		}
+
+		case MSG_TELEMETRY_POLL_TICK:
+		{
+			if (!fConnected || fTelemetryPollTimer == NULL)
+				break;
+
+			// Find next valid contact to poll
+			while (fTelemetryPollIndex < fContacts.CountItems()) {
+				ContactInfo* contact = fContacts.ItemAt(fTelemetryPollIndex);
+				fTelemetryPollIndex++;
+				if (contact != NULL && contact->type != 0) {
+					// Skip channel-only contacts (type 0)
+					_SendTelemetryRequest(contact->publicKey);
+					BString logMsg;
+					logMsg.SetToFormat("Requesting telemetry from %s (%d/%d)",
+						contact->name, (int)fTelemetryPollIndex,
+						(int)fContacts.CountItems());
+					_LogMessage("INFO", logMsg.String());
+					break;
+				}
+			}
+
+			// Check if we've finished polling all contacts
+			if (fTelemetryPollIndex >= fContacts.CountItems()) {
+				delete fTelemetryPollTimer;
+				fTelemetryPollTimer = NULL;
+				_LogMessage("INFO", "Telemetry poll complete");
 			}
 			break;
 		}
@@ -2139,6 +2200,99 @@ MainWindow::_SendStatusRequest(const uint8* pubkey)
 	payload[0] = CMD_SEND_STATUS_REQ;
 	memcpy(&payload[1], pubkey, 32);
 	fSerialHandler->SendFrame(payload, 33);
+}
+
+
+void
+MainWindow::_SendTelemetryRequest(const uint8* pubkey)
+{
+	if (!fSerialHandler->IsConnected())
+		return;
+
+	// V3 format: [CMD][reserved×3][pubkey×32] = 36 bytes
+	uint8 payload[36];
+	payload[0] = CMD_SEND_TELEMETRY_REQ;
+	payload[1] = 0;
+	payload[2] = 0;
+	payload[3] = 0;
+	memcpy(&payload[4], pubkey, 32);
+	fSerialHandler->SendFrame(payload, 36);
+}
+
+
+void
+MainWindow::_SendCliCommand(const char* command)
+{
+	if (!fLoggedIn || !fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not logged into a repeater/room");
+		return;
+	}
+
+	ContactInfo* target = _FindContactByPrefix(fLoggedInKey, kPubKeyPrefixSize);
+	if (target == NULL) {
+		_LogMessage("ERROR", "Login target contact not found");
+		return;
+	}
+
+	size_t cmdLen = strlen(command);
+	if (cmdLen == 0 || cmdLen > 160)
+		return;
+
+	// Build CMD_SEND_TXT_MSG frame with TXT_TYPE_CLI_DATA
+	uint8 payload[256];
+	size_t pos = 0;
+
+	payload[pos++] = CMD_SEND_TXT_MSG;
+	payload[pos++] = TXT_TYPE_CLI_DATA;
+	payload[pos++] = 0;  // attempt
+
+	uint32 timestamp = (uint32)time(NULL);
+	payload[pos++] = timestamp & 0xFF;
+	payload[pos++] = (timestamp >> 8) & 0xFF;
+	payload[pos++] = (timestamp >> 16) & 0xFF;
+	payload[pos++] = (timestamp >> 24) & 0xFF;
+
+	memcpy(payload + pos, target->publicKey, kPubKeyPrefixSize);
+	pos += kPubKeyPrefixSize;
+
+	memcpy(payload + pos, command, cmdLen);
+	pos += cmdLen;
+
+	fSerialHandler->SendFrame(payload, pos);
+	fTopBar->FlashTx();
+
+	// Add to chat history
+	ChatMessage outMsg;
+	memcpy(outMsg.pubKeyPrefix, target->publicKey, kPubKeyPrefixSize);
+	strlcpy(outMsg.text, command, sizeof(outMsg.text));
+	outMsg.timestamp = timestamp;
+	outMsg.isOutgoing = true;
+	outMsg.isChannel = false;
+	outMsg.txtType = TXT_TYPE_CLI_DATA;
+	outMsg.deliveryStatus = DELIVERY_PENDING;
+
+	// Store in contact's message list
+	target->messages.AddItem(new ChatMessage(outMsg));
+
+	// Persist to DB
+	char contactHex[13];
+	for (int i = 0; i < 6; i++)
+		snprintf(contactHex + i * 2, 3, "%02x", target->publicKey[i]);
+	DatabaseManager::Instance()->InsertMessage(contactHex, outMsg);
+
+	// Update chat view if this contact is selected
+	ContactItem* selItem = dynamic_cast<ContactItem*>(
+		fContactList->ItemAt(fSelectedContact));
+	if (selItem != NULL && !selItem->IsChannel() &&
+		memcmp(selItem->GetContact().publicKey, fLoggedInKey,
+			kPubKeyPrefixSize) == 0) {
+		fChatView->AddMessage(outMsg, "Me");
+		fPendingMsgIndex = fChatView->CountItems() - 1;
+		selItem->SetLastMessage(command, timestamp);
+		fContactList->InvalidateItem(fSelectedContact);
+	}
+
+	_LogMessage("CLI", BString().SetToFormat("> %s", command));
 }
 
 
@@ -3385,13 +3539,14 @@ MainWindow::_HandleBattAndStorage(const uint8* data, size_t length)
 		// Forward battery voltage to TelemetryWindow as sensor data
 		if (fTelemetryWindow != NULL) {
 			if (fTelemetryWindow->LockLooper()) {
+				const char* name = fDeviceName[0] != '\0' ? fDeviceName : NULL;
 				float batteryV = battMv / 1000.0f;
 				fTelemetryWindow->AddTelemetryData(fSelfNodeId, "Battery",
-					SENSOR_BATTERY, batteryV, "V");
+					SENSOR_BATTERY, batteryV, "V", name);
 				if (totalKb > 0) {
 					float storagePctF = (usedKb * 100.0f) / totalKb;
 					fTelemetryWindow->AddTelemetryData(fSelfNodeId, "Storage",
-						SENSOR_CUSTOM, storagePctF, "%");
+						SENSOR_CUSTOM, storagePctF, "%", name);
 				}
 				fTelemetryWindow->UnlockLooper();
 			}
@@ -3438,12 +3593,13 @@ MainWindow::_HandleStats(const uint8* data, size_t length)
 				// Forward radio stats to TelemetryWindow as sensor data
 				if (fTelemetryWindow != NULL) {
 					if (fTelemetryWindow->LockLooper()) {
+						const char* name = fDeviceName[0] != '\0' ? fDeviceName : NULL;
 						fTelemetryWindow->AddTelemetryData(fSelfNodeId, "Noise Floor",
-							SENSOR_CUSTOM, (float)fNoiseFloor, "dBm");
+							SENSOR_CUSTOM, (float)fNoiseFloor, "dBm", name);
 						fTelemetryWindow->AddTelemetryData(fSelfNodeId, "RSSI",
-							SENSOR_CUSTOM, (float)fLastRssi, "dBm");
+							SENSOR_CUSTOM, (float)fLastRssi, "dBm", name);
 						fTelemetryWindow->AddTelemetryData(fSelfNodeId, "SNR",
-							SENSOR_CUSTOM, (float)fLastSnr, "dB");
+							SENSOR_CUSTOM, (float)fLastSnr, "dB", name);
 						fTelemetryWindow->UnlockLooper();
 					}
 				}
@@ -3780,7 +3936,8 @@ MainWindow::_HandlePushTelemetry(const uint8* data, size_t length)
 	}
 
 	if (fTelemetryWindow->LockLooper()) {
-		fTelemetryWindow->AddTelemetryData(nodeId, sensorName, type, value, unit);
+		fTelemetryWindow->AddTelemetryData(nodeId, sensorName, type, value, unit,
+			senderName.String());
 		fTelemetryWindow->UnlockLooper();
 	}
 }
@@ -4012,6 +4169,10 @@ MainWindow::_OnDisconnected()
 	delete fAdminRefreshTimer;
 	fAdminRefreshTimer = NULL;
 	fInfoPanel->SetAdminSession(false);
+
+	// Stop telemetry poll timer
+	delete fTelemetryPollTimer;
+	fTelemetryPollTimer = NULL;
 
 	_UpdateConnectionUI();
 	_LogMessage("INFO", "Disconnected");

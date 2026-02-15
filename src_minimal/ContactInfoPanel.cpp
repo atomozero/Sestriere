@@ -27,6 +27,7 @@
 // Internal message codes for admin buttons
 static const uint32 kMsgRebootClicked = 'arbc';
 static const uint32 kMsgResetClicked = 'arfc';
+static const uint32 kMsgVersionClicked = 'cver';
 
 
 // Avatar colors (same palette as ContactItem/ChatHeaderView)
@@ -106,7 +107,8 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fAdminSnr(0),
 	fAdminNoise(0),
 	fRebootButton(NULL),
-	fFactoryResetButton(NULL)
+	fFactoryResetButton(NULL),
+	fVersionButton(NULL)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	SetExplicitMinSize(BSize(kPanelMinWidth, B_SIZE_UNSET));
@@ -133,6 +135,14 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fFactoryResetButton->ResizeTo(100, 24);
 	fFactoryResetButton->Hide();
 	AddChild(fFactoryResetButton);
+
+	// CLI command buttons
+	fVersionButton = new BButton("version", "Version",
+		new BMessage(kMsgVersionClicked));
+	fVersionButton->MoveTo(kMargin, 530);
+	fVersionButton->ResizeTo(80, 24);
+	fVersionButton->Hide();
+	AddChild(fVersionButton);
 }
 
 
@@ -147,6 +157,7 @@ ContactInfoPanel::AttachedToWindow()
 	BView::AttachedToWindow();
 	fRebootButton->SetTarget(this);
 	fFactoryResetButton->SetTarget(this);
+	fVersionButton->SetTarget(this);
 }
 
 
@@ -194,6 +205,14 @@ ContactInfoPanel::MessageReceived(BMessage* message)
 					Window()->PostMessage(&cmd);
 				}
 			}
+			break;
+		}
+
+		case kMsgVersionClicked:
+		{
+			BMessage cmd(MSG_ADMIN_SEND_CLI);
+			cmd.AddString("command", "ver");
+			Window()->PostMessage(&cmd);
 			break;
 		}
 
@@ -503,11 +522,15 @@ ContactInfoPanel::SetContact(const ContactInfo* contact)
 			fRebootButton->Show();
 		if (fFactoryResetButton->IsHidden())
 			fFactoryResetButton->Show();
+		if (fVersionButton->IsHidden())
+			fVersionButton->Show();
 	} else {
 		if (!fRebootButton->IsHidden())
 			fRebootButton->Hide();
 		if (!fFactoryResetButton->IsHidden())
 			fFactoryResetButton->Hide();
+		if (!fVersionButton->IsHidden())
+			fVersionButton->Hide();
 	}
 
 	Invalidate();
@@ -530,6 +553,8 @@ ContactInfoPanel::SetChannel(bool isChannel)
 		fRebootButton->Hide();
 	if (!fFactoryResetButton->IsHidden())
 		fFactoryResetButton->Hide();
+	if (!fVersionButton->IsHidden())
+		fVersionButton->Hide();
 	Invalidate();
 }
 
@@ -554,6 +579,8 @@ ContactInfoPanel::Clear()
 		fRebootButton->Hide();
 	if (fFactoryResetButton != NULL && !fFactoryResetButton->IsHidden())
 		fFactoryResetButton->Hide();
+	if (fVersionButton != NULL && !fVersionButton->IsHidden())
+		fVersionButton->Hide();
 	if (fSNRChart != NULL) {
 		fSNRChart->ClearData();
 		if (!fSNRChart->IsHidden())
@@ -777,11 +804,15 @@ ContactInfoPanel::SetAdminSession(bool active)
 			fRebootButton->Show();
 		if (fFactoryResetButton->IsHidden())
 			fFactoryResetButton->Show();
+		if (fVersionButton->IsHidden())
+			fVersionButton->Show();
 	} else {
 		if (!fRebootButton->IsHidden())
 			fRebootButton->Hide();
 		if (!fFactoryResetButton->IsHidden())
 			fFactoryResetButton->Hide();
+		if (!fVersionButton->IsHidden())
+			fVersionButton->Hide();
 	}
 	Invalidate();
 }
@@ -953,14 +984,20 @@ ContactInfoPanel::_DrawAdminSections(float& y)
 void
 ContactInfoPanel::_PositionButtons(float& y)
 {
-	y += 4;
 	BRect bounds = Bounds();
 	float x = bounds.left + kMargin;
 	float contentW = bounds.Width() - kMargin * 2;
 	float btnH = 24;
 	float gap = 8;
-	float btnW = (contentW - gap) / 2;
 
+	// CLI command buttons row
+	y += 4;
+	fVersionButton->MoveTo(x, y);
+	fVersionButton->ResizeTo(contentW, btnH);
+	y += btnH + gap;
+
+	// Dangerous actions row (Reboot / Factory Reset)
+	float btnW = (contentW - gap) / 2;
 	if (btnW < 60)
 		btnW = 60;
 

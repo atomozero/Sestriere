@@ -20,6 +20,7 @@
 #include <climits>
 #include <ctime>
 
+#include "Constants.h"
 #include "DatabaseManager.h"
 
 
@@ -444,9 +445,12 @@ TelemetrySensorView::Draw(BRect /*updateRect*/)
 	SetHighColor(180, 180, 190);
 	DrawString(valueStr, BPoint(bounds.left + 25, bounds.top + 32));
 
-	// Node ID
-	char nodeStr[32];
-	snprintf(nodeStr, sizeof(nodeStr), "Node: %08X", fSensor->nodeId);
+	// Node ID or contact name
+	char nodeStr[80];
+	if (fSensor->displayName.Length() > 0)
+		snprintf(nodeStr, sizeof(nodeStr), "%s", fSensor->displayName.String());
+	else
+		snprintf(nodeStr, sizeof(nodeStr), "Node: %08X", fSensor->nodeId);
 	float nodeWidth = StringWidth(nodeStr);
 	SetHighColor(120, 120, 130);
 	DrawString(nodeStr, BPoint(bounds.right - nodeWidth - 10, bounds.top + 25));
@@ -582,6 +586,8 @@ TelemetryWindow::_BuildLayout()
 		new BMessage(MSG_TELEMETRY_CLEAR_HISTORY));
 	fLoadHistoryButton = new BButton("loadhist", "Load History",
 		new BMessage('tldb'));
+	fRequestAllButton = new BButton("reqall", "Request All",
+		new BMessage(MSG_REQUEST_ALL_TELEMETRY));
 
 	BView* buttonView = new BView("buttons", 0);
 	buttonView->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
@@ -589,6 +595,7 @@ TelemetryWindow::_BuildLayout()
 	BLayoutBuilder::Group<>(buttonView, B_HORIZONTAL, 10)
 		.SetInsets(5)
 		.Add(fLoadHistoryButton)
+		.Add(fRequestAllButton)
 		.AddGlue()
 		.Add(fExportButton)
 		.Add(fClearButton)
@@ -690,6 +697,11 @@ TelemetryWindow::MessageReceived(BMessage* message)
 			LoadHistoryFromDB();
 			break;
 
+		case MSG_REQUEST_ALL_TELEMETRY:
+			if (fParent != NULL)
+				BMessenger(fParent).SendMessage(message);
+			break;
+
 		default:
 			BWindow::MessageReceived(message);
 			break;
@@ -707,9 +719,13 @@ TelemetryWindow::QuitRequested()
 
 void
 TelemetryWindow::AddTelemetryData(uint32 nodeId, const BString& sensorName,
-	SensorType type, float value, const BString& unit)
+	SensorType type, float value, const BString& unit,
+	const char* contactName)
 {
 	SensorInfo* sensor = _FindOrCreateSensor(nodeId, sensorName, type, unit);
+
+	if (contactName != NULL && contactName[0] != '\0')
+		sensor->displayName = contactName;
 
 	TelemetryDataPoint* point = new TelemetryDataPoint();
 	point->timestamp = system_time();
@@ -891,7 +907,11 @@ TelemetryWindow::_UpdateStats()
 		snprintf(buffer, sizeof(buffer), "Average: --");
 	fAvgValueView->SetText(buffer);
 
-	snprintf(buffer, sizeof(buffer), "Node: %08X", sensor->nodeId);
+	if (sensor->displayName.Length() > 0)
+		snprintf(buffer, sizeof(buffer), "%s (%08X)",
+			sensor->displayName.String(), sensor->nodeId);
+	else
+		snprintf(buffer, sizeof(buffer), "Node: %08X", sensor->nodeId);
 	fNodeIdView->SetText(buffer);
 }
 

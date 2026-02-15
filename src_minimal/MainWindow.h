@@ -84,6 +84,8 @@ private:
 								const uint8* secret);
 			void			_SendRemoveChannel(uint8 index);
 			void			_SendStatusRequest(const uint8* pubkey);
+			void			_SendTelemetryRequest(const uint8* pubkey);
+			void			_SendCliCommand(const char* command);
 
 			// Frame handling
 			void			_OnFrameReceived(BMessage* message);
@@ -252,6 +254,7 @@ private:
 			BMessageRunner*	fStatsRefreshTimer;
 			BMessageRunner*	fAutoSyncRunner;
 			BMessageRunner*	fAdminRefreshTimer;
+			BMessageRunner*	fTelemetryPollTimer;
 
 			// Cached stats for status bar
 			uint16			fBatteryMv;
@@ -283,6 +286,9 @@ private:
 			uint8			fAdvertLocPolicy;
 			uint8			fTelemetryModes;
 			uint8			fManualAddContacts;
+
+			// Telemetry polling state
+			int32			fTelemetryPollIndex;
 };
 
 

@@ -81,6 +81,10 @@ private:
 			// Admin buttons
 			BButton*	fRebootButton;
 			BButton*	fFactoryResetButton;
+
+			// CLI command buttons
+			BButton*	fVersionButton;
 };
+
 
 #endif // CONTACTINFOPANEL_H
