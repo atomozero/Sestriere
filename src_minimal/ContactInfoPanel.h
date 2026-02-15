@@ -92,6 +92,8 @@ private:
 			// CLI input fields + buttons
 			BTextControl*	fSetNameField;
 			BButton*	fSetNameButton;
+			BTextControl*	fPasswordField;
+			BButton*	fPasswordButton;
 };
 
 

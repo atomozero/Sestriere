@@ -33,6 +33,7 @@ static const uint32 kMsgNeighborsClicked = 'cnbr';
 static const uint32 kMsgClockClicked = 'cclk';
 static const uint32 kMsgClearStatsClicked = 'ccls';
 static const uint32 kMsgSetNameClicked = 'csnm';
+static const uint32 kMsgPasswordClicked = 'cspw';
 
 
 // Avatar colors (same palette as ContactItem/ChatHeaderView)
@@ -118,7 +119,9 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fClockButton(NULL),
 	fClearStatsButton(NULL),
 	fSetNameField(NULL),
-	fSetNameButton(NULL)
+	fSetNameButton(NULL),
+	fPasswordField(NULL),
+	fPasswordButton(NULL)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	SetExplicitMinSize(BSize(kPanelMinWidth, B_SIZE_UNSET));
@@ -189,6 +192,21 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fSetNameButton->ResizeTo(60, 24);
 	fSetNameButton->Hide();
 	AddChild(fSetNameButton);
+
+	// "Password" input field + button
+	fPasswordField = new BTextControl("password_field", NULL, "",
+		NULL);
+	fPasswordField->MoveTo(kMargin, 680);
+	fPasswordField->ResizeTo(120, 22);
+	fPasswordField->Hide();
+	AddChild(fPasswordField);
+
+	fPasswordButton = new BButton("set_password", "Set Pwd",
+		new BMessage(kMsgPasswordClicked));
+	fPasswordButton->MoveTo(kMargin + 128, 680);
+	fPasswordButton->ResizeTo(60, 24);
+	fPasswordButton->Hide();
+	AddChild(fPasswordButton);
 }
 
 
@@ -208,6 +226,7 @@ ContactInfoPanel::AttachedToWindow()
 	fClockButton->SetTarget(this);
 	fClearStatsButton->SetTarget(this);
 	fSetNameButton->SetTarget(this);
+	fPasswordButton->SetTarget(this);
 }
 
 
@@ -300,6 +319,26 @@ ContactInfoPanel::MessageReceived(BMessage* message)
 				cmd.AddString("command", command.String());
 				Window()->PostMessage(&cmd);
 				fSetNameField->SetText("");
+			}
+			break;
+		}
+
+		case kMsgPasswordClicked:
+		{
+			const char* text = fPasswordField->Text();
+			if (text != NULL && text[0] != '\0') {
+				BAlert* alert = new BAlert("Change Password",
+					"Change the admin password for this device?",
+					"Cancel", "Change", NULL,
+					B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+				if (alert->Go() == 1) {
+					BString command("password ");
+					command << text;
+					BMessage cmd(MSG_ADMIN_SEND_CLI);
+					cmd.AddString("command", command.String());
+					Window()->PostMessage(&cmd);
+					fPasswordField->SetText("");
+				}
 			}
 			break;
 		}
@@ -622,6 +661,10 @@ ContactInfoPanel::SetContact(const ContactInfo* contact)
 			fSetNameField->Show();
 		if (fSetNameButton->IsHidden())
 			fSetNameButton->Show();
+		if (fPasswordField->IsHidden())
+			fPasswordField->Show();
+		if (fPasswordButton->IsHidden())
+			fPasswordButton->Show();
 	} else {
 		if (!fRebootButton->IsHidden())
 			fRebootButton->Hide();
@@ -639,6 +682,10 @@ ContactInfoPanel::SetContact(const ContactInfo* contact)
 			fSetNameField->Hide();
 		if (!fSetNameButton->IsHidden())
 			fSetNameButton->Hide();
+		if (!fPasswordField->IsHidden())
+			fPasswordField->Hide();
+		if (!fPasswordButton->IsHidden())
+			fPasswordButton->Hide();
 	}
 
 	Invalidate();
@@ -673,6 +720,10 @@ ContactInfoPanel::SetChannel(bool isChannel)
 		fSetNameField->Hide();
 	if (!fSetNameButton->IsHidden())
 		fSetNameButton->Hide();
+	if (!fPasswordField->IsHidden())
+		fPasswordField->Hide();
+	if (!fPasswordButton->IsHidden())
+		fPasswordButton->Hide();
 	Invalidate();
 }
 
@@ -709,6 +760,10 @@ ContactInfoPanel::Clear()
 		fSetNameField->Hide();
 	if (fSetNameButton != NULL && !fSetNameButton->IsHidden())
 		fSetNameButton->Hide();
+	if (fPasswordField != NULL && !fPasswordField->IsHidden())
+		fPasswordField->Hide();
+	if (fPasswordButton != NULL && !fPasswordButton->IsHidden())
+		fPasswordButton->Hide();
 	if (fSNRChart != NULL) {
 		fSNRChart->ClearData();
 		if (!fSNRChart->IsHidden())
@@ -944,6 +999,10 @@ ContactInfoPanel::SetAdminSession(bool active)
 			fSetNameField->Show();
 		if (fSetNameButton->IsHidden())
 			fSetNameButton->Show();
+		if (fPasswordField->IsHidden())
+			fPasswordField->Show();
+		if (fPasswordButton->IsHidden())
+			fPasswordButton->Show();
 	} else {
 		if (!fRebootButton->IsHidden())
 			fRebootButton->Hide();
@@ -961,6 +1020,10 @@ ContactInfoPanel::SetAdminSession(bool active)
 			fSetNameField->Hide();
 		if (!fSetNameButton->IsHidden())
 			fSetNameButton->Hide();
+		if (!fPasswordField->IsHidden())
+			fPasswordField->Hide();
+		if (!fPasswordButton->IsHidden())
+			fPasswordButton->Hide();
 	}
 	Invalidate();
 }
@@ -1170,6 +1233,14 @@ ContactInfoPanel::_PositionButtons(float& y)
 
 	fSetNameButton->MoveTo(x + fieldW + gap, y);
 	fSetNameButton->ResizeTo(setNameBtnW, btnH);
+	y += btnH + gap;
+
+	// Password row (field + button)
+	fPasswordField->MoveTo(x, y);
+	fPasswordField->ResizeTo(fieldW, btnH);
+
+	fPasswordButton->MoveTo(x + fieldW + gap, y);
+	fPasswordButton->ResizeTo(setNameBtnW, btnH);
 	y += btnH + gap;
 
 	// Dangerous actions row (Reboot / Factory Reset)
