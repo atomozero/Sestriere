@@ -86,6 +86,7 @@ private:
 			BButton*	fVersionButton;
 			BButton*	fNeighborsButton;
 			BButton*	fClockButton;
+			BButton*	fClearStatsButton;
 };
 
 

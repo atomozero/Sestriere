@@ -30,6 +30,7 @@ static const uint32 kMsgResetClicked = 'arfc';
 static const uint32 kMsgVersionClicked = 'cver';
 static const uint32 kMsgNeighborsClicked = 'cnbr';
 static const uint32 kMsgClockClicked = 'cclk';
+static const uint32 kMsgClearStatsClicked = 'ccls';
 
 
 // Avatar colors (same palette as ContactItem/ChatHeaderView)
@@ -112,7 +113,8 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fFactoryResetButton(NULL),
 	fVersionButton(NULL),
 	fNeighborsButton(NULL),
-	fClockButton(NULL)
+	fClockButton(NULL),
+	fClearStatsButton(NULL)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	SetExplicitMinSize(BSize(kPanelMinWidth, B_SIZE_UNSET));
@@ -161,6 +163,13 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fClockButton->ResizeTo(80, 24);
 	fClockButton->Hide();
 	AddChild(fClockButton);
+
+	fClearStatsButton = new BButton("clear_stats", "Clear Stats",
+		new BMessage(kMsgClearStatsClicked));
+	fClearStatsButton->MoveTo(kMargin, 620);
+	fClearStatsButton->ResizeTo(80, 24);
+	fClearStatsButton->Hide();
+	AddChild(fClearStatsButton);
 }
 
 
@@ -178,6 +187,7 @@ ContactInfoPanel::AttachedToWindow()
 	fVersionButton->SetTarget(this);
 	fNeighborsButton->SetTarget(this);
 	fClockButton->SetTarget(this);
+	fClearStatsButton->SetTarget(this);
 }
 
 
@@ -248,6 +258,14 @@ ContactInfoPanel::MessageReceived(BMessage* message)
 		{
 			BMessage cmd(MSG_ADMIN_SEND_CLI);
 			cmd.AddString("command", "clock");
+			Window()->PostMessage(&cmd);
+			break;
+		}
+
+		case kMsgClearStatsClicked:
+		{
+			BMessage cmd(MSG_ADMIN_SEND_CLI);
+			cmd.AddString("command", "clear stats");
 			Window()->PostMessage(&cmd);
 			break;
 		}
@@ -564,6 +582,8 @@ ContactInfoPanel::SetContact(const ContactInfo* contact)
 			fNeighborsButton->Show();
 		if (fClockButton->IsHidden())
 			fClockButton->Show();
+		if (fClearStatsButton->IsHidden())
+			fClearStatsButton->Show();
 	} else {
 		if (!fRebootButton->IsHidden())
 			fRebootButton->Hide();
@@ -575,6 +595,8 @@ ContactInfoPanel::SetContact(const ContactInfo* contact)
 			fNeighborsButton->Hide();
 		if (!fClockButton->IsHidden())
 			fClockButton->Hide();
+		if (!fClearStatsButton->IsHidden())
+			fClearStatsButton->Hide();
 	}
 
 	Invalidate();
@@ -603,6 +625,8 @@ ContactInfoPanel::SetChannel(bool isChannel)
 		fNeighborsButton->Hide();
 	if (!fClockButton->IsHidden())
 		fClockButton->Hide();
+	if (!fClearStatsButton->IsHidden())
+		fClearStatsButton->Hide();
 	Invalidate();
 }
 
@@ -633,6 +657,8 @@ ContactInfoPanel::Clear()
 		fNeighborsButton->Hide();
 	if (fClockButton != NULL && !fClockButton->IsHidden())
 		fClockButton->Hide();
+	if (fClearStatsButton != NULL && !fClearStatsButton->IsHidden())
+		fClearStatsButton->Hide();
 	if (fSNRChart != NULL) {
 		fSNRChart->ClearData();
 		if (!fSNRChart->IsHidden())
@@ -862,6 +888,8 @@ ContactInfoPanel::SetAdminSession(bool active)
 			fNeighborsButton->Show();
 		if (fClockButton->IsHidden())
 			fClockButton->Show();
+		if (fClearStatsButton->IsHidden())
+			fClearStatsButton->Show();
 	} else {
 		if (!fRebootButton->IsHidden())
 			fRebootButton->Hide();
@@ -873,6 +901,8 @@ ContactInfoPanel::SetAdminSession(bool active)
 			fNeighborsButton->Hide();
 		if (!fClockButton->IsHidden())
 			fClockButton->Hide();
+		if (!fClearStatsButton->IsHidden())
+			fClearStatsButton->Hide();
 	}
 	Invalidate();
 }
@@ -1064,6 +1094,11 @@ ContactInfoPanel::_PositionButtons(float& y)
 
 	fClockButton->MoveTo(x + (cliBtnW + gap) * 2, y);
 	fClockButton->ResizeTo(cliBtnW, btnH);
+	y += btnH + gap;
+
+	// Second CLI row
+	fClearStatsButton->MoveTo(x, y);
+	fClearStatsButton->ResizeTo(contentW, btnH);
 	y += btnH + gap;
 
 	// Dangerous actions row (Reboot / Factory Reset)
