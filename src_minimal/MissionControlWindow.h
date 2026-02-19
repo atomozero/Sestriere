@@ -24,6 +24,7 @@ class ContactGridView;
 class DashboardSNRView;
 class PacketRateView;
 class MiniTopoView;
+class SessionTimelineView;
 
 // Node data for mini topology
 struct TopoNode {
@@ -90,6 +91,9 @@ private:
 
 	// Mini topology
 	MiniTopoView*			fMiniTopo;
+
+	// Session timeline
+	SessionTimelineView*	fTimeline;
 
 	// Quick actions
 	BButton*				fAdvertButton;

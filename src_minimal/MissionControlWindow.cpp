@@ -883,6 +883,160 @@ private:
 
 
 // ============================================================================
+// SessionTimelineView — Horizontal timeline of session events
+// ============================================================================
+
+static const int32 kMaxTimelineEvents = 200;
+
+struct TimelineEvent {
+	bigtime_t	time;
+	uint8		type;	// 0=sys, 1=msg, 2=adv, 3=err
+	char		label[32];
+};
+
+class SessionTimelineView : public BView {
+public:
+	SessionTimelineView()
+		:
+		BView("timeline", B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE),
+		fEventCount(0),
+		fSessionStart(0)
+	{
+		SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+		SetExplicitMinSize(BSize(B_SIZE_UNSET, 36));
+		SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 36));
+	}
+
+	void SetSessionStart(bigtime_t startTime)
+	{
+		fSessionStart = startTime;
+	}
+
+	void AddEvent(uint8 type, const char* label)
+	{
+		if (fSessionStart == 0)
+			fSessionStart = system_time();
+
+		if (fEventCount >= kMaxTimelineEvents) {
+			// Shift events left
+			memmove(&fEvents[0], &fEvents[1],
+				(kMaxTimelineEvents - 1) * sizeof(TimelineEvent));
+			fEventCount--;
+		}
+
+		TimelineEvent& ev = fEvents[fEventCount++];
+		ev.time = system_time();
+		ev.type = type;
+		snprintf(ev.label, sizeof(ev.label), "%s", label);
+		Invalidate();
+	}
+
+	void Clear()
+	{
+		fEventCount = 0;
+		fSessionStart = 0;
+		Invalidate();
+	}
+
+	void Draw(BRect updateRect)
+	{
+		BRect bounds = Bounds();
+		rgb_color bg = ui_color(B_PANEL_BACKGROUND_COLOR);
+		rgb_color textColor = ui_color(B_PANEL_TEXT_COLOR);
+		rgb_color dimColor = tint_color(textColor, B_LIGHTEN_1_TINT);
+		rgb_color lineColor = tint_color(bg, B_DARKEN_2_TINT);
+
+		SetLowColor(bg);
+		FillRect(bounds, B_SOLID_LOW);
+
+		float left = 4;
+		float right = bounds.right - 4;
+		float lineY = bounds.Height() / 2;
+		float barW = right - left;
+
+		// Title
+		BFont titleFont;
+		GetFont(&titleFont);
+		titleFont.SetSize(8);
+		SetFont(&titleFont);
+		SetHighColor(dimColor);
+		DrawString("Session", BPoint(left, 9));
+		left += StringWidth("Session") + 6;
+		barW = right - left;
+
+		// Timeline base line
+		SetHighColor(lineColor);
+		StrokeLine(BPoint(left, lineY), BPoint(right, lineY));
+
+		if (fEventCount == 0 || fSessionStart == 0)
+			return;
+
+		bigtime_t now = system_time();
+		bigtime_t span = now - fSessionStart;
+		if (span < 1000000) span = 1000000;  // At least 1s
+
+		// Time labels
+		SetHighColor(dimColor);
+		DrawString("0", BPoint(left, bounds.bottom - 2));
+		char endLabel[16];
+		int32 totalSec = (int32)(span / 1000000);
+		if (totalSec < 60)
+			snprintf(endLabel, sizeof(endLabel), "%ds", (int)totalSec);
+		else if (totalSec < 3600)
+			snprintf(endLabel, sizeof(endLabel), "%dm",
+				(int)(totalSec / 60));
+		else
+			snprintf(endLabel, sizeof(endLabel), "%dh",
+				(int)(totalSec / 3600));
+		float endW = StringWidth(endLabel);
+		DrawString(endLabel, BPoint(right - endW, bounds.bottom - 2));
+
+		// Draw event markers
+		for (int32 i = 0; i < fEventCount; i++) {
+			float t = (float)(fEvents[i].time - fSessionStart) / span;
+			if (t < 0) t = 0;
+			if (t > 1) t = 1;
+			float x = left + t * barW;
+
+			rgb_color evColor;
+			float markerH;
+			switch (fEvents[i].type) {
+				case 1:  // Message
+					evColor = (rgb_color){100, 180, 255, 255};
+					markerH = 8;
+					break;
+				case 2:  // Advert
+					evColor = (rgb_color){80, 180, 80, 255};
+					markerH = 6;
+					break;
+				case 3:  // Error
+					evColor = (rgb_color){200, 60, 60, 255};
+					markerH = 10;
+					break;
+				default: // System
+					evColor = (rgb_color){200, 170, 50, 255};
+					markerH = 5;
+					break;
+			}
+
+			SetHighColor(evColor);
+			StrokeLine(BPoint(x, lineY - markerH),
+				BPoint(x, lineY + markerH));
+		}
+
+		// "Now" marker
+		SetHighColor(textColor);
+		FillRect(BRect(right - 2, lineY - 4, right, lineY + 4));
+	}
+
+private:
+	TimelineEvent	fEvents[kMaxTimelineEvents];
+	int32			fEventCount;
+	bigtime_t		fSessionStart;
+};
+
+
+// ============================================================================
 // MiniTopoView — Compact network topology (self + contacts radial)
 // ============================================================================
 
@@ -1054,6 +1208,7 @@ MissionControlWindow::MissionControlWindow(BWindow* parent)
 	fSNRChart(NULL),
 	fPacketRateChart(NULL),
 	fMiniTopo(NULL),
+	fTimeline(NULL),
 	fAdvertButton(NULL),
 	fSyncButton(NULL),
 	fStatsButton(NULL),
@@ -1188,6 +1343,9 @@ MissionControlWindow::_BuildLayout()
 	fPacketRateChart = new PacketRateView();
 	fMiniTopo = new MiniTopoView();
 
+	// === Session timeline ===
+	fTimeline = new SessionTimelineView();
+
 	// === Quick Actions bar ===
 	fAdvertButton = new BButton("advert", "Send Advert",
 		new BMessage(MSG_ACTION_ADVERT));
@@ -1261,6 +1419,7 @@ MissionControlWindow::_BuildLayout()
 			.Add(fStatsButton)
 			.AddGlue()
 		.End()
+		.Add(fTimeline)
 		.Add(feedTitle)
 		.Add(fActivityScroll, 1)
 		.Add(fLastUpdateLabel)
@@ -1284,6 +1443,7 @@ MissionControlWindow::SetConnectionState(bool connected,
 		fDeviceCard->SetRow(0, "Connection", connStr.String(),
 			(rgb_color){80, 180, 80, 255});
 		fDeviceCard->SetPulse(true);
+		fTimeline->SetSessionStart(system_time());
 		fAdvertButton->SetEnabled(true);
 		fSyncButton->SetEnabled(true);
 		fStatsButton->SetEnabled(true);
@@ -1309,6 +1469,7 @@ MissionControlWindow::SetConnectionState(bool connected,
 		fSyncButton->SetEnabled(false);
 		fStatsButton->SetEnabled(false);
 		fMiniTopo->ClearNodes();
+		fTimeline->Clear();
 	}
 
 	if (firmware != NULL && firmware[0] != '\0')
@@ -1455,6 +1616,14 @@ void
 MissionControlWindow::AddActivityEvent(const char* category, const char* text)
 {
 	_AddTimestampedEvent(category, text);
+
+	// Feed the session timeline
+	uint8 evType = 0;  // SYS
+	if (strcmp(category, "MSG") == 0) evType = 1;
+	else if (strcmp(category, "ADV") == 0) evType = 2;
+	else if (strcmp(category, "ERR") == 0 || strcmp(category, "ALT") == 0)
+		evType = 3;
+	fTimeline->AddEvent(evType, text);
 }
 
 
