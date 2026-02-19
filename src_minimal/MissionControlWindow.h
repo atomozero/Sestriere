@@ -59,6 +59,9 @@ public:
 								int32 recent);
 	void					SetContactNodes(const TopoNode* nodes,
 								int32 count);
+	void					SetContactHeatmap(const int8* snrValues,
+								const uint8* statuses,
+								int32 count);
 	void					AddSNRDataPoint(int8 snr);
 	void					AddRSSIDataPoint(int8 rssi);
 	void					AddActivityEvent(const char* category,

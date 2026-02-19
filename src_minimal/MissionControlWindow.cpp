@@ -453,10 +453,14 @@ public:
 		BView("contactGrid", B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE),
 		fTotal(0),
 		fOnline(0),
-		fRecent(0)
+		fRecent(0),
+		fHeatmapCount(0),
+		fShowHeatmap(false)
 	{
 		SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 		SetExplicitMinSize(BSize(80, 30));
+		memset(fHeatmapSnr, 0, sizeof(fHeatmapSnr));
+		memset(fHeatmapStatus, 0, sizeof(fHeatmapStatus));
 	}
 
 	void SetCounts(int32 total, int32 online, int32 recent)
@@ -464,6 +468,23 @@ public:
 		fTotal = total;
 		fOnline = online;
 		fRecent = recent;
+		Invalidate();
+	}
+
+	void SetHeatmapData(const int8* snrValues, const uint8* statuses,
+		int32 count)
+	{
+		fHeatmapCount = count < 50 ? count : 50;
+		memcpy(fHeatmapSnr, snrValues, fHeatmapCount * sizeof(int8));
+		memcpy(fHeatmapStatus, statuses, fHeatmapCount * sizeof(uint8));
+		fShowHeatmap = true;
+		Invalidate();
+	}
+
+	void ClearHeatmap()
+	{
+		fHeatmapCount = 0;
+		fShowHeatmap = false;
 		Invalidate();
 	}
 
@@ -499,7 +520,7 @@ public:
 		SetHighColor(dimColor);
 		DrawString(summary, BPoint(4, fh.ascent + 2));
 
-		// Dot grid below
+		// Dot grid below — use heatmap if available
 		float dotSize = 7.0f;
 		float gap = 3.0f;
 		float dotY = fh.ascent + fh.descent + 6;
@@ -510,21 +531,42 @@ public:
 		float y = dotY;
 		int32 drawn = 0;
 
-		rgb_color onlineColor = {80, 180, 80, 255};
-		rgb_color recentColor = {200, 170, 50, 255};
-		rgb_color offlineColor = tint_color(bg, B_DARKEN_2_TINT);
+		int32 drawCount = fTotal < 50 ? fTotal : 50;
 
-		for (int32 i = 0; i < fTotal && i < 50; i++) {
-			if (i < fOnline)
-				SetHighColor(onlineColor);
-			else if (i < fOnline + fRecent)
-				SetHighColor(recentColor);
-			else
-				SetHighColor(offlineColor);
+		for (int32 i = 0; i < drawCount; i++) {
+			rgb_color dotColor;
 
+			if (fShowHeatmap && i < fHeatmapCount
+				&& fHeatmapStatus[i] >= 1) {
+				// Heatmap mode: color by SNR quality
+				dotColor = SnrColor(fHeatmapSnr[i]);
+			} else if (fShowHeatmap && i < fHeatmapCount) {
+				// Offline with heatmap active
+				dotColor = tint_color(bg, B_DARKEN_2_TINT);
+			} else {
+				// Fallback: status-only coloring
+				if (i < fOnline)
+					dotColor = (rgb_color){80, 180, 80, 255};
+				else if (i < fOnline + fRecent)
+					dotColor = (rgb_color){200, 170, 50, 255};
+				else
+					dotColor = tint_color(bg, B_DARKEN_2_TINT);
+			}
+
+			SetHighColor(dotColor);
 			FillEllipse(BRect(x, y, x + dotSize, y + dotSize));
-			drawn++;
 
+			// Status ring for online contacts in heatmap mode
+			if (fShowHeatmap && i < fHeatmapCount
+				&& fHeatmapStatus[i] == 2) {
+				rgb_color ringColor = tint_color(dotColor,
+					B_DARKEN_2_TINT);
+				SetHighColor(ringColor);
+				StrokeEllipse(BRect(x - 1, y - 1,
+					x + dotSize + 1, y + dotSize + 1));
+			}
+
+			drawn++;
 			x += dotSize + gap;
 			if (drawn % cols == 0) {
 				x = 4;
@@ -537,6 +579,10 @@ private:
 	int32		fTotal;
 	int32		fOnline;
 	int32		fRecent;
+	int8		fHeatmapSnr[50];
+	uint8		fHeatmapStatus[50];
+	int32		fHeatmapCount;
+	bool		fShowHeatmap;
 };
 
 
@@ -1474,6 +1520,7 @@ MissionControlWindow::SetConnectionState(bool connected,
 		fStatsButton->SetEnabled(false);
 		fMiniTopo->ClearNodes();
 		fTimeline->Clear();
+		fContactGrid->ClearHeatmap();
 	}
 
 	if (firmware != NULL && firmware[0] != '\0')
@@ -1614,6 +1661,14 @@ void
 MissionControlWindow::SetContactNodes(const TopoNode* nodes, int32 count)
 {
 	fMiniTopo->SetNodes(nodes, count);
+}
+
+
+void
+MissionControlWindow::SetContactHeatmap(const int8* snrValues,
+	const uint8* statuses, int32 count)
+{
+	fContactGrid->SetHeatmapData(snrValues, statuses, count);
 }
 
 

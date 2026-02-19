@@ -3549,31 +3549,64 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 		if (fMissionControlWindow->LockLooper()) {
 			fMissionControlWindow->UpdateContacts(total, online, recent);
 
-			// Build topology node list
+			// Build topology node list + heatmap data
 			if (total > 0) {
 				int32 nodeCount = total < 32 ? total : 32;
 				TopoNode* nodes = new TopoNode[nodeCount];
-				for (int32 i = 0; i < nodeCount; i++) {
+				int32 heatmapCount = total < 50 ? total : 50;
+				int8* snrValues = new int8[heatmapCount];
+				uint8* statuses = new uint8[heatmapCount];
+
+				for (int32 i = 0; i < (total < 50 ? total : 50); i++) {
 					ContactInfo* c = fContacts.ItemAt(i);
-					if (c != NULL) {
-						snprintf(nodes[i].name, sizeof(nodes[i].name),
-							"%s", c->name);
-						nodes[i].snr = 0;
-						uint32 age = (now > c->lastSeen)
-							? (now - c->lastSeen) : 0;
-						if (c->lastSeen == 0)
-							nodes[i].status = 0;
-						else if (age < 300)
-							nodes[i].status = 2;
-						else if (age < 900)
-							nodes[i].status = 1;
-						else
-							nodes[i].status = 0;
+					if (c == NULL) continue;
+
+					uint32 age = (now > c->lastSeen)
+						? (now - c->lastSeen) : 0;
+					uint8 status;
+					if (c->lastSeen == 0)
+						status = 0;
+					else if (age < 300)
+						status = 2;
+					else if (age < 900)
+						status = 1;
+					else
+						status = 0;
+
+					// Last incoming message SNR
+					int8 lastSnr = 0;
+					for (int32 j = c->messages.CountItems() - 1;
+						j >= 0; j--) {
+						ChatMessage* msg = c->messages.ItemAt(j);
+						if (msg != NULL && !msg->isOutgoing
+							&& msg->snr != 0) {
+							lastSnr = msg->snr;
+							break;
+						}
 					}
+
+					// Topology node
+					if (i < nodeCount) {
+						snprintf(nodes[i].name,
+							sizeof(nodes[i].name),
+							"%s", c->name);
+						nodes[i].snr = lastSnr;
+						nodes[i].status = status;
+					}
+
+					// Heatmap data
+					snrValues[i] = lastSnr;
+					statuses[i] = status;
 				}
+
 				fMissionControlWindow->SetContactNodes(nodes,
 					nodeCount);
+				fMissionControlWindow->SetContactHeatmap(
+					snrValues, statuses, heatmapCount);
+
 				delete[] nodes;
+				delete[] snrValues;
+				delete[] statuses;
 			}
 
 			fMissionControlWindow->UnlockLooper();
