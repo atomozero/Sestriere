@@ -45,6 +45,7 @@ private:
 		void			_DrawTelemetryIcon(BPoint center);
 		void			_DrawPacketAnalyzerIcon(BPoint center);
 		void			_DrawDebugLogIcon(BPoint center);
+		void			_DrawMissionControlIcon(BPoint center);
 		void			_DrawMqttToggle(BRect rect);
 		void			_DrawMqttLogIcon(BPoint center);
 		int32			_HitArea(BPoint where) const;
@@ -67,6 +68,7 @@ private:
 		BRect			fTelemetryRect;
 		BRect			fPacketAnalyzerRect;
 		BRect			fDebugLogRect;
+		BRect			fMissionControlRect;
 		BRect			fMqttToggleRect;
 		BRect			fMqttLogRect;
 

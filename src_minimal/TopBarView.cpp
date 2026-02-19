@@ -39,6 +39,7 @@ enum {
 	kAreaTelemetry,
 	kAreaPacketAnalyzer,
 	kAreaDebugLog,
+	kAreaMissionControl,
 	kAreaMqttToggle,
 	kAreaMqttLog,
 	kAreaConnectionDot,
@@ -290,6 +291,32 @@ TopBarView::_DrawDebugLogIcon(BPoint center)
 
 
 void
+TopBarView::_DrawMissionControlIcon(BPoint center)
+{
+	// Dashboard: 4-quadrant grid
+	rgb_color iconColor = tint_color(ui_color(B_MENU_ITEM_TEXT_COLOR),
+		B_LIGHTEN_1_TINT);
+	SetHighColor(iconColor);
+
+	float s = 6.0f;  // half-size
+	float gap = 1.0f;
+
+	// Top-left quadrant
+	StrokeRect(BRect(center.x - s, center.y - s,
+		center.x - gap, center.y - gap));
+	// Top-right quadrant
+	StrokeRect(BRect(center.x + gap, center.y - s,
+		center.x + s, center.y - gap));
+	// Bottom-left quadrant
+	StrokeRect(BRect(center.x - s, center.y + gap,
+		center.x - gap, center.y + s));
+	// Bottom-right quadrant
+	StrokeRect(BRect(center.x + gap, center.y + gap,
+		center.x + s, center.y + s));
+}
+
+
+void
 TopBarView::_DrawMqttToggle(BRect rect)
 {
 	rgb_color bg = ui_color(B_MENU_BACKGROUND_COLOR);
@@ -458,6 +485,16 @@ TopBarView::Draw(BRect updateRect)
 		FillRoundRect(fDebugLogRect, 3, 3);
 	}
 	_DrawDebugLogIcon(BPoint(iconCenterX, iconY));
+	x += kIconSize + kIconSpacing;
+
+	// Mission Control icon
+	iconCenterX = x + kIconSize / 2;
+	fMissionControlRect.Set(x, 0, x + kIconSize, bounds.bottom);
+	if (fHoverArea == kAreaMissionControl) {
+		SetHighColor(hoverColor);
+		FillRoundRect(fMissionControlRect, 3, 3);
+	}
+	_DrawMissionControlIcon(BPoint(iconCenterX, iconY));
 	x += kIconSize + kIconSpacing;
 
 	// Vertical separator after tool icons
@@ -673,6 +710,10 @@ TopBarView::MouseDown(BPoint where)
 		Window()->PostMessage(new BMessage(MSG_SHOW_DEBUG_LOG));
 		return;
 	}
+	if (fMissionControlRect.Contains(where)) {
+		Window()->PostMessage(MSG_SHOW_MISSION_CONTROL);
+		return;
+	}
 	if (fMqttToggleRect.Contains(where)) {
 		Window()->PostMessage(MSG_MQTT_TOGGLE);
 		return;
@@ -816,6 +857,8 @@ TopBarView::_HitArea(BPoint where) const
 		return kAreaPacketAnalyzer;
 	if (fDebugLogRect.Contains(where))
 		return kAreaDebugLog;
+	if (fMissionControlRect.Contains(where))
+		return kAreaMissionControl;
 	if (fMqttToggleRect.Contains(where))
 		return kAreaMqttToggle;
 	if (fMqttLogRect.Contains(where))
@@ -850,6 +893,8 @@ TopBarView::_ToolTipForArea(int32 area) const
 			return "Packet Analyzer";
 		case kAreaDebugLog:
 			return "Debug Log";
+		case kAreaMissionControl:
+			return "Mission Control";
 		case kAreaMqttToggle:
 			if (fMqttConnected)
 				return "MQTT: Connected (click to disconnect)";
