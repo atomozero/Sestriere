@@ -2796,6 +2796,32 @@ MainWindow::_SendGetAdvertPath(const uint8* pubkey)
 
 
 void
+MainWindow::_SendBinaryRequest(const uint8* pubkey, const uint8* reqData,
+	size_t reqLength)
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+
+	if (reqLength > kMaxFramePayload - 33) {
+		_LogMessage("ERROR", "Binary request data too large");
+		return;
+	}
+
+	// Frame: [CMD][pubkey×32][request_code_and_params...]
+	uint8 payload[kMaxFramePayload];
+	payload[0] = CMD_SEND_BINARY_REQ;
+	memcpy(payload + 1, pubkey, kPubKeySize);
+	if (reqLength > 0)
+		memcpy(payload + 33, reqData, reqLength);
+	fSerialHandler->SendFrame(payload, 33 + reqLength);
+	_LogMessage("INFO", BString().SetToFormat(
+		"Sending binary request (%zu bytes)", reqLength));
+}
+
+
+void
 MainWindow::_OnFrameReceived(BMessage* message)
 {
 	const void* data;
