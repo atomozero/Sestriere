@@ -97,6 +97,8 @@ private:
 			void			_SendRawData(const uint8* payload, size_t length);
 			void			_SendTracePath(const uint8* pubkey);
 			void			_SendSetDevicePin(uint32 pin);
+			void			_SendGetCustomVars();
+			void			_SendSetCustomVar(const char* nameValue);
 
 			// Frame handling
 			void			_OnFrameReceived(BMessage* message);
@@ -119,6 +121,7 @@ private:
 			void			_HandleStats(const uint8* data, size_t length);
 			void			_HandleCmdErr(const uint8* data, size_t length);
 			void			_HandleCurrTime(const uint8* data, size_t length);
+			void			_HandleCustomVars(const uint8* data, size_t length);
 
 			// Push notification handlers
 			void			_HandleChannelInfo(const uint8* data, size_t length);

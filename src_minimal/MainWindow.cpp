@@ -2735,6 +2735,44 @@ MainWindow::_SendSetDevicePin(uint32 pin)
 
 
 void
+MainWindow::_SendGetCustomVars()
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+	_LogMessage("INFO", "Requesting custom variables...");
+	uint8 payload[1];
+	payload[0] = CMD_GET_CUSTOM_VARS;
+	fSerialHandler->SendFrame(payload, 1);
+}
+
+
+void
+MainWindow::_SendSetCustomVar(const char* nameValue)
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+
+	size_t len = strlen(nameValue);
+	if (len > kMaxFramePayload - 2) {
+		_LogMessage("ERROR", "Custom variable string too long");
+		return;
+	}
+
+	uint8 payload[kMaxFramePayload];
+	payload[0] = CMD_SET_CUSTOM_VAR;
+	memcpy(payload + 1, nameValue, len);
+	payload[1 + len] = '\0';
+	fSerialHandler->SendFrame(payload, 2 + len);
+	_LogMessage("INFO", BString().SetToFormat(
+		"Setting custom variable: %s", nameValue));
+}
+
+
+void
 MainWindow::_OnFrameReceived(BMessage* message)
 {
 	const void* data;
@@ -2983,6 +3021,10 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			_HandlePushRawData(data, length);
 			break;
 
+		case RSP_CUSTOM_VARS:
+			_HandleCustomVars(data, length);
+			break;
+
 		default:
 			_LogMessage("WARN", BString().SetToFormat("Unknown response: 0x%02X", cmd));
 			break;
@@ -3009,6 +3051,21 @@ MainWindow::_HandleCurrTime(const uint8* data, size_t length)
 	strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", &tm);
 	_LogMessage("INFO", BString().SetToFormat(
 		"Device time: %s (epoch %u)", timeBuf, (unsigned)epoch));
+}
+
+
+void
+MainWindow::_HandleCustomVars(const uint8* data, size_t length)
+{
+	// RSP_CUSTOM_VARS: [0]=code [1+]=name:value (comma-separated text)
+	if (length < 2) {
+		_LogMessage("INFO", "Custom variables: (empty)");
+		return;
+	}
+
+	size_t textLen = strnlen((const char*)data + 1, length - 1);
+	BString vars((const char*)data + 1, textLen);
+	_LogMessage("INFO", BString("Custom variables: ") << vars);
 }
 
 
