@@ -2688,6 +2688,33 @@ MainWindow::_SendRawData(const uint8* rawPayload, size_t rawLength)
 
 
 void
+MainWindow::_SendTracePath(const uint8* pubkey)
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+
+	// Frame: [CMD][tag×4][authCode×4][flags][path...]
+	// We send with tag=0, authCode=0, flags=0, path = 6-byte pubkey prefix
+	uint8 payload[16];
+	memset(payload, 0, sizeof(payload));
+	payload[0] = CMD_SEND_TRACE_PATH;
+	// [1-4] tag = 0
+	// [5-8] authCode = 0
+	// [9]   flags = 0
+	memcpy(payload + 10, pubkey, kPubKeyPrefixSize);
+	fSerialHandler->SendFrame(payload, 10 + kPubKeyPrefixSize);
+
+	char hexKey[13];
+	for (int i = 0; i < 6; i++)
+		snprintf(hexKey + i * 2, 3, "%02X", pubkey[i]);
+	_LogMessage("INFO", BString().SetToFormat(
+		"Requesting trace path to %s...", hexKey));
+}
+
+
+void
 MainWindow::_OnFrameReceived(BMessage* message)
 {
 	const void* data;
