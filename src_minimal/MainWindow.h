@@ -91,6 +91,9 @@ private:
 			void			_SendAddUpdateContact(const uint8* pubkey,
 								const char* name, uint8 type);
 			void			_SendShareContact(const uint8* pubkey);
+			void			_SendGetTuningParams();
+			void			_SendSetTuningParams(uint32 rxDelayBase,
+								uint32 airtimeFactor);
 
 			// Frame handling
 			void			_OnFrameReceived(BMessage* message);

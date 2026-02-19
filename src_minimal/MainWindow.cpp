@@ -2625,6 +2625,47 @@ MainWindow::_SendShareContact(const uint8* pubkey)
 
 
 void
+MainWindow::_SendGetTuningParams()
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+	_LogMessage("INFO", "Requesting tuning parameters...");
+	uint8 payload[1];
+	payload[0] = CMD_GET_TUNING_PARAMS;
+	fSerialHandler->SendFrame(payload, 1);
+}
+
+
+void
+MainWindow::_SendSetTuningParams(uint32 rxDelayBase, uint32 airtimeFactor)
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+
+	uint8 payload[17];
+	memset(payload, 0, sizeof(payload));
+	payload[0] = CMD_SET_TUNING_PARAMS;
+	payload[1] = rxDelayBase & 0xFF;
+	payload[2] = (rxDelayBase >> 8) & 0xFF;
+	payload[3] = (rxDelayBase >> 16) & 0xFF;
+	payload[4] = (rxDelayBase >> 24) & 0xFF;
+	payload[5] = airtimeFactor & 0xFF;
+	payload[6] = (airtimeFactor >> 8) & 0xFF;
+	payload[7] = (airtimeFactor >> 16) & 0xFF;
+	payload[8] = (airtimeFactor >> 24) & 0xFF;
+	// [9-16] reserved = zeros
+	fSerialHandler->SendFrame(payload, sizeof(payload));
+	_LogMessage("INFO", BString().SetToFormat(
+		"Setting tuning params: rxDelay=%u airtime=%u",
+		(unsigned)rxDelayBase, (unsigned)airtimeFactor));
+}
+
+
+void
 MainWindow::_OnFrameReceived(BMessage* message)
 {
 	const void* data;
