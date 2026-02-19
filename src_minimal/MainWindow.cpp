@@ -3548,6 +3548,34 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 		}
 		if (fMissionControlWindow->LockLooper()) {
 			fMissionControlWindow->UpdateContacts(total, online, recent);
+
+			// Build topology node list
+			if (total > 0) {
+				int32 nodeCount = total < 32 ? total : 32;
+				TopoNode* nodes = new TopoNode[nodeCount];
+				for (int32 i = 0; i < nodeCount; i++) {
+					ContactInfo* c = fContacts.ItemAt(i);
+					if (c != NULL) {
+						snprintf(nodes[i].name, sizeof(nodes[i].name),
+							"%s", c->name);
+						nodes[i].snr = 0;
+						uint32 age = (now > c->lastSeen)
+							? (now - c->lastSeen) : 0;
+						if (c->lastSeen == 0)
+							nodes[i].status = 0;
+						else if (age < 300)
+							nodes[i].status = 2;
+						else if (age < 900)
+							nodes[i].status = 1;
+						else
+							nodes[i].status = 0;
+					}
+				}
+				fMissionControlWindow->SetContactNodes(nodes,
+					nodeCount);
+				delete[] nodes;
+			}
+
 			fMissionControlWindow->UnlockLooper();
 		}
 	}

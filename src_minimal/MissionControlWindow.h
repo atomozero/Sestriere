@@ -23,6 +23,14 @@ class HealthScoreView;
 class ContactGridView;
 class DashboardSNRView;
 class PacketRateView;
+class MiniTopoView;
+
+// Node data for mini topology
+struct TopoNode {
+	char		name[32];
+	uint8		status;		// 0=offline, 1=recent, 2=online
+	int8		snr;
+};
 
 class MissionControlWindow : public BWindow {
 public:
@@ -48,6 +56,8 @@ public:
 								uint32 rxPackets);
 	void					UpdateContacts(int32 total, int32 online,
 								int32 recent);
+	void					SetContactNodes(const TopoNode* nodes,
+								int32 count);
 	void					AddSNRDataPoint(int8 snr);
 	void					AddRSSIDataPoint(int8 rssi);
 	void					AddActivityEvent(const char* category,
@@ -77,6 +87,9 @@ private:
 	// Middle row charts
 	DashboardSNRView*		fSNRChart;
 	PacketRateView*			fPacketRateChart;
+
+	// Mini topology
+	MiniTopoView*			fMiniTopo;
 
 	// Quick actions
 	BButton*				fAdvertButton;

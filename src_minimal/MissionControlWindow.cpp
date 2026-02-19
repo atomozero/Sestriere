@@ -883,6 +883,161 @@ private:
 
 
 // ============================================================================
+// MiniTopoView — Compact network topology (self + contacts radial)
+// ============================================================================
+
+static const int32 kMaxTopoNodes = 32;
+
+class MiniTopoView : public BView {
+public:
+	MiniTopoView()
+		:
+		BView("miniTopo", B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE),
+		fNodeCount(0)
+	{
+		SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+		SetExplicitMinSize(BSize(120, 80));
+	}
+
+	void SetNodes(const TopoNode* nodes, int32 count)
+	{
+		fNodeCount = count < kMaxTopoNodes ? count : kMaxTopoNodes;
+		for (int32 i = 0; i < fNodeCount; i++)
+			fNodes[i] = nodes[i];
+		Invalidate();
+	}
+
+	void ClearNodes()
+	{
+		fNodeCount = 0;
+		Invalidate();
+	}
+
+	void Draw(BRect updateRect)
+	{
+		BRect bounds = Bounds();
+		rgb_color bg = ui_color(B_PANEL_BACKGROUND_COLOR);
+		rgb_color textColor = ui_color(B_PANEL_TEXT_COLOR);
+
+		SetLowColor(bg);
+		FillRect(bounds, B_SOLID_LOW);
+
+		float cx = bounds.Width() / 2;
+		float cy = bounds.Height() / 2;
+
+		// Draw title
+		BFont titleFont;
+		GetFont(&titleFont);
+		titleFont.SetSize(9);
+		titleFont.SetFace(B_BOLD_FACE);
+		SetFont(&titleFont);
+		SetHighColor(tint_color(textColor, B_LIGHTEN_1_TINT));
+		float titleW = StringWidth("Topology");
+		DrawString("Topology", BPoint(cx - titleW / 2, 12));
+
+		// Self node (center)
+		rgb_color selfColor = {100, 180, 255, 255};
+		SetHighColor(selfColor);
+		FillEllipse(BPoint(cx, cy), 8, 8);
+		SetHighColor(tint_color(selfColor, B_DARKEN_2_TINT));
+		StrokeEllipse(BPoint(cx, cy), 8, 8);
+
+		// "Self" label
+		BFont labelFont;
+		GetFont(&labelFont);
+		labelFont.SetSize(8);
+		labelFont.SetFace(B_REGULAR_FACE);
+		SetFont(&labelFont);
+		SetHighColor(textColor);
+		float selfW = StringWidth("Self");
+		DrawString("Self", BPoint(cx - selfW / 2, cy + 18));
+
+		if (fNodeCount == 0)
+			return;
+
+		// Compute radius for contact ring
+		float maxR = (cx < cy ? cx : cy) - 28;
+		if (maxR < 30) maxR = 30;
+
+		float angleStep = (2.0f * M_PI) / fNodeCount;
+		float startAngle = -M_PI / 2;  // Top
+
+		for (int32 i = 0; i < fNodeCount; i++) {
+			float angle = startAngle + i * angleStep;
+			float nx = cx + maxR * cosf(angle);
+			float ny = cy + maxR * sinf(angle);
+
+			// Connection line to center
+			rgb_color lineColor;
+			float penW;
+			switch (fNodes[i].status) {
+				case 2:  // Online
+					lineColor = (rgb_color){80, 180, 80, 255};
+					penW = 2.0f;
+					break;
+				case 1:  // Recent
+					lineColor = (rgb_color){200, 170, 50, 255};
+					penW = 1.5f;
+					break;
+				default: // Offline
+					lineColor = tint_color(bg, B_DARKEN_2_TINT);
+					penW = 1.0f;
+					break;
+			}
+
+			SetPenSize(penW);
+			SetHighColor(lineColor);
+			StrokeLine(BPoint(cx, cy), BPoint(nx, ny));
+			SetPenSize(1.0f);
+
+			// Node dot
+			float dotR = 4.0f;
+			rgb_color nodeColor;
+			switch (fNodes[i].status) {
+				case 2:
+					nodeColor = (rgb_color){80, 180, 80, 255};
+					break;
+				case 1:
+					nodeColor = (rgb_color){200, 170, 50, 255};
+					break;
+				default:
+					nodeColor = tint_color(bg, B_DARKEN_3_TINT);
+					break;
+			}
+			SetHighColor(nodeColor);
+			FillEllipse(BPoint(nx, ny), dotR, dotR);
+
+			// Name label (truncated)
+			SetFont(&labelFont);
+			SetHighColor(textColor);
+			char shortName[12];
+			strncpy(shortName, fNodes[i].name, 11);
+			shortName[11] = '\0';
+
+			float nameW = StringWidth(shortName);
+			float labelX = nx - nameW / 2;
+			float labelY;
+			if (ny < cy)
+				labelY = ny - dotR - 2;
+			else
+				labelY = ny + dotR + 9;
+
+			// Clamp to bounds
+			if (labelX < 2) labelX = 2;
+			if (labelX + nameW > bounds.right - 2)
+				labelX = bounds.right - 2 - nameW;
+
+			DrawString(shortName, BPoint(labelX, labelY));
+		}
+	}
+
+private:
+	TopoNode	fNodes[kMaxTopoNodes];
+	int32		fNodeCount;
+};
+
+
+// ============================================================================
 // MissionControlWindow
 // ============================================================================
 
@@ -898,6 +1053,7 @@ MissionControlWindow::MissionControlWindow(BWindow* parent)
 	fContactGrid(NULL),
 	fSNRChart(NULL),
 	fPacketRateChart(NULL),
+	fMiniTopo(NULL),
 	fAdvertButton(NULL),
 	fSyncButton(NULL),
 	fStatsButton(NULL),
@@ -1027,9 +1183,10 @@ MissionControlWindow::_BuildLayout()
 	.End();
 	networkCard->AddChild(networkInner);
 
-	// === Middle row charts ===
+	// === Middle row charts + mini topology ===
 	fSNRChart = new DashboardSNRView();
 	fPacketRateChart = new PacketRateView();
+	fMiniTopo = new MiniTopoView();
 
 	// === Quick Actions bar ===
 	fAdvertButton = new BButton("advert", "Send Advert",
@@ -1081,6 +1238,7 @@ MissionControlWindow::_BuildLayout()
 	BLayoutBuilder::Split<>(midSplit)
 		.Add(fSNRChart, 3)
 		.Add(fPacketRateChart, 2)
+		.Add(fMiniTopo, 1)
 	.End();
 
 	// Activity feed title
@@ -1150,6 +1308,7 @@ MissionControlWindow::SetConnectionState(bool connected,
 		fAdvertButton->SetEnabled(false);
 		fSyncButton->SetEnabled(false);
 		fStatsButton->SetEnabled(false);
+		fMiniTopo->ClearNodes();
 	}
 
 	if (firmware != NULL && firmware[0] != '\0')
@@ -1268,6 +1427,13 @@ MissionControlWindow::UpdateContacts(int32 total, int32 online, int32 recent)
 	fContactGrid->SetCounts(total, online, recent);
 	_RecalcHealthScore();
 	fLastDataTime = system_time();
+}
+
+
+void
+MissionControlWindow::SetContactNodes(const TopoNode* nodes, int32 count)
+{
+	fMiniTopo->SetNodes(nodes, count);
 }
 
 
