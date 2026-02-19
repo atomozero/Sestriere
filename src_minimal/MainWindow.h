@@ -33,6 +33,7 @@ class MqttLogWindow;
 class ContactExportWindow;
 class LoginWindow;
 class MapWindow;
+class MissionControlWindow;
 class NetworkMapWindow;
 class PacketAnalyzerWindow;
 class SerialHandler;
@@ -262,6 +263,7 @@ private:
 			ContactExportWindow* fContactExportWindow;
 			PacketAnalyzerWindow* fPacketAnalyzerWindow;
 			MqttLogWindow*	fMqttLogWindow;
+			MissionControlWindow* fMissionControlWindow;
 
 			// MQTT client
 			MqttClient*		fMqttClient;

@@ -50,6 +50,7 @@
 #include "DebugLogWindow.h"
 #include "LoginWindow.h"
 #include "MapView.h"
+#include "MissionControlWindow.h"
 #include "MqttClient.h"
 #include "MqttLogWindow.h"
 #include "MqttSettingsWindow.h"
@@ -200,6 +201,7 @@ MainWindow::MainWindow()
 	fContactExportWindow(NULL),
 	fPacketAnalyzerWindow(NULL),
 	fMqttLogWindow(NULL),
+	fMissionControlWindow(NULL),
 	fMqttClient(NULL),
 	fRawPacketCount(0),
 	fLastRawPacketTime(0),
@@ -374,6 +376,8 @@ MainWindow::_BuildMenuBar()
 		new BMessage(MSG_SHOW_TELEMETRY), 'Y'));
 	viewMenu->AddItem(new BMenuItem("Packet Analyzer",
 		new BMessage(MSG_SHOW_PACKET_ANALYZER), 'P', B_SHIFT_KEY));
+	viewMenu->AddItem(new BMenuItem("Mission Control",
+		new BMessage(MSG_SHOW_MISSION_CONTROL), 'D', B_SHIFT_KEY));
 	viewMenu->AddSeparatorItem();
 	viewMenu->AddItem(new BMenuItem("MQTT Log",
 		new BMessage(MSG_SHOW_MQTT_LOG), 'M', B_SHIFT_KEY));
@@ -1395,6 +1399,68 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_SHOW_MISSION_CONTROL:
+		{
+			if (fMissionControlWindow == NULL) {
+				fMissionControlWindow = new MissionControlWindow(this);
+				fMissionControlWindow->Show();
+				// Populate with current state
+				if (fMissionControlWindow->LockLooper()) {
+					fMissionControlWindow->SetConnectionState(fConnected,
+						fDeviceName, fDeviceFirmware);
+					if (fBatteryMv > 0)
+						fMissionControlWindow->SetBatteryInfo(fBatteryMv, 0, 0);
+					if (fLastRssi != 0 || fLastSnr != 0)
+						fMissionControlWindow->SetRadioStats(fLastRssi,
+							fLastSnr, fNoiseFloor);
+					if (fHasRadioParams)
+						fMissionControlWindow->SetRadioConfig(fRadioFreq,
+							fRadioBw, fRadioSf, fRadioCr, fRadioTxPower);
+					if (fDeviceUptime > 0)
+						fMissionControlWindow->SetDeviceStats(fDeviceUptime,
+							fTxPackets, fRxPackets);
+					// Seed the activity feed with current state
+					fMissionControlWindow->AddActivityEvent("SYS",
+						"Mission Control opened");
+					if (fConnected) {
+						BString msg;
+						msg.SetToFormat("Device online: %s",
+							fDeviceName[0] != '\0'
+								? fDeviceName : fSelectedPort.String());
+						fMissionControlWindow->AddActivityEvent("SYS",
+							msg.String());
+						if (fBatteryMv > 0) {
+							int32 pct = 0;
+							if (fBatteryMv >= 4200) pct = 100;
+							else if (fBatteryMv >= 3300)
+								pct = (int32)((fBatteryMv - 3300) / 9.0f);
+							msg.SetToFormat("Battery: %d%% (%u mV)",
+								(int)pct, (unsigned)fBatteryMv);
+							fMissionControlWindow->AddActivityEvent("SYS",
+								msg.String());
+						}
+						if (fLastRssi != 0) {
+							msg.SetToFormat("Radio: RSSI %ddBm, SNR %+ddB",
+								(int)fLastRssi, (int)fLastSnr);
+							fMissionControlWindow->AddActivityEvent("SYS",
+								msg.String());
+						}
+						msg.SetToFormat("Contacts: %d total",
+							(int)fContacts.CountItems());
+						fMissionControlWindow->AddActivityEvent("SYS",
+							msg.String());
+					} else {
+						fMissionControlWindow->AddActivityEvent("SYS",
+							"Device not connected");
+					}
+					fMissionControlWindow->UnlockLooper();
+				}
+			} else {
+				_ShowWindow(fMissionControlWindow);
+			}
+			break;
+		}
+
 		// Repeater admin commands
 		case MSG_ADMIN_SEND_CLI:
 		{
@@ -1693,6 +1759,11 @@ MainWindow::QuitRequested()
 		fMqttLogWindow->Lock();
 		fMqttLogWindow->Quit();
 		fMqttLogWindow = NULL;
+	}
+	if (fMissionControlWindow != NULL) {
+		fMissionControlWindow->Lock();
+		fMissionControlWindow->Quit();
+		fMissionControlWindow = NULL;
 	}
 
 	// Destroy singletons
@@ -3458,6 +3529,29 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 	// Start offline message sync to drain any queued messages
 	_SendSyncNextMessage();
 
+	// Forward contact counts to Mission Control
+	if (fMissionControlWindow != NULL
+		&& !fMissionControlWindow->IsHidden()) {
+		uint32 now = (uint32)time(NULL);
+		int32 total = fContacts.CountItems();
+		int32 online = 0;
+		int32 recent = 0;
+		for (int32 i = 0; i < total; i++) {
+			ContactInfo* c = fContacts.ItemAt(i);
+			if (c != NULL && c->lastSeen > 0) {
+				uint32 age = (now > c->lastSeen) ? (now - c->lastSeen) : 0;
+				if (age < 300)
+					online++;
+				else if (age < 900)
+					recent++;
+			}
+		}
+		if (fMissionControlWindow->LockLooper()) {
+			fMissionControlWindow->UpdateContacts(total, online, recent);
+			fMissionControlWindow->UnlockLooper();
+		}
+	}
+
 	// Contact list no longer forwarded to separate window;
 	// admin data shown inline in ContactInfoPanel
 }
@@ -3568,6 +3662,19 @@ MainWindow::_HandleSelfInfo(const uint8* data, size_t length)
 				fNetworkMapWindow->SetSelfInfo(fDeviceName);
 				fNetworkMapWindow->UnlockLooper();
 			}
+		}
+	}
+
+	// Forward radio config + connection to Mission Control
+	if (fMissionControlWindow != NULL
+		&& !fMissionControlWindow->IsHidden()) {
+		if (fMissionControlWindow->LockLooper()) {
+			fMissionControlWindow->SetConnectionState(fConnected,
+				fDeviceName, fDeviceFirmware);
+			if (fHasRadioParams)
+				fMissionControlWindow->SetRadioConfig(fRadioFreq,
+					fRadioBw, fRadioSf, fRadioCr, fRadioTxPower);
+			fMissionControlWindow->UnlockLooper();
 		}
 	}
 
@@ -3721,6 +3828,24 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 			if (snr != 0)
 				fNetworkMapWindow->UpdateLinkQuality(senderPrefix, snr, fLastRssi);
 			fNetworkMapWindow->UnlockLooper();
+		}
+	}
+
+	// Forward to Mission Control activity feed
+	if (fMissionControlWindow != NULL
+		&& !fMissionControlWindow->IsHidden()) {
+		if (fMissionControlWindow->LockLooper()) {
+			BString eventText;
+			eventText.SetToFormat("DM from %s — SNR: %ddB, %s",
+				senderName.String(), (int)snr,
+				(pathLen == kPathLenDirect || pathLen == 0)
+					? "direct" : BString().SetToFormat("%d hops",
+						(int)pathLen).String());
+			fMissionControlWindow->AddActivityEvent("MSG",
+				eventText.String());
+			if (snr != 0)
+				fMissionControlWindow->AddSNRDataPoint(snr);
+			fMissionControlWindow->UnlockLooper();
 		}
 	}
 
@@ -3909,6 +4034,21 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 			senderName.String(), messageText, true);
 	}
 
+	// Forward to Mission Control activity feed
+	if (fMissionControlWindow != NULL
+		&& !fMissionControlWindow->IsHidden()) {
+		if (fMissionControlWindow->LockLooper()) {
+			BString eventText;
+			eventText.SetToFormat("CH from %s: %s",
+				senderName.String(), messageText);
+			fMissionControlWindow->AddActivityEvent("MSG",
+				eventText.String());
+			if (snr != 0)
+				fMissionControlWindow->AddSNRDataPoint(snr);
+			fMissionControlWindow->UnlockLooper();
+		}
+	}
+
 	// Publish to MQTT /packets topic
 	if (fMqttClient != NULL && fMqttClient->IsConnected()) {
 		const uint8* fromKey = (sender != NULL) ? sender->publicKey : (const uint8*)"\0\0\0\0\0\0";
@@ -3967,6 +4107,25 @@ MainWindow::_HandleBattAndStorage(const uint8* data, size_t length)
 						SENSOR_CUSTOM, storagePctF, "%", name);
 				}
 				fTelemetryWindow->UnlockLooper();
+			}
+		}
+
+		// Forward to Mission Control
+		if (fMissionControlWindow != NULL
+			&& !fMissionControlWindow->IsHidden()) {
+			if (fMissionControlWindow->LockLooper()) {
+				fMissionControlWindow->SetBatteryInfo(battMv, usedKb,
+					totalKb);
+				int32 pct = 0;
+				if (battMv >= 4200) pct = 100;
+				else if (battMv >= 3300)
+					pct = (int32)((battMv - 3300) / 9.0f);
+				BString battEvent;
+				battEvent.SetToFormat("Battery: %d%% (%u mV)",
+					(int)pct, (unsigned)battMv);
+				fMissionControlWindow->AddActivityEvent("SYS",
+					battEvent.String());
+				fMissionControlWindow->UnlockLooper();
 			}
 		}
 
@@ -4040,6 +4199,44 @@ MainWindow::_HandleStats(const uint8* data, size_t length)
 		if (fStatsWindow->LockLooper()) {
 			fStatsWindow->ParseStatsResponse(data, length);
 			fStatsWindow->UnlockLooper();
+		}
+	}
+
+	// Forward to Mission Control dashboard
+	if (fMissionControlWindow != NULL && !fMissionControlWindow->IsHidden()) {
+		if (fMissionControlWindow->LockLooper()) {
+			switch (subType) {
+				case 0:  // Core stats
+					fMissionControlWindow->SetDeviceStats(fDeviceUptime,
+						fTxPackets, fRxPackets);
+					break;
+				case 1:  // Radio stats
+				{
+					fMissionControlWindow->SetRadioStats(fLastRssi,
+						fLastSnr, fNoiseFloor);
+					fMissionControlWindow->AddRSSIDataPoint(fLastRssi);
+					BString radioEvent;
+					radioEvent.SetToFormat(
+						"Radio update: RSSI %ddBm, SNR %+ddB, NF %ddBm",
+						(int)fLastRssi, (int)fLastSnr, (int)fNoiseFloor);
+					fMissionControlWindow->AddActivityEvent("SYS",
+						radioEvent.String());
+					break;
+				}
+				case 2:  // Packet stats
+				{
+					fMissionControlWindow->SetPacketStats(fTxPackets,
+						fRxPackets);
+					BString pktEvent;
+					pktEvent.SetToFormat(
+						"Packets: TX %u, RX %u",
+						(unsigned)fTxPackets, (unsigned)fRxPackets);
+					fMissionControlWindow->AddActivityEvent("SYS",
+						pktEvent.String());
+					break;
+				}
+			}
+			fMissionControlWindow->UnlockLooper();
 		}
 	}
 
@@ -4243,6 +4440,26 @@ MainWindow::_HandlePushAdvert(const uint8* data, size_t length)
 			if (snr != 0)
 				fNetworkMapWindow->UpdateLinkQuality(pubKeyPrefix, snr / 4, rssi);
 			fNetworkMapWindow->UnlockLooper();
+		}
+	}
+
+	// Forward to Mission Control activity feed
+	if (fMissionControlWindow != NULL
+		&& !fMissionControlWindow->IsHidden()) {
+		if (fMissionControlWindow->LockLooper()) {
+			ContactInfo* advertContact = _FindContactByPrefix(
+				pubKeyPrefix, kPubKeyPrefixSize);
+			BString advName;
+			if (advertContact != NULL && advertContact->name[0] != '\0')
+				advName = advertContact->name;
+			else
+				advName.SetToFormat("%02X%02X%02X",
+					pubKeyPrefix[0], pubKeyPrefix[1], pubKeyPrefix[2]);
+			BString eventText;
+			eventText.SetToFormat("New advert: %s", advName.String());
+			fMissionControlWindow->AddActivityEvent("ADV",
+				eventText.String());
+			fMissionControlWindow->UnlockLooper();
 		}
 	}
 
@@ -4558,6 +4775,21 @@ MainWindow::_OnConnected(BMessage* message)
 		fSendButton->SetEnabled(true);
 	}
 
+	// Forward to Mission Control
+	if (fMissionControlWindow != NULL
+		&& !fMissionControlWindow->IsHidden()) {
+		if (fMissionControlWindow->LockLooper()) {
+			fMissionControlWindow->SetConnectionState(true,
+				fDeviceName, fDeviceFirmware);
+			BString connMsg;
+			connMsg.SetToFormat("Connected to %s",
+				(port != NULL) ? port : "device");
+			fMissionControlWindow->AddActivityEvent("SYS",
+				connMsg.String());
+			fMissionControlWindow->UnlockLooper();
+		}
+	}
+
 	// Send APP_START first, then schedule init commands after a short delay
 	_SendAppStart();
 
@@ -4591,6 +4823,16 @@ MainWindow::_OnDisconnected()
 	// Stop telemetry poll timer
 	delete fTelemetryPollTimer;
 	fTelemetryPollTimer = NULL;
+
+	// Forward to Mission Control
+	if (fMissionControlWindow != NULL
+		&& !fMissionControlWindow->IsHidden()) {
+		if (fMissionControlWindow->LockLooper()) {
+			fMissionControlWindow->SetConnectionState(false, NULL, NULL);
+			fMissionControlWindow->AddActivityEvent("SYS", "Disconnected");
+			fMissionControlWindow->UnlockLooper();
+		}
+	}
 
 	_UpdateConnectionUI();
 	_LogMessage("INFO", "Disconnected");

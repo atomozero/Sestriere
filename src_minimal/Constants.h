@@ -191,6 +191,9 @@ enum {
 
 	// Admin CLI commands (sent as TXT_TYPE_CLI_DATA to logged-in repeater/room)
 	MSG_ADMIN_SEND_CLI = 'ascl',
+
+	// Mission Control dashboard
+	MSG_SHOW_MISSION_CONTROL = 'mctr',
 };
 
 #endif // CONSTANTS_H
