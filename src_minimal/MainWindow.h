@@ -94,6 +94,7 @@ private:
 			void			_SendGetTuningParams();
 			void			_SendSetTuningParams(uint32 rxDelayBase,
 								uint32 airtimeFactor);
+			void			_SendRawData(const uint8* payload, size_t length);
 
 			// Frame handling
 			void			_OnFrameReceived(BMessage* message);
@@ -128,6 +129,7 @@ private:
 			void			_HandlePushStatusResponse(const uint8* data,
 								size_t length);
 			void			_HandleRawPacket(const uint8* data, size_t length);
+			void			_HandlePushRawData(const uint8* data, size_t length);
 
 			// Connection events
 			void			_OnConnected(BMessage* message);

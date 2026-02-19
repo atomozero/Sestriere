@@ -2666,6 +2666,28 @@ MainWindow::_SendSetTuningParams(uint32 rxDelayBase, uint32 airtimeFactor)
 
 
 void
+MainWindow::_SendRawData(const uint8* rawPayload, size_t rawLength)
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+
+	if (rawLength > kMaxFramePayload - 1) {
+		_LogMessage("ERROR", "Raw data too large");
+		return;
+	}
+
+	uint8 payload[kMaxFramePayload];
+	payload[0] = CMD_SEND_RAW_DATA;
+	memcpy(payload + 1, rawPayload, rawLength);
+	fSerialHandler->SendFrame(payload, 1 + rawLength);
+	_LogMessage("INFO", BString().SetToFormat(
+		"Sending raw data (%zu bytes)", rawLength));
+}
+
+
+void
 MainWindow::_OnFrameReceived(BMessage* message)
 {
 	const void* data;
@@ -2910,6 +2932,10 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			_HandleCurrTime(data, length);
 			break;
 
+		case PUSH_RAW_DATA:
+			_HandlePushRawData(data, length);
+			break;
+
 		default:
 			_LogMessage("WARN", BString().SetToFormat("Unknown response: 0x%02X", cmd));
 			break;
@@ -2936,6 +2962,27 @@ MainWindow::_HandleCurrTime(const uint8* data, size_t length)
 	strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", &tm);
 	_LogMessage("INFO", BString().SetToFormat(
 		"Device time: %s (epoch %u)", timeBuf, (unsigned)epoch));
+}
+
+
+void
+MainWindow::_HandlePushRawData(const uint8* data, size_t length)
+{
+	// PUSH_RAW_DATA: [0]=code [1]=SNR*4 [2]=RSSI [3]=reserved(0xFF)
+	// [4+]=payload
+	if (length < 4) {
+		_LogMessage("WARN", "PUSH_RAW_DATA: frame too short");
+		return;
+	}
+
+	int8 snr = (int8)data[1];
+	int8 rssi = (int8)data[2];
+	size_t payloadLen = length - 4;
+	float snrDb = snr / 4.0f;
+
+	_LogMessage("INFO", BString().SetToFormat(
+		"Raw data received: SNR=%.1fdB RSSI=%ddBm payload=%zu bytes",
+		snrDb, rssi, payloadLen));
 }
 
 
