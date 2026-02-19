@@ -2604,6 +2604,27 @@ MainWindow::_SendAddUpdateContact(const uint8* pubkey, const char* name,
 
 
 void
+MainWindow::_SendShareContact(const uint8* pubkey)
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+
+	uint8 payload[33];
+	payload[0] = CMD_SHARE_CONTACT;
+	memcpy(payload + 1, pubkey, kPubKeySize);
+	fSerialHandler->SendFrame(payload, 33);
+
+	char hexKey[13];
+	for (int i = 0; i < 6; i++)
+		snprintf(hexKey + i * 2, 3, "%02X", pubkey[i]);
+	_LogMessage("INFO", BString().SetToFormat(
+		"Sharing contact %s...", hexKey));
+}
+
+
+void
 MainWindow::_OnFrameReceived(BMessage* message)
 {
 	const void* data;
