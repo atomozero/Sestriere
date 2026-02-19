@@ -2773,6 +2773,29 @@ MainWindow::_SendSetCustomVar(const char* nameValue)
 
 
 void
+MainWindow::_SendGetAdvertPath(const uint8* pubkey)
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+
+	// Frame: [CMD][reserved=0][pubkey×32] = 34 bytes
+	uint8 payload[34];
+	payload[0] = CMD_GET_ADVERT_PATH;
+	payload[1] = 0; // reserved
+	memcpy(payload + 2, pubkey, kPubKeySize);
+	fSerialHandler->SendFrame(payload, 34);
+
+	char hexKey[13];
+	for (int i = 0; i < 6; i++)
+		snprintf(hexKey + i * 2, 3, "%02X", pubkey[i]);
+	_LogMessage("INFO", BString().SetToFormat(
+		"Requesting advert path for %s...", hexKey));
+}
+
+
+void
 MainWindow::_OnFrameReceived(BMessage* message)
 {
 	const void* data;
@@ -3025,6 +3048,10 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			_HandleCustomVars(data, length);
 			break;
 
+		case RSP_ADVERT_PATH:
+			_HandleAdvertPath(data, length);
+			break;
+
 		default:
 			_LogMessage("WARN", BString().SetToFormat("Unknown response: 0x%02X", cmd));
 			break;
@@ -3066,6 +3093,40 @@ MainWindow::_HandleCustomVars(const uint8* data, size_t length)
 	size_t textLen = strnlen((const char*)data + 1, length - 1);
 	BString vars((const char*)data + 1, textLen);
 	_LogMessage("INFO", BString("Custom variables: ") << vars);
+}
+
+
+void
+MainWindow::_HandleAdvertPath(const uint8* data, size_t length)
+{
+	// RSP_ADVERT_PATH: [0]=code [1-4]=recv_timestamp(uint32 LE)
+	// [5]=path_len [6+]=path(bytes)
+	if (length < 6) {
+		_LogMessage("WARN", "RSP_ADVERT_PATH: frame too short");
+		return;
+	}
+
+	uint32 recvTs = (uint32)data[1] | ((uint32)data[2] << 8)
+		| ((uint32)data[3] << 16) | ((uint32)data[4] << 24);
+	uint8 pathLen = data[5];
+
+	BString pathHex;
+	for (size_t i = 6; i < length && i < (size_t)(6 + pathLen); i++) {
+		if (i > 6)
+			pathHex << " ";
+		char hex[4];
+		snprintf(hex, sizeof(hex), "%02X", data[i]);
+		pathHex << hex;
+	}
+
+	time_t t = (time_t)recvTs;
+	struct tm tm;
+	localtime_r(&t, &tm);
+	char timeBuf[64];
+	strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", &tm);
+	_LogMessage("INFO", BString().SetToFormat(
+		"Advert path: recvTime=%s pathLen=%d path=[%s]",
+		timeBuf, pathLen, pathHex.String()));
 }
 
 

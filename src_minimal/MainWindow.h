@@ -99,6 +99,7 @@ private:
 			void			_SendSetDevicePin(uint32 pin);
 			void			_SendGetCustomVars();
 			void			_SendSetCustomVar(const char* nameValue);
+			void			_SendGetAdvertPath(const uint8* pubkey);
 
 			// Frame handling
 			void			_OnFrameReceived(BMessage* message);
@@ -122,6 +123,7 @@ private:
 			void			_HandleCmdErr(const uint8* data, size_t length);
 			void			_HandleCurrTime(const uint8* data, size_t length);
 			void			_HandleCustomVars(const uint8* data, size_t length);
+			void			_HandleAdvertPath(const uint8* data, size_t length);
 
 			// Push notification handlers
 			void			_HandleChannelInfo(const uint8* data, size_t length);
