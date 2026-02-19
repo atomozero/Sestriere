@@ -102,6 +102,8 @@ private:
 			void			_SendGetAdvertPath(const uint8* pubkey);
 			void			_SendBinaryRequest(const uint8* pubkey,
 								const uint8* data, size_t length);
+			void			_SendControlData(uint8 subType,
+								const uint8* payload, size_t length);
 
 			// Frame handling
 			void			_OnFrameReceived(BMessage* message);

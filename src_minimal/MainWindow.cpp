@@ -2822,6 +2822,33 @@ MainWindow::_SendBinaryRequest(const uint8* pubkey, const uint8* reqData,
 
 
 void
+MainWindow::_SendControlData(uint8 subType, const uint8* ctrlPayload,
+	size_t ctrlLength)
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+
+	if (ctrlLength > kMaxFramePayload - 3) {
+		_LogMessage("ERROR", "Control data too large");
+		return;
+	}
+
+	// Frame: [CMD][flags=0][subType][payload...]
+	uint8 payload[kMaxFramePayload];
+	payload[0] = CMD_SEND_CONTROL_DATA;
+	payload[1] = 0; // flags
+	payload[2] = subType;
+	if (ctrlLength > 0)
+		memcpy(payload + 3, ctrlPayload, ctrlLength);
+	fSerialHandler->SendFrame(payload, 3 + ctrlLength);
+	_LogMessage("INFO", BString().SetToFormat(
+		"Sending control data (subType=%d, %zu bytes)", subType, ctrlLength));
+}
+
+
+void
 MainWindow::_OnFrameReceived(BMessage* message)
 {
 	const void* data;
