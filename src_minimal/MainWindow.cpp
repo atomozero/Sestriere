@@ -2715,6 +2715,26 @@ MainWindow::_SendTracePath(const uint8* pubkey)
 
 
 void
+MainWindow::_SendSetDevicePin(uint32 pin)
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+
+	uint8 payload[5];
+	payload[0] = CMD_SET_DEVICE_PIN;
+	payload[1] = pin & 0xFF;
+	payload[2] = (pin >> 8) & 0xFF;
+	payload[3] = (pin >> 16) & 0xFF;
+	payload[4] = (pin >> 24) & 0xFF;
+	fSerialHandler->SendFrame(payload, 5);
+	_LogMessage("INFO", BString().SetToFormat(
+		"Setting device PIN to %u", (unsigned)pin));
+}
+
+
+void
 MainWindow::_OnFrameReceived(BMessage* message)
 {
 	const void* data;

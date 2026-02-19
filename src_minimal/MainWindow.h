@@ -96,6 +96,7 @@ private:
 								uint32 airtimeFactor);
 			void			_SendRawData(const uint8* payload, size_t length);
 			void			_SendTracePath(const uint8* pubkey);
+			void			_SendSetDevicePin(uint32 pin);
 
 			// Frame handling
 			void			_OnFrameReceived(BMessage* message);
