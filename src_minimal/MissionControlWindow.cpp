@@ -1320,6 +1320,8 @@ MissionControlWindow::_BuildLayout()
 	fRadioCard->SetRow(1, "SNR", "-- dB");
 	fRadioCard->SetRow(2, "Noise Floor", "-- dBm");
 	fRadioCard->SetRow(3, "TX Power", "-- dBm");
+	fRadioCard->SetRow(4, "Frequency", "--");
+	fRadioCard->SetRow(5, "Bandwidth", "--");
 
 	// Network overview card
 	BBox* networkCard = new BBox("networkCard");
@@ -1458,6 +1460,8 @@ MissionControlWindow::SetConnectionState(bool connected,
 		fRadioCard->SetRow(0, "RSSI", "-- dBm");
 		fRadioCard->SetRow(1, "SNR", "-- dB");
 		fRadioCard->SetRow(2, "Noise Floor", "-- dBm");
+		fRadioCard->SetRow(4, "Frequency", "--");
+		fRadioCard->SetRow(5, "Bandwidth", "--");
 		fRadioCard->SetRow(3, "TX Power", "-- dBm");
 		fBatteryMv = 0;
 		fRssi = 0;
@@ -1566,6 +1570,21 @@ MissionControlWindow::SetRadioConfig(uint32 freqHz, uint32 bwHz,
 	char txPStr[16];
 	snprintf(txPStr, sizeof(txPStr), "%d dBm", (int)txPower);
 	fRadioCard->SetRow(3, "TX Power", txPStr);
+
+	char freqStr[24];
+	snprintf(freqStr, sizeof(freqStr), "%.3f MHz",
+		freqHz / 1000000.0);
+	fRadioCard->SetRow(4, "Frequency", freqStr);
+
+	char bwStr[24];
+	if (bwHz >= 1000000)
+		snprintf(bwStr, sizeof(bwStr), "%.1f MHz SF%d CR4/%d",
+			bwHz / 1000000.0, (int)sf, (int)(cr + 4));
+	else
+		snprintf(bwStr, sizeof(bwStr), "%.0f kHz SF%d CR4/%d",
+			bwHz / 1000.0, (int)sf, (int)(cr + 4));
+	fRadioCard->SetRow(5, "Bandwidth", bwStr);
+
 	fLastDataTime = system_time();
 }
 
