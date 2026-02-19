@@ -88,6 +88,8 @@ private:
 			void			_SendCliCommand(const char* command);
 			void			_SendGetDeviceTime();
 			void			_SendSetDeviceTime(uint32 epoch);
+			void			_SendAddUpdateContact(const uint8* pubkey,
+								const char* name, uint8 type);
 
 			// Frame handling
 			void			_OnFrameReceived(BMessage* message);

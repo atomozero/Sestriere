@@ -2573,6 +2573,37 @@ MainWindow::_SendSetDeviceTime(uint32 epoch)
 
 
 void
+MainWindow::_SendAddUpdateContact(const uint8* pubkey, const char* name,
+	uint8 type)
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+
+	// Frame: [CMD][pubkey×32][type][flags][outPathLen][outPath×64][name×32]
+	// [lastAdvert×4][lat×4][lon×4] = 144 bytes total
+	uint8 payload[144];
+	memset(payload, 0, sizeof(payload));
+	payload[0] = CMD_ADD_UPDATE_CONTACT;
+	memcpy(payload + 1, pubkey, kPubKeySize);
+	payload[33] = type;
+	payload[34] = 0;    // flags
+	payload[35] = 0xFF; // outPathLen (unknown)
+	// outPath[36-99] = zeros (no path)
+	size_t nameLen = strlen(name);
+	if (nameLen > 31)
+		nameLen = 31;
+	memcpy(payload + 100, name, nameLen);
+	// lastAdvert[132-135], lat[136-139], lon[140-143] = zeros
+
+	fSerialHandler->SendFrame(payload, sizeof(payload));
+	_LogMessage("INFO", BString().SetToFormat(
+		"Adding/updating contact: %s (type=%d)", name, type));
+}
+
+
+void
 MainWindow::_OnFrameReceived(BMessage* message)
 {
 	const void* data;
