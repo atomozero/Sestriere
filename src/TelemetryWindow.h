@@ -1,30 +1,24 @@
 /*
- * Sestriere - MeshCore Client for Haiku OS
- * TelemetryWindow.h - Sensor telemetry dashboard window
+ * Copyright 2025, Sestriere Authors
+ * All rights reserved. Distributed under the terms of the MIT license.
+ *
+ * TelemetryWindow.h — Sensor telemetry dashboard window
  */
 
-#ifndef TELEMETRY_WINDOW_H
-#define TELEMETRY_WINDOW_H
+#ifndef TELEMETRYWINDOW_H
+#define TELEMETRYWINDOW_H
 
-#include <Window.h>
-#include <View.h>
-#include <ListView.h>
-#include <Messenger.h>
+#include <Button.h>
+#include <MessageRunner.h>
+#include <ObjectList.h>
 #include <ScrollView.h>
 #include <String.h>
 #include <StringView.h>
-#include <Button.h>
-#include <TabView.h>
-#include <MessageRunner.h>
-#include <ObjectList.h>
+#include <View.h>
+#include <Window.h>
 
 #include <cfloat>
 
-#include "Types.h"
-
-// Forward declarations
-class TelemetryGraphView;
-class TelemetrySensorView;
 
 // Message codes
 enum {
@@ -35,11 +29,13 @@ enum {
 	MSG_TELEMETRY_CLEAR_HISTORY	= 'tlch'
 };
 
+
 // Telemetry data point
 struct TelemetryDataPoint {
 	bigtime_t	timestamp;
 	float		value;
 };
+
 
 // Sensor types
 enum SensorType {
@@ -53,10 +49,12 @@ enum SensorType {
 	SENSOR_CUSTOM		= 7
 };
 
+
 // Sensor info
 struct SensorInfo {
 	BString		name;
 	BString		unit;
+	BString		displayName;
 	SensorType	type;
 	uint32		nodeId;
 	float		currentValue;
@@ -74,17 +72,12 @@ struct SensorInfo {
 		  maxValue(-FLT_MAX),
 		  avgValue(0)
 	{
-		color = {100, 150, 255, 255};
-	}
-
-	~SensorInfo()
-	{
-		// BObjectList will delete items
+		color = (rgb_color){100, 150, 255, 255};
 	}
 };
 
 
-// Telemetry graph view - displays sensor history as a line graph
+// Telemetry graph view
 class TelemetryGraphView : public BView {
 public:
 						TelemetryGraphView(BRect frame);
@@ -105,15 +98,13 @@ private:
 	void				_DrawLegend();
 
 	float				_ValueToY(float value);
-	bigtime_t			_XToTime(float x);
-	float				_TimeToX(bigtime_t time);
 
 	SensorInfo*			fSensor;
-	bigtime_t			fTimeRange;		// in microseconds
+	bigtime_t			fTimeRange;
 	BPoint				fCursorPos;
 	bool				fShowCursor;
 
-	BRect				fGraphRect;		// actual graph area
+	BRect				fGraphRect;
 	float				fMarginLeft;
 	float				fMarginRight;
 	float				fMarginTop;
@@ -131,8 +122,6 @@ public:
 	virtual void		MouseDown(BPoint where);
 
 	void				SetSelected(bool selected);
-	bool				IsSelected() const { return fSelected; }
-	SensorInfo*			Sensor() const { return fSensor; }
 	void				UpdateValue();
 
 private:
@@ -144,14 +133,18 @@ private:
 // Main telemetry window
 class TelemetryWindow : public BWindow {
 public:
-						TelemetryWindow(BRect frame, BMessenger target);
+						TelemetryWindow(BWindow* parent);
 	virtual				~TelemetryWindow();
 
 	virtual void		MessageReceived(BMessage* message);
 	virtual bool		QuitRequested();
 
-	void				AddTelemetryData(uint32 nodeId, const BString& sensorName,
-							SensorType type, float value, const BString& unit);
+	void				AddTelemetryData(uint32 nodeId,
+							const BString& sensorName,
+							SensorType type, float value,
+							const BString& unit,
+							const char* contactName = NULL);
+	void				LoadHistoryFromDB();
 	void				ClearAllData();
 
 private:
@@ -160,16 +153,15 @@ private:
 	void				_SelectSensor(int32 index);
 	void				_UpdateStats();
 	void				_ExportData();
-	SensorInfo*			_FindOrCreateSensor(uint32 nodeId, const BString& name,
-							SensorType type, const BString& unit);
+	SensorInfo*			_FindOrCreateSensor(uint32 nodeId,
+							const BString& name, SensorType type,
+							const BString& unit);
 	rgb_color			_ColorForSensorType(SensorType type);
-	const char*			_IconForSensorType(SensorType type);
 
-	BMessenger			fTarget;
+	BWindow*			fParent;
 	BMessageRunner*		fRefreshRunner;
 
 	// UI components
-	BView*				fRootView;
 	BView*				fSensorListView;
 	BScrollView*		fSensorScrollView;
 	TelemetryGraphView*	fGraphView;
@@ -181,15 +173,18 @@ private:
 	BStringView*		fAvgValueView;
 	BStringView*		fNodeIdView;
 
-	// Time range buttons
+	// Buttons
 	BButton*			fRange1MinButton;
 	BButton*			fRange5MinButton;
 	BButton*			fRange15MinButton;
 	BButton*			fRange1HourButton;
-
-	// Control buttons
+	BButton*			fRange6HourButton;
+	BButton*			fRange24HourButton;
+	BButton*			fRange7DayButton;
 	BButton*			fExportButton;
 	BButton*			fClearButton;
+	BButton*			fLoadHistoryButton;
+	BButton*			fRequestAllButton;
 
 	// Data
 	int32				fSelectedSensor;
@@ -198,4 +193,4 @@ private:
 };
 
 
-#endif // TELEMETRY_WINDOW_H
+#endif // TELEMETRYWINDOW_H

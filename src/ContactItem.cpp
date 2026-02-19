@@ -2,37 +2,101 @@
  * Copyright 2025, Sestriere Authors
  * All rights reserved. Distributed under the terms of the MIT license.
  *
- * ContactItem.cpp — Custom list item for contacts implementation
+ * ContactItem.cpp — Telegram-style contact list item implementation
  */
 
 #include "ContactItem.h"
 
 #include <View.h>
+#include <Font.h>
+#include <Region.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
 
-#include "MessageStore.h"
+
+// Avatar colors (Telegram-style palette)
+static const rgb_color kAvatarColors[] = {
+	{229, 115, 115, 255},  // Red
+	{186, 104, 200, 255},  // Purple
+	{121, 134, 203, 255},  // Indigo
+	{79, 195, 247, 255},   // Light Blue
+	{77, 182, 172, 255},   // Teal
+	{129, 199, 132, 255},  // Green
+	{255, 183, 77, 255},   // Orange
+	{240, 98, 146, 255},   // Pink
+};
+static const int kAvatarColorCount = sizeof(kAvatarColors) / sizeof(kAvatarColors[0]);
+
+// Layout constants
+static const float kItemHeight = 52.0f;
+static const float kAvatarSize = 36.0f;
+static const float kAvatarMargin = 8.0f;
+static const float kTextMargin = 7.0f;
+static const float kBadgeSize = 16.0f;
+static const float kStatusDotSize = 8.0f;
+static const float kTypeBadgeWidth = 16.0f;
+
+// Status colors (fixed — semantic, not theme-derived)
+static const rgb_color kOnlineColor = {77, 182, 172, 255};   // Teal
+static const rgb_color kRecentColor = {220, 180, 60, 255};   // Gold
+static const rgb_color kOfflineColor = {140, 140, 140, 255}; // Gray
+
+// Theme-aware colors
+static inline rgb_color NameColor()
+{
+	return ui_color(B_LIST_ITEM_TEXT_COLOR);
+}
+static inline rgb_color MessageColor()
+{
+	return tint_color(ui_color(B_LIST_ITEM_TEXT_COLOR), B_LIGHTEN_1_TINT);
+}
+static inline rgb_color TimeColor()
+{
+	return tint_color(ui_color(B_LIST_ITEM_TEXT_COLOR), B_LIGHTEN_2_TINT);
+}
+static inline rgb_color SelectedBg()
+{
+	return ui_color(B_LIST_SELECTED_BACKGROUND_COLOR);
+}
+static inline rgb_color ChannelColor()
+{
+	return ui_color(B_CONTROL_HIGHLIGHT_COLOR);
+}
+static const rgb_color kBadgeColor = {77, 182, 172, 255};  // Accent teal
+static const rgb_color kBadgeTextColor = {255, 255, 255, 255};
 
 
-// Badge colors
-static const rgb_color kUnreadBadgeColor = {66, 133, 244, 255};    // Blue
-static const rgb_color kUnreadBadgeText = {255, 255, 255, 255};    // White
-static const rgb_color kPreviewTextColor = {128, 128, 128, 255};   // Gray
-
-
-ContactItem::ContactItem(const Contact& contact)
+ContactItem::ContactItem(const ContactInfo& contact)
 	:
 	BListItem(),
-	fBaselineOffset(0),
-	fIconSize(16),
-	fUnreadCount(0),
+	fContact(contact),
 	fLastMessage(""),
-	fLastMessageTime(0)
+	fLastMessageTime(0),
+	fUnreadCount(0),
+	fIsChannel(false),
+	fChannelIndex(-1),
+	fBaselineOffset(0)
 {
-	memcpy(&fContact, &contact, sizeof(Contact));
-	RefreshMessageInfo();
+}
+
+
+ContactItem::ContactItem(const char* name, bool isChannel)
+	:
+	BListItem(),
+	fLastMessage(""),
+	fLastMessageTime(0),
+	fUnreadCount(0),
+	fIsChannel(isChannel),
+	fChannelIndex(-1),
+	fBaselineOffset(0)
+{
+	fContact = ContactInfo();  // value-initialize
+	strlcpy(fContact.name, name, sizeof(fContact.name));
+	fContact.isValid = true;
 }
 
 
@@ -44,116 +108,195 @@ ContactItem::~ContactItem()
 void
 ContactItem::DrawItem(BView* owner, BRect frame, bool complete)
 {
-	(void)complete;
-	rgb_color lowColor = owner->LowColor();
-	rgb_color highColor = owner->HighColor();
+	owner->PushState();
 
 	// Background
 	if (IsSelected()) {
-		owner->SetLowColor(ui_color(B_LIST_SELECTED_BACKGROUND_COLOR));
-		owner->SetHighColor(ui_color(B_LIST_SELECTED_ITEM_TEXT_COLOR));
+		owner->SetLowColor(SelectedBg());
 	} else {
 		owner->SetLowColor(ui_color(B_LIST_BACKGROUND_COLOR));
-		owner->SetHighColor(ui_color(B_LIST_ITEM_TEXT_COLOR));
 	}
-
 	owner->FillRect(frame, B_SOLID_LOW);
 
-	font_height fh;
-	owner->GetFontHeight(&fh);
-	float lineHeight = fh.ascent + fh.descent + fh.leading;
+	// Separator line at bottom
+	owner->SetHighColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_1_TINT));
+	owner->StrokeLine(
+		BPoint(frame.left + kAvatarMargin + kAvatarSize + kTextMargin, frame.bottom),
+		BPoint(frame.right, frame.bottom));
 
-	// Draw type icon/indicator
-	const char* icon = _GetTypeIcon();
-	BPoint iconPos(frame.left + 4, frame.top + fBaselineOffset);
-	owner->DrawString(icon, iconPos);
+	// Avatar
+	BRect avatarRect(
+		frame.left + kAvatarMargin,
+		frame.top + (frame.Height() - kAvatarSize) / 2,
+		frame.left + kAvatarMargin + kAvatarSize,
+		frame.top + (frame.Height() + kAvatarSize) / 2
+	);
+	_DrawAvatar(owner, avatarRect);
 
-	// Calculate positions
-	float nameX = frame.left + fIconSize + 8;
-	float rightMargin = frame.right - 8;
+	// Status dot on avatar (bottom-right of avatar circle)
+	if (!fIsChannel) {
+		rgb_color dotColor = _StatusColor();
+		owner->SetHighColor(dotColor);
+		BRect dotRect(
+			avatarRect.right - kStatusDotSize,
+			avatarRect.bottom - kStatusDotSize,
+			avatarRect.right,
+			avatarRect.bottom
+		);
+		// White border around dot
+		owner->SetHighColor(ui_color(B_LIST_BACKGROUND_COLOR));
+		BRect dotBorder = dotRect;
+		dotBorder.InsetBy(-1, -1);
+		owner->FillEllipse(dotBorder);
+		owner->SetHighColor(dotColor);
+		owner->FillEllipse(dotRect);
+	}
 
-	// Draw unread badge if present
-	float badgeWidth = 0;
+	// Fonts
+	BFont nameFont;
+	owner->GetFont(&nameFont);
+	nameFont.SetFace(B_BOLD_FACE);
+
+	BFont smallFont;
+	owner->GetFont(&smallFont);
+	smallFont.SetSize(smallFont.Size() * 0.88f);
+
+	font_height nameFh, smallFh;
+	nameFont.GetHeight(&nameFh);
+	smallFont.GetHeight(&smallFh);
+
+	float textLeft = avatarRect.right + kTextMargin;
+	float textRight = frame.right - kTextMargin;
+	float topY = frame.top + 8;
+	float bottomY = frame.bottom - 7;
+
+	// Time string (top-right)
+	char timeStr[16] = "";
+	if (fLastMessageTime > 0)
+		_FormatTime(timeStr, sizeof(timeStr), fLastMessageTime);
+
+	float timeWidth = 0;
+	if (timeStr[0] != '\0') {
+		owner->SetFont(&smallFont);
+		timeWidth = owner->StringWidth(timeStr) + kTextMargin;
+		owner->SetHighColor(TimeColor());
+		owner->DrawString(timeStr,
+			BPoint(textRight - owner->StringWidth(timeStr),
+				topY + nameFh.ascent));
+	}
+
+	// Contact name (top-left, bold)
+	owner->SetFont(&nameFont);
+	owner->SetHighColor(fIsChannel ? ChannelColor() : NameColor());
+
+	BString displayName = fContact.name[0] ? fContact.name : "Unknown";
+
+	// Type badge space reservation
+	float typeBadgeSpace = 0;
+	if (!fIsChannel && (fContact.type == 2 || fContact.type == 3))
+		typeBadgeSpace = kTypeBadgeWidth + 4;
+
+	float maxNameWidth = textRight - textLeft - timeWidth - typeBadgeSpace;
+
+	// Truncate name
+	BString truncatedName = displayName;
+	if (owner->StringWidth(truncatedName.String()) > maxNameWidth) {
+		while (truncatedName.Length() > 1) {
+			truncatedName.Truncate(truncatedName.Length() - 1);
+			BString test = truncatedName;
+			test.Append("...");
+			if (owner->StringWidth(test.String()) <= maxNameWidth)
+				break;
+		}
+		truncatedName.Append("...");
+	}
+
+	float nameEndX = textLeft + owner->StringWidth(truncatedName.String());
+	owner->DrawString(truncatedName.String(), BPoint(textLeft, topY + nameFh.ascent));
+
+	// Type badge [R] or [S] after the name
+	if (!fIsChannel && (fContact.type == 2 || fContact.type == 3)) {
+		owner->SetFont(&smallFont);
+		const char* badge = (fContact.type == 2) ? "R" : "S";
+		float badgeW = owner->StringWidth(badge) + 6;
+		float badgeH = smallFh.ascent + smallFh.descent + 2;
+		float badgeX = nameEndX + 4;
+		float badgeY2 = topY + nameFh.ascent - smallFh.ascent;
+
+		// Badge background
+		rgb_color badgeBg = (fContact.type == 2)
+			? (rgb_color){100, 160, 100, 255}   // Green for Repeater
+			: (rgb_color){120, 120, 180, 255};   // Purple for Room
+		owner->SetHighColor(badgeBg);
+		BRect badgeRect(badgeX, badgeY2 - 1, badgeX + badgeW, badgeY2 + badgeH - 1);
+		owner->FillRoundRect(badgeRect, 3, 3);
+
+		// Badge text
+		owner->SetHighColor(255, 255, 255);
+		owner->DrawString(badge,
+			BPoint(badgeX + 3, badgeY2 + smallFh.ascent));
+	}
+
+	// Message preview (bottom-left)
+	owner->SetFont(&smallFont);
+	owner->SetHighColor(MessageColor());
+
+	float unreadSpace = (fUnreadCount > 0) ? kBadgeSize + kTextMargin : 0;
+	float maxMsgWidth = textRight - textLeft - unreadSpace;
+
+	BString msgPreview = fLastMessage;
+	if (msgPreview.Length() == 0)
+		msgPreview = fIsChannel ? "Public channel" : "No messages";
+
+	if (owner->StringWidth(msgPreview.String()) > maxMsgWidth) {
+		while (msgPreview.Length() > 1) {
+			msgPreview.Truncate(msgPreview.Length() - 1);
+			BString test = msgPreview;
+			test.Append("...");
+			if (owner->StringWidth(test.String()) <= maxMsgWidth)
+				break;
+		}
+		msgPreview.Append("...");
+	}
+
+	owner->DrawString(msgPreview.String(),
+		BPoint(textLeft, bottomY - smallFh.descent));
+
+	// Unread badge (bottom-right)
 	if (fUnreadCount > 0) {
-		BString countStr;
-		countStr.SetToFormat("%d", fUnreadCount > 99 ? 99 : fUnreadCount);
+		float badgeCenterY = bottomY - smallFh.descent - kBadgeSize / 2 + 2;
+		BRect badgeRect(
+			textRight - kBadgeSize,
+			badgeCenterY - kBadgeSize / 2,
+			textRight,
+			badgeCenterY + kBadgeSize / 2
+		);
+
+		owner->SetHighColor(kBadgeColor);
+		owner->FillEllipse(badgeRect);
+
+		owner->SetHighColor(kBadgeTextColor);
+		BFont badgeFont;
+		owner->GetFont(&badgeFont);
+		badgeFont.SetSize(9);
+		badgeFont.SetFace(B_BOLD_FACE);
+		owner->SetFont(&badgeFont);
+
+		char badgeStr[8];
 		if (fUnreadCount > 99)
-			countStr.Append("+");
+			snprintf(badgeStr, sizeof(badgeStr), "99+");
+		else
+			snprintf(badgeStr, sizeof(badgeStr), "%u", (unsigned)fUnreadCount);
 
-		float textWidth = owner->StringWidth(countStr.String());
-		badgeWidth = textWidth + 12;
-		float badgeHeight = lineHeight - 2;
-		float badgeX = rightMargin - badgeWidth;
-		float badgeY = frame.top + (frame.Height() - badgeHeight) / 2;
-
-		// Draw badge background
-		BRect badgeRect(badgeX, badgeY, badgeX + badgeWidth, badgeY + badgeHeight);
-		owner->SetHighColor(kUnreadBadgeColor);
-		owner->FillRoundRect(badgeRect, badgeHeight / 2, badgeHeight / 2);
-
-		// Draw badge text
-		owner->SetHighColor(kUnreadBadgeText);
-		owner->DrawString(countStr.String(),
-			BPoint(badgeX + 6, badgeY + fh.ascent));
-
-		rightMargin = badgeX - 4;
+		float badgeTextW = owner->StringWidth(badgeStr);
+		font_height badgeFh;
+		badgeFont.GetHeight(&badgeFh);
+		owner->DrawString(badgeStr,
+			BPoint(badgeRect.left + (badgeRect.Width() - badgeTextW) / 2,
+				badgeRect.top + (badgeRect.Height() + badgeFh.ascent) / 2 - 1));
 	}
 
-	// Draw status indicator (path quality)
-	if (HasPath() && fUnreadCount == 0) {
-		rgb_color pathColor;
-		_GetStatusColor(pathColor);
-		owner->SetHighColor(pathColor);
-
-		BPoint statusPos(rightMargin - 8, frame.top + fBaselineOffset);
-		owner->DrawString("\xE2\x97\x8F", statusPos);  // Filled circle
-		rightMargin -= 12;
-	}
-
-	// Draw name (first line)
-	if (IsSelected())
-		owner->SetHighColor(ui_color(B_LIST_SELECTED_ITEM_TEXT_COLOR));
-	else
-		owner->SetHighColor(ui_color(B_LIST_ITEM_TEXT_COLOR));
-
-	BPoint textPos(nameX, frame.top + fBaselineOffset);
-	owner->DrawString(fContact.advName, textPos);
-
-	// Draw last message preview and time (second line)
-	if (fLastMessage.Length() > 0 || fLastMessageTime > 0) {
-		// Time on the right
-		if (fLastMessageTime > 0) {
-			char timeStr[32];
-			_FormatRelativeTime(fLastMessageTime, timeStr, sizeof(timeStr));
-
-			owner->SetHighColor(kPreviewTextColor);
-			float timeWidth = owner->StringWidth(timeStr);
-			owner->DrawString(timeStr,
-				BPoint(frame.right - 8 - timeWidth, frame.top + fBaselineOffset + lineHeight));
-		}
-
-		// Message preview on the left
-		if (fLastMessage.Length() > 0) {
-			owner->SetHighColor(kPreviewTextColor);
-
-			// Truncate if needed
-			BString preview = fLastMessage;
-			float maxWidth = frame.right - nameX - 60;  // Leave room for time
-			while (preview.Length() > 0 &&
-					owner->StringWidth(preview.String()) > maxWidth) {
-				preview.Truncate(preview.Length() - 1);
-			}
-			if (preview.Length() < fLastMessage.Length())
-				preview.Append("...");
-
-			owner->DrawString(preview.String(),
-				BPoint(nameX, frame.top + fBaselineOffset + lineHeight));
-		}
-	}
-
-	// Restore colors
-	owner->SetLowColor(lowColor);
-	owner->SetHighColor(highColor);
+	owner->PopState();
 }
 
 
@@ -162,69 +305,26 @@ ContactItem::Update(BView* owner, const BFont* font)
 {
 	BListItem::Update(owner, font);
 
-	font_height fontHeight;
-	font->GetHeight(&fontHeight);
+	font_height fh;
+	font->GetHeight(&fh);
+	fBaselineOffset = fh.ascent + fh.leading;
 
-	fBaselineOffset = fontHeight.ascent + fontHeight.leading + 4;
-
-	float lineHeight = fontHeight.ascent + fontHeight.descent + fontHeight.leading;
-
-	// Two lines: name + preview
-	float height = lineHeight * 2 + 8;
-	SetHeight(height);
-
-	fIconSize = fontHeight.ascent;
+	SetHeight(kItemHeight);
 }
 
 
 void
-ContactItem::SetContact(const Contact& contact)
+ContactItem::SetContact(const ContactInfo& contact)
 {
-	memcpy(&fContact, &contact, sizeof(Contact));
-}
-
-
-const char*
-ContactItem::_GetTypeIcon() const
-{
-	switch (fContact.type) {
-		case ADV_TYPE_CHAT:
-			return "\xF0\x9F\x91\xA4";  // Person silhouette
-		case ADV_TYPE_REPEATER:
-			return "\xF0\x9F\x93\xA1";  // Antenna
-		case ADV_TYPE_ROOM:
-			return "\xF0\x9F\x8F\xA0";  // House
-		default:
-			return "\xE2\x9D\x93";      // Question mark
-	}
+	fContact = contact;
 }
 
 
 void
-ContactItem::_GetStatusColor(rgb_color& outColor) const
+ContactItem::SetLastMessage(const char* text, uint32 timestamp)
 {
-	if (fContact.outPathLen < 0) {
-		// No path - gray
-		outColor.red = 128;
-		outColor.green = 128;
-		outColor.blue = 128;
-	} else if (fContact.outPathLen == 0) {
-		// Direct path - green
-		outColor.red = 0;
-		outColor.green = 200;
-		outColor.blue = 0;
-	} else if (fContact.outPathLen <= 2) {
-		// Short path - yellow
-		outColor.red = 200;
-		outColor.green = 200;
-		outColor.blue = 0;
-	} else {
-		// Long path - orange
-		outColor.red = 255;
-		outColor.green = 128;
-		outColor.blue = 0;
-	}
-	outColor.alpha = 255;
+	fLastMessage = text;
+	fLastMessageTime = timestamp;
 }
 
 
@@ -236,54 +336,121 @@ ContactItem::SetUnreadCount(int32 count)
 
 
 void
-ContactItem::SetLastMessage(const char* text, uint32 timestamp)
+ContactItem::IncrementUnread()
 {
-	fLastMessage = text ? text : "";
-	fLastMessageTime = timestamp;
+	fUnreadCount++;
 }
 
 
 void
-ContactItem::RefreshMessageInfo()
+ContactItem::ClearUnread()
 {
-	MessageStore* store = MessageStore::Instance();
-
-	fUnreadCount = store->GetUnreadCount(fContact.publicKey);
-	fLastMessage = store->GetLastMessagePreview(fContact.publicKey);
-	fLastMessageTime = store->GetLastMessageTime(fContact.publicKey);
+	fUnreadCount = 0;
 }
 
 
 void
-ContactItem::_FormatRelativeTime(uint32 timestamp, char* buffer, size_t size) const
+ContactItem::_DrawAvatar(BView* owner, BRect rect)
+{
+	// Draw circular avatar with initials
+	rgb_color avatarColor = fIsChannel ? ChannelColor() : _AvatarColor();
+	owner->SetHighColor(avatarColor);
+	owner->FillEllipse(rect);
+
+	// Get initials (first letter, or first two for two-word names)
+	BString initials;
+	if (fIsChannel) {
+		initials = "#";  // Channel symbol
+	} else {
+		const char* name = fContact.name;
+		if (name[0] != '\0') {
+			initials.Append(toupper(name[0]), 1);
+			// Find second word
+			const char* space = strchr(name, ' ');
+			if (space != NULL && space[1] != '\0') {
+				initials.Append(toupper(space[1]), 1);
+			}
+		} else {
+			initials = "?";
+		}
+	}
+
+	// Draw initials
+	owner->SetHighColor(255, 255, 255);
+	BFont font;
+	owner->GetFont(&font);
+	font.SetSize(kAvatarSize * 0.45f);
+	font.SetFace(B_BOLD_FACE);
+	owner->SetFont(&font);
+
+	font_height fh;
+	font.GetHeight(&fh);
+	float textWidth = owner->StringWidth(initials.String());
+
+	owner->DrawString(initials.String(),
+		BPoint(rect.left + (rect.Width() - textWidth) / 2,
+			rect.top + (rect.Height() + fh.ascent - fh.descent) / 2));
+}
+
+
+rgb_color
+ContactItem::_AvatarColor() const
+{
+	// Generate consistent color based on name hash
+	uint32 hash = 0;
+	const char* name = fContact.name;
+	while (*name) {
+		hash = hash * 31 + (uint8)*name++;
+	}
+	return kAvatarColors[hash % kAvatarColorCount];
+}
+
+
+rgb_color
+ContactItem::_StatusColor() const
+{
+	if (!fContact.isValid || fContact.lastSeen == 0)
+		return kOfflineColor;
+
+	uint32 now = (uint32)time(NULL);
+	uint32 age = (now > fContact.lastSeen) ? (now - fContact.lastSeen) : 0;
+
+	if (age < 300)        // < 5 minutes
+		return kOnlineColor;
+	else if (age < 3600)  // < 1 hour
+		return kRecentColor;
+	else
+		return kOfflineColor;
+}
+
+
+void
+ContactItem::_FormatTime(char* buffer, size_t size, uint32 timestamp) const
 {
 	time_t now = time(NULL);
 	time_t msgTime = (time_t)timestamp;
-	int64 diff = now - msgTime;
 
-	if (diff < 0) {
-		// Future time, just show time
-		struct tm* tm = localtime(&msgTime);
-		if (tm)
-			strftime(buffer, size, "%H:%M", tm);
-		else
-			snprintf(buffer, size, "--:--");
+	struct tm nowTm;
+	struct tm msgTm;
+	if (localtime_r(&now, &nowTm) == NULL
+		|| localtime_r(&msgTime, &msgTm) == NULL) {
+		strlcpy(buffer, "?", size);
 		return;
 	}
 
-	if (diff < 60) {
-		snprintf(buffer, size, "now");
-	} else if (diff < 3600) {
-		snprintf(buffer, size, "%dm", (int)(diff / 60));
-	} else if (diff < 86400) {
-		snprintf(buffer, size, "%dh", (int)(diff / 3600));
-	} else if (diff < 604800) {
-		snprintf(buffer, size, "%dd", (int)(diff / 86400));
+	if (nowTm.tm_year == msgTm.tm_year && nowTm.tm_yday == msgTm.tm_yday) {
+		// Today: show time
+		strftime(buffer, size, "%H:%M", &msgTm);
+	} else if (nowTm.tm_year == msgTm.tm_year
+		&& nowTm.tm_yday - msgTm.tm_yday == 1) {
+		// Yesterday
+		snprintf(buffer, size, "Ieri");
+	} else if (nowTm.tm_year == msgTm.tm_year
+		&& nowTm.tm_yday - msgTm.tm_yday < 7) {
+		// This week: show day name
+		strftime(buffer, size, "%a", &msgTm);
 	} else {
-		struct tm* tm = localtime(&msgTime);
-		if (tm)
-			strftime(buffer, size, "%d/%m", tm);
-		else
-			snprintf(buffer, size, "---");
+		// Older: show date
+		strftime(buffer, size, "%d/%m", &msgTm);
 	}
 }

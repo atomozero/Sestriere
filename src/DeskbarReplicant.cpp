@@ -12,40 +12,20 @@
 #include <IconUtils.h>
 #include <MenuItem.h>
 #include <PopUpMenu.h>
-#include <Resources.h>
 #include <Roster.h>
+#include <String.h>
 #include <Window.h>
 
 #include <cstdio>
+#include <cstring>
 
 #include "Constants.h"
 
 
-// Replicant signature (used in Archive for add_on identification)
-// Note: kAppSignature from Constants.h is used instead
-
-// Simple mesh icon (16x16 RGBA)
-static const uint8 kIconConnectedData[] = {
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x82, 0xC5, 0xFF,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x82, 0xC5, 0xFF,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x82, 0xC5, 0xFF, 0x00, 0x82, 0xC5, 0xFF,
-	0x00, 0x82, 0xC5, 0xFF, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-};
-
-static const uint8 kIconDisconnectedData[] = {
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x99, 0x99, 0x99, 0xFF,
-	0x00, 0x00, 0x00, 0x00, 0x99, 0x99, 0x99, 0xFF,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0x99, 0x99, 0x99, 0xFF, 0x99, 0x99, 0x99, 0xFF,
-	0x99, 0x99, 0x99, 0xFF, 0x00, 0x00, 0x00, 0x00,
-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-};
+// Messages from the app to update replicant state
+static const uint32 kMsgReplicantSetConnected	= 'rpco';
+static const uint32 kMsgReplicantSetBattery		= 'rpba';
+static const uint32 kMsgReplicantSetUnread		= 'rpun';
 
 
 DeskbarReplicant::DeskbarReplicant(BRect frame, int32 resizingMode)
@@ -103,7 +83,7 @@ DeskbarReplicant::Archive(BMessage* archive, bool deep) const
 	if (status != B_OK)
 		return status;
 
-	status = archive->AddString("add_on", kAppSignature);
+	status = archive->AddString("add_on", APP_SIGNATURE);
 	if (status != B_OK)
 		return status;
 
@@ -119,6 +99,17 @@ DeskbarReplicant::AttachedToWindow()
 	if (Parent() != NULL) {
 		SetViewColor(Parent()->ViewColor());
 		SetLowColor(Parent()->ViewColor());
+	}
+
+	// Recreate icons at actual size (Deskbar may have resized us)
+	float newHeight = Bounds().Height();
+	float iconHeight = fIconConnected != NULL
+		? fIconConnected->Bounds().Height() : 0;
+	if (newHeight != iconHeight) {
+		delete fIconConnected;
+		delete fIconDisconnected;
+		fIconConnected = _CreateIcon(true);
+		fIconDisconnected = _CreateIcon(false);
 	}
 }
 
@@ -136,24 +127,27 @@ DeskbarReplicant::Draw(BRect /*updateRect*/)
 	BRect bounds = Bounds();
 	_DrawIcon(bounds);
 
-	// Draw unread count badge if any
+	// Draw unread count badge
 	if (fUnreadCount > 0) {
-		SetHighColor(255, 0, 0);
-		BRect badge(bounds.right - 6, bounds.top, bounds.right, bounds.top + 6);
+		SetHighColor(220, 40, 40);
+		BRect badge(bounds.right - 7, bounds.top,
+			bounds.right, bounds.top + 7);
 		FillEllipse(badge);
 
 		SetHighColor(255, 255, 255);
-		char countStr[16];
+		char countStr[4];
 		if (fUnreadCount > 9)
-			snprintf(countStr, sizeof(countStr), "+");
+			strlcpy(countStr, "+", sizeof(countStr));
 		else
-			snprintf(countStr, sizeof(countStr), "%d", fUnreadCount);
+			snprintf(countStr, sizeof(countStr), "%d",
+				(int)(fUnreadCount & 0xF));
 
 		BFont font;
 		GetFont(&font);
-		font.SetSize(8);
+		font.SetSize(7);
 		SetFont(&font);
-		DrawString(countStr, BPoint(bounds.right - 5, bounds.top + 5));
+		DrawString(countStr,
+			BPoint(bounds.right - 5, bounds.top + 6));
 	}
 }
 
@@ -163,15 +157,15 @@ DeskbarReplicant::MouseDown(BPoint where)
 {
 	BPoint screenWhere = ConvertToScreen(where);
 
-	int32 buttons;
-	if (Window()->CurrentMessage()->FindInt32("buttons", &buttons) != B_OK)
-		buttons = B_PRIMARY_MOUSE_BUTTON;
+	int32 buttons = B_PRIMARY_MOUSE_BUTTON;
+	if (Window() != NULL && Window()->CurrentMessage() != NULL)
+		Window()->CurrentMessage()->FindInt32("buttons", &buttons);
 
 	if (buttons & B_SECONDARY_MOUSE_BUTTON) {
 		_ShowPopupMenu(screenWhere);
 	} else {
 		// Launch or bring to front
-		be_roster->Launch(kAppSignature);
+		be_roster->Launch(APP_SIGNATURE);
 	}
 }
 
@@ -180,31 +174,34 @@ void
 DeskbarReplicant::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
-		case MSG_SERIAL_CONNECTED:
-			SetConnected(true);
+		case kMsgReplicantSetConnected:
+		{
+			bool connected;
+			if (message->FindBool("connected", &connected) == B_OK)
+				SetConnected(connected);
 			break;
+		}
 
-		case MSG_SERIAL_DISCONNECTED:
-			SetConnected(false);
-			break;
-
-		case MSG_BATTERY_RECEIVED:
+		case kMsgReplicantSetBattery:
 		{
 			uint16 mV;
-			if (message->FindUInt16(kFieldBattery, &mV) == B_OK) {
-				// Convert mV to percentage (rough estimate)
-				// 3.0V = 0%, 4.2V = 100%
-				int level = (mV - 3000) * 100 / 1200;
+			if (message->FindUInt16("battery_mv", &mV) == B_OK) {
+				// Convert mV to percentage (3.0V=0%, 4.2V=100%)
+				int level = ((int)mV - 3000) * 100 / 1200;
 				if (level < 0) level = 0;
 				if (level > 100) level = 100;
-				SetBatteryLevel(level);
+				SetBatteryLevel((uint8)level);
 			}
 			break;
 		}
 
-		case MSG_MESSAGE_RECEIVED:
-			SetUnreadCount(fUnreadCount + 1);
+		case kMsgReplicantSetUnread:
+		{
+			int32 count;
+			if (message->FindInt32("count", &count) == B_OK)
+				SetUnreadCount(count);
 			break;
+		}
 
 		default:
 			BView::MessageReceived(message);
@@ -263,7 +260,7 @@ DeskbarReplicant::_DrawIcon(BRect bounds)
 		DrawBitmap(icon, bounds);
 		SetDrawingMode(B_OP_COPY);
 	} else {
-		// Fallback: draw a simple circle
+		// Fallback: simple circle
 		if (fConnected)
 			SetHighColor(0, 150, 0);
 		else
@@ -280,33 +277,43 @@ DeskbarReplicant::_ShowPopupMenu(BPoint where)
 {
 	BPopUpMenu* menu = new BPopUpMenu("DeskbarMenu", false, false);
 
+	// Status line
 	BString statusStr;
 	if (fConnected) {
 		statusStr = "Connected";
-		if (fBatteryLevel > 0)
-			statusStr.Append(" - Battery: ").Append(
-				BString().SetToFormat("%d%%", fBatteryLevel));
+		if (fBatteryLevel > 0) {
+			BString battStr;
+			battStr.SetToFormat(" — Battery: %d%%", fBatteryLevel);
+			statusStr.Append(battStr);
+		}
 	} else {
 		statusStr = "Disconnected";
 	}
 
-	menu->AddItem(new BMenuItem(statusStr.String(), NULL));
+	BMenuItem* statusItem = new BMenuItem(statusStr.String(), NULL);
+	statusItem->SetEnabled(false);
+	menu->AddItem(statusItem);
+
 	menu->AddSeparatorItem();
+
 	menu->AddItem(new BMenuItem("Open Sestriere",
 		new BMessage('open')));
+
 	menu->AddSeparatorItem();
+
 	menu->AddItem(new BMenuItem("Remove from Deskbar",
 		new BMessage('rmdb')));
 
 	menu->SetTargetForItems(this);
 
 	BMenuItem* selected = menu->Go(where, false, true,
-		BRect(where.x - 2, where.y - 2, where.x + 2, where.y + 2));
+		BRect(where.x - 2, where.y - 2,
+			where.x + 2, where.y + 2));
 
 	if (selected != NULL) {
 		switch (selected->Message()->what) {
 			case 'open':
-				be_roster->Launch(kAppSignature);
+				be_roster->Launch(APP_SIGNATURE);
 				break;
 
 			case 'rmdb':
@@ -322,58 +329,94 @@ DeskbarReplicant::_ShowPopupMenu(BPoint where)
 }
 
 
+// HVIF antenna icon data
+static const uint8 kIconAntenna[] = {
+	0x6e, 0x63, 0x69, 0x66, 0x06, 0x05, 0x01, 0x02, 0x01, 0x06, 0x02, 0x3a,
+	0xc1, 0x3b, 0x37, 0x6e, 0x9e, 0xba, 0x3a, 0xf5, 0x3d, 0x94, 0x92, 0x48,
+	0xbc, 0x57, 0x49, 0x23, 0xf2, 0x00, 0xf0, 0xf7, 0xfd, 0xff, 0xae, 0xbf,
+	0xd0, 0x02, 0x01, 0x06, 0x02, 0x3a, 0x77, 0xec, 0xb5, 0x2a, 0xd8, 0xb7,
+	0xcd, 0x04, 0xbc, 0xf6, 0x4e, 0x4a, 0x4f, 0x6a, 0x4a, 0x7a, 0x3f, 0x00,
+	0x8f, 0xa0, 0xb1, 0xff, 0x67, 0x77, 0x88, 0x02, 0x01, 0x06, 0x04, 0x3d,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3d, 0x00, 0x00, 0x49,
+	0x40, 0x00, 0x49, 0x40, 0x00, 0x00, 0xff, 0xff, 0xff, 0x9c, 0x8e, 0xa5,
+	0xbc, 0xd0, 0x67, 0x77, 0x88, 0xff, 0x7e, 0x92, 0xa6, 0x02, 0x03, 0x02,
+	0x03, 0x00, 0x00, 0x00, 0xba, 0x00, 0x00, 0x3a, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x4a, 0x00, 0x00, 0x4a, 0x00, 0x00, 0x5e, 0xff, 0x05, 0x05, 0x00,
+	0x7c, 0xff, 0x06, 0x06, 0xff, 0xd5, 0xff, 0x06, 0x06, 0x00, 0x04, 0x00,
+	0x72, 0x08, 0x08, 0x03, 0x25, 0x4f, 0x3a, 0x30, 0x3e, 0x5b, 0x08, 0x06,
+	0x2b, 0x47, 0x3d, 0x51, 0x31, 0x40, 0x3c, 0x45, 0x35, 0x39, 0x3b, 0x3a,
+	0x08, 0x06, 0x3c, 0x3a, 0x3e, 0x39, 0x3e, 0x45, 0x43, 0x42, 0x3f, 0x50,
+	0x46, 0x4a, 0x08, 0x02, 0x3a, 0x30, 0x4b, 0x4f, 0x08, 0x03, 0x25, 0x51,
+	0x56, 0x58, 0x3e, 0x5d, 0x08, 0x03, 0x3d, 0x4c, 0x56, 0x58, 0x4c, 0x51,
+	0x02, 0x02, 0x5b, 0x57, 0x5f, 0x57, 0x57, 0x57, 0x5b, 0x5b, 0x57, 0x5b,
+	0x5f, 0x5b, 0x02, 0x04, 0x40, 0x2e, 0x4a, 0x2e, 0x36, 0x2e, 0x2e, 0x40,
+	0x2e, 0x36, 0x2e, 0x4a, 0x40, 0x52, 0x36, 0x52, 0x4a, 0x52, 0x52, 0x40,
+	0x52, 0x4a, 0x52, 0x36, 0x0b, 0x0a, 0x05, 0x03, 0x04, 0x05, 0x06, 0x10,
+	0x01, 0x17, 0x84, 0x22, 0x04, 0x0a, 0x00, 0x04, 0x00, 0x01, 0x02, 0x03,
+	0x18, 0x00, 0x15, 0x01, 0x17, 0x88, 0x22, 0x04, 0x0a, 0x00, 0x04, 0x00,
+	0x01, 0x02, 0x03, 0x18, 0x15, 0xff, 0x01, 0x17, 0x86, 0x22, 0x04, 0x0a,
+	0x02, 0x01, 0x03, 0x10, 0x01, 0x17, 0x82, 0x22, 0x04, 0x0a, 0x02, 0x01,
+	0x02, 0x10, 0x01, 0x17, 0x82, 0x22, 0x04, 0x0a, 0x01, 0x01, 0x01, 0x10,
+	0x01, 0x17, 0x82, 0x22, 0x04, 0x0a, 0x01, 0x01, 0x00, 0x10, 0x01, 0x17,
+	0x82, 0x22, 0x04, 0x0a, 0x00, 0x01, 0x07, 0x0a, 0x3e, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x3e, 0x00, 0x00, 0x46, 0x80, 0x00, 0xc5,
+	0x00, 0x00, 0x00, 0x15, 0x0a, 0x00, 0x01, 0x07, 0x0a, 0x3d, 0x8e, 0x38,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3d, 0x8e, 0x38, 0x46, 0xf1, 0xc7,
+	0xc4, 0x1c, 0x71, 0x15, 0xff, 0x0a, 0x03, 0x01, 0x07, 0x02, 0x3c, 0xaa,
+	0xaa, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3c, 0xaa, 0xaa, 0x47, 0xd5,
+	0x55, 0xbe, 0xaa, 0xaa, 0x0a, 0x04, 0x01, 0x07, 0x30, 0x1a, 0x0a, 0x04,
+	0x15, 0x8c, 0x00, 0x04, 0x17, 0x88, 0x00, 0x04, 0x17, 0x88, 0x00, 0x04,
+	0x17, 0x84, 0x00, 0x04
+};
+
+
 BBitmap*
 DeskbarReplicant::_CreateIcon(bool connected)
 {
-	BRect rect(0, 0, 15, 15);
+	float size = Bounds().Height();
+	if (size < 1)
+		size = 15;
+	BRect rect(0, 0, size, size);
 	BBitmap* bitmap = new BBitmap(rect, B_RGBA32);
 
-	// Create a simple mesh network icon
-	uint32* bits = (uint32*)bitmap->Bits();
-	int32 bpr = bitmap->BytesPerRow() / 4;
+	status_t status = BIconUtils::GetVectorIcon(kIconAntenna,
+		sizeof(kIconAntenna), bitmap);
 
-	// Clear to transparent
-	memset(bits, 0, bitmap->BitsLength());
-
-	// Draw node circles
-	uint32 nodeColor = connected ? 0xFF82C5FF : 0xFF999999;
-	uint32 lineColor = connected ? 0xFF659EC4 : 0xFF777777;
-
-	// Helper to set a pixel
-	auto setPixel = [bits, bpr](int x, int y, uint32 color) {
-		if (x >= 0 && x < 16 && y >= 0 && y < 16)
-			bits[y * bpr + x] = color;
-	};
-
-	// Draw connecting lines
-	for (int i = 4; i <= 11; i++) {
-		setPixel(i, 7, lineColor);  // horizontal
-		setPixel(7, i, lineColor);  // vertical
+	if (status != B_OK) {
+		// Fallback: simple circle
+		uint32* bits = (uint32*)bitmap->Bits();
+		memset(bits, 0, bitmap->BitsLength());
+		return bitmap;
 	}
 
-	// Draw nodes (3x3 circles)
-	auto drawNode = [setPixel, nodeColor](int cx, int cy) {
-		for (int dy = -1; dy <= 1; dy++) {
-			for (int dx = -1; dx <= 1; dx++) {
-				if (dx == 0 || dy == 0)
-					setPixel(cx + dx, cy + dy, nodeColor);
-			}
+	// For disconnected state, desaturate the icon
+	if (!connected) {
+		uint8* bits = (uint8*)bitmap->Bits();
+		int32 length = bitmap->BitsLength();
+		for (int32 i = 0; i < length; i += 4) {
+			// B_RGBA32: [B, G, R, A]
+			uint8 b = bits[i];
+			uint8 g = bits[i + 1];
+			uint8 r = bits[i + 2];
+			uint8 gray = (uint8)((r * 77 + g * 150 + b * 29) >> 8);
+			bits[i] = gray;
+			bits[i + 1] = gray;
+			bits[i + 2] = gray;
+			// Reduce alpha slightly for dimmed look
+			bits[i + 3] = (uint8)(bits[i + 3] * 3 / 4);
 		}
-	};
-
-	drawNode(3, 3);    // top-left
-	drawNode(12, 3);   // top-right
-	drawNode(7, 7);    // center
-	drawNode(3, 12);   // bottom-left
-	drawNode(12, 12);  // bottom-right
+	}
 
 	return bitmap;
 }
 
 
-// Function to install replicant in Deskbar
-extern "C" _EXPORT BView* instantiate_deskbar_item()
+// Exported function for Deskbar shelf instantiation
+extern "C" _EXPORT BView* instantiate_deskbar_item(float maxWidth,
+	float maxHeight)
 {
-	return new DeskbarReplicant(BRect(0, 0, 15, 15),
+	// Square icon sized to tray height
+	return new DeskbarReplicant(
+		BRect(0, 0, maxHeight - 1, maxHeight - 1),
 		B_FOLLOW_LEFT | B_FOLLOW_TOP);
 }

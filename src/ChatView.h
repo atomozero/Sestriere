@@ -14,7 +14,6 @@
 
 #include "Types.h"
 
-class ContactListView;
 class MessageView;
 
 class ChatView : public BListView {
@@ -23,24 +22,32 @@ public:
 	virtual					~ChatView();
 
 	virtual void			AttachedToWindow();
+	virtual void			FrameResized(float newWidth, float newHeight);
+	virtual void			MouseDown(BPoint where);
 	virtual void			MessageReceived(BMessage* message);
 
-			void			AddMessage(const ReceivedMessage& message,
-								bool outgoing);
+			void			AddMessage(const ChatMessage& message,
+								const char* senderName = NULL);
+			void			UpdateDeliveryStatus(int32 index, uint8 status,
+								uint32 rtt = 0);
 			void			ClearMessages();
 
-			void			SetCurrentContact(const Contact* contact);
-			const Contact*	CurrentContact() const { return fCurrentContact; }
+			void			SetCurrentContact(ContactInfo* contact);
+			ContactInfo*	CurrentContact() const { return fCurrentContact; }
 
-			void			SetContactList(ContactListView* contactList);
+			// Access to message history for the current contact
+			BObjectList<ChatMessage, true>* GetMessageHistory();
 
 private:
 			void			_ScrollToBottom();
-			const char*		_FindContactName(const uint8* pubKeyPrefix) const;
 
-			const Contact*	fCurrentContact;
+			ContactInfo*	fCurrentContact;
 			BString			fCurrentContactName;
-			ContactListView* fContactList;
+
+			// Message history per contact (pubkey prefix -> messages)
+			// For simplicity, we store messages in memory only
+			// Key is hex string of first 6 bytes of pubkey
+			BObjectList<ChatMessage, true>	fCurrentMessages;
 };
 
 #endif // CHATVIEW_H

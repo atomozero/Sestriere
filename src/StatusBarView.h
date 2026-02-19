@@ -2,7 +2,7 @@
  * Copyright 2025, Sestriere Authors
  * All rights reserved. Distributed under the terms of the MIT license.
  *
- * StatusBarView.h — Status bar showing connection and device info
+ * StatusBarView.h — Rich status bar with battery, radio stats, and connection info
  */
 
 #ifndef STATUSBARVIEW_H
@@ -11,40 +11,53 @@
 #include <View.h>
 #include <String.h>
 
-class BMessageRunner;
-class BStringView;
-
 class StatusBarView : public BView {
 public:
 							StatusBarView(const char* name);
 	virtual					~StatusBarView();
 
-	virtual void			AttachedToWindow();
-	virtual void			MessageReceived(BMessage* message);
+	virtual void			Draw(BRect updateRect);
+	virtual void			GetPreferredSize(float* width, float* height);
 
-			void			SetNodeName(const char* name);
-			void			SetConnectionStatus(const char* status);
-			void			SetBatteryInfo(uint16 milliVolts);
-			void			SetRadioInfo(const char* info);
-			void			SetTemporaryStatus(const char* status,
-								bigtime_t duration = 3000000);
+			// Connection status
+			void			SetConnected(bool connected, const char* port = NULL);
+
+			// Battery info
+			void			SetBattery(uint16 milliVolts, int8 percent = -1);
+
+			// Radio stats
+			void			SetRadioStats(int8 rssi, int8 snr, uint32 txPackets,
+								uint32 rxPackets);
+
+			// Uptime
+			void			SetUptime(uint32 seconds);
+
+			// Raw packet count
+			void			SetRawPackets(uint32 count);
+
+			// MQTT status
+			void			SetMqttConnected(bool connected);
 
 private:
-			void			_UpdateDisplay();
-			void			_ClearTemporaryStatus();
+			void			_DrawSection(BRect& rect, const char* label,
+								const char* value, rgb_color valueColor);
+			rgb_color		_BatteryColor(uint16 milliVolts);
+			rgb_color		_SignalColor(int8 snr);
 
-			BStringView*	fNodeNameView;
-			BStringView*	fStatusView;
-			BStringView*	fBatteryView;
-			BStringView*	fRadioView;
+			bool			fConnected;
+			BString			fPortName;
 
-			BString			fNodeName;
-			BString			fConnectionStatus;
-			BString			fBatteryInfo;
-			BString			fRadioInfo;
-			BString			fTempStatus;
+			uint16			fBatteryMv;
+			int8			fBatteryPercent;
 
-			BMessageRunner*	fTempStatusTimer;
+			int8			fLastRssi;
+			int8			fLastSnr;
+			uint32			fTxPackets;
+			uint32			fRxPackets;
+
+			uint32			fUptime;
+			uint32			fRawPackets;
+			bool			fMqttConnected;
 };
 
 #endif // STATUSBARVIEW_H

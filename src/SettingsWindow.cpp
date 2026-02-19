@@ -2,20 +2,20 @@
  * Copyright 2025, Sestriere Authors
  * All rights reserved. Distributed under the terms of the MIT license.
  *
- * SettingsWindow.cpp — Application settings dialog implementation
+ * SettingsWindow.cpp — Device and radio settings dialog implementation
  */
 
 #include "SettingsWindow.h"
 
 #include <Box.h>
 #include <Button.h>
-#include <Catalog.h>
 #include <CheckBox.h>
 #include <LayoutBuilder.h>
 #include <Menu.h>
 #include <MenuField.h>
 #include <MenuItem.h>
 #include <PopUpMenu.h>
+#include <SeparatorView.h>
 #include <Slider.h>
 #include <StringView.h>
 #include <TabView.h>
@@ -25,23 +25,19 @@
 #include <cstring>
 
 #include "Constants.h"
-#include "Protocol.h"
-#include "Sestriere.h"
-#include "SerialHandler.h"
-
-#undef B_TRANSLATION_CONTEXT
-#define B_TRANSLATION_CONTEXT "SettingsWindow"
+#include "MqttSettingsWindow.h"
 
 
-static const uint32 MSG_SETTING_CHANGED		= 'stch';
-static const uint32 MSG_APPLY_SETTINGS		= 'apst';
-static const uint32 MSG_REVERT_SETTINGS		= 'rvst';
-static const uint32 MSG_PRESET_SELECTED		= 'prsl';
+static const uint32 kMsgSettingChanged	= 'stch';
+static const uint32 kMsgApplySettings	= 'apst';
+static const uint32 kMsgRevertSettings	= 'rvst';
+static const uint32 kMsgPresetSelected	= 'prsl';
+static const uint32 kMsgMqttEnableChanged = 'mqen';
 
 
 SettingsWindow::SettingsWindow(BWindow* parent)
 	:
-	BWindow(BRect(0, 0, 400, 380), B_TRANSLATE(TR_TITLE_SETTINGS),
+	BWindow(BRect(0, 0, 420, 400), "Settings",
 		B_FLOATING_WINDOW_LOOK, B_MODAL_APP_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS | B_CLOSE_ON_ESCAPE),
 	fParent(parent),
@@ -54,16 +50,18 @@ SettingsWindow::SettingsWindow(BWindow* parent)
 	fBandwidthControl(NULL),
 	fSpreadingFactorControl(NULL),
 	fCodingRateControl(NULL),
-	fAutoSyncCheck(NULL),
-	fNotificationsCheck(NULL),
+	fMqttEnableCheck(NULL),
+	fMqttIataControl(NULL),
+	fMqttBrokerControl(NULL),
+	fMqttPortControl(NULL),
+	fMqttUsernameControl(NULL),
+	fMqttPasswordControl(NULL),
+	fMqttStatusLabel(NULL),
 	fApplyButton(NULL),
 	fRevertButton(NULL),
 	fSettingsChanged(false),
 	fSelectedPreset(PRESET_CUSTOM)
 {
-	memset(&fCurrentSettings, 0, sizeof(fCurrentSettings));
-
-	// Create tab view
 	BTabView* tabView = new BTabView("settings_tabs", B_WIDTH_FROM_WIDEST);
 
 	// Device tab
@@ -80,24 +78,31 @@ SettingsWindow::SettingsWindow(BWindow* parent)
 	tabView->AddTab(radioTab, new BTab());
 	tabView->TabAt(1)->SetLabel("Radio");
 
+	// MQTT tab
+	BView* mqttTab = new BView("mqtt_tab", 0);
+	mqttTab->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	_BuildMqttTab(mqttTab);
+	tabView->AddTab(mqttTab, new BTab());
+	tabView->TabAt(2)->SetLabel("MQTT");
+
 	// About tab
 	BView* aboutTab = new BView("about_tab", 0);
 	aboutTab->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	_BuildAboutTab(aboutTab);
 	tabView->AddTab(aboutTab, new BTab());
-	tabView->TabAt(2)->SetLabel("About");
+	tabView->TabAt(3)->SetLabel("About");
 
 	// Buttons
-	fApplyButton = new BButton("apply_button", B_TRANSLATE(TR_BUTTON_OK),
-		new BMessage(MSG_APPLY_SETTINGS));
+	fApplyButton = new BButton("apply_button", "Apply",
+		new BMessage(kMsgApplySettings));
 	fApplyButton->SetEnabled(false);
 
 	fRevertButton = new BButton("revert_button", "Revert",
-		new BMessage(MSG_REVERT_SETTINGS));
+		new BMessage(kMsgRevertSettings));
 	fRevertButton->SetEnabled(false);
 
-	BButton* cancelButton = new BButton("cancel_button",
-		B_TRANSLATE(TR_BUTTON_CANCEL), new BMessage(B_QUIT_REQUESTED));
+	BButton* cancelButton = new BButton("cancel_button", "Cancel",
+		new BMessage(B_QUIT_REQUESTED));
 
 	// Main layout
 	BLayoutBuilder::Group<>(this, B_VERTICAL)
@@ -111,13 +116,10 @@ SettingsWindow::SettingsWindow(BWindow* parent)
 		.End()
 	.End();
 
-	// Center on parent
 	if (parent != NULL)
 		CenterIn(parent->Frame());
 	else
 		CenterOnScreen();
-
-	_LoadSettings();
 }
 
 
@@ -126,31 +128,55 @@ SettingsWindow::~SettingsWindow()
 }
 
 
+bool
+SettingsWindow::QuitRequested()
+{
+	Hide();
+	return false;
+}
+
+
 void
 SettingsWindow::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
-		case MSG_SETTING_CHANGED:
+		case kMsgSettingChanged:
 			fSettingsChanged = true;
 			fApplyButton->SetEnabled(true);
 			fRevertButton->SetEnabled(true);
 			break;
 
-		case MSG_APPLY_SETTINGS:
+		case kMsgApplySettings:
 			_OnApply();
 			break;
 
-		case MSG_REVERT_SETTINGS:
-			_OnRevert();
+		case kMsgRevertSettings:
+			// Reset to empty / defaults
+			if (fNodeNameControl != NULL)
+				fNodeNameControl->SetText("");
+			if (fLatitudeControl != NULL)
+				fLatitudeControl->SetText("0.000000");
+			if (fLongitudeControl != NULL)
+				fLongitudeControl->SetText("0.000000");
+			fSettingsChanged = false;
+			fApplyButton->SetEnabled(false);
+			fRevertButton->SetEnabled(false);
 			break;
 
-		case MSG_PRESET_SELECTED:
+		case kMsgPresetSelected:
 		{
 			int32 preset;
 			if (message->FindInt32("preset", &preset) == B_OK)
 				_OnPresetSelected(preset);
 			break;
 		}
+
+		case kMsgMqttEnableChanged:
+			_OnMqttEnableChanged();
+			fSettingsChanged = true;
+			fApplyButton->SetEnabled(true);
+			fRevertButton->SetEnabled(true);
+			break;
 
 		default:
 			BWindow::MessageReceived(message);
@@ -160,57 +186,62 @@ SettingsWindow::MessageReceived(BMessage* message)
 
 
 void
-SettingsWindow::SetCurrentSettings(const SelfInfo& selfInfo)
+SettingsWindow::SetDeviceName(const char* name)
 {
-	memcpy(&fCurrentSettings, &selfInfo, sizeof(SelfInfo));
-
 	if (fNodeNameControl != NULL)
-		fNodeNameControl->SetText(selfInfo.name);
+		fNodeNameControl->SetText(name);
+}
 
+
+void
+SettingsWindow::SetLatitude(double lat)
+{
 	if (fLatitudeControl != NULL) {
-		char lat[32];
-		snprintf(lat, sizeof(lat), "%.6f",
-			Protocol::LatLonFromInt(selfInfo.advLat));
-		fLatitudeControl->SetText(lat);
+		char buf[32];
+		snprintf(buf, sizeof(buf), "%.6f", lat);
+		fLatitudeControl->SetText(buf);
 	}
+}
 
+
+void
+SettingsWindow::SetLongitude(double lon)
+{
 	if (fLongitudeControl != NULL) {
-		char lon[32];
-		snprintf(lon, sizeof(lon), "%.6f",
-			Protocol::LatLonFromInt(selfInfo.advLon));
-		fLongitudeControl->SetText(lon);
+		char buf[32];
+		snprintf(buf, sizeof(buf), "%.6f", lon);
+		fLongitudeControl->SetText(buf);
 	}
+}
 
-	if (fTxPowerSlider != NULL)
-		fTxPowerSlider->SetValue(selfInfo.txPowerDbm);
 
-	if (fFrequencyControl != NULL) {
-		char freq[32];
-		snprintf(freq, sizeof(freq), "%.3f", selfInfo.radioFreq / 1000000.0f);
-		fFrequencyControl->SetText(freq);
-	}
+void
+SettingsWindow::SetRadioPreset(int32 preset)
+{
+	if (preset >= 0 && preset < PRESET_COUNT)
+		_OnPresetSelected(preset);
+}
 
-	if (fBandwidthControl != NULL) {
-		char bw[32];
-		snprintf(bw, sizeof(bw), "%.1f", selfInfo.radioBw / 1000.0f);
-		fBandwidthControl->SetText(bw);
-	}
 
-	if (fSpreadingFactorControl != NULL) {
-		char sf[8];
-		snprintf(sf, sizeof(sf), "%d", selfInfo.radioSf);
-		fSpreadingFactorControl->SetText(sf);
-	}
+void
+SettingsWindow::SetRadioParams(uint32 freqHz, uint32 bwHz, uint8 sf, uint8 cr,
+	uint8 txPower)
+{
+	char buf[32];
 
-	if (fCodingRateControl != NULL) {
-		char cr[8];
-		snprintf(cr, sizeof(cr), "%d", selfInfo.radioCr);
-		fCodingRateControl->SetText(cr);
-	}
+	snprintf(buf, sizeof(buf), "%.3f", freqHz / 1000000.0);
+	fFrequencyControl->SetText(buf);
 
-	fSettingsChanged = false;
-	fApplyButton->SetEnabled(false);
-	fRevertButton->SetEnabled(false);
+	snprintf(buf, sizeof(buf), "%.1f", bwHz / 1000.0);
+	fBandwidthControl->SetText(buf);
+
+	snprintf(buf, sizeof(buf), "%u", sf);
+	fSpreadingFactorControl->SetText(buf);
+
+	snprintf(buf, sizeof(buf), "%u", cr);
+	fCodingRateControl->SetText(buf);
+
+	fTxPowerSlider->SetValue(txPower);
 }
 
 
@@ -218,24 +249,20 @@ void
 SettingsWindow::_BuildDeviceTab(BView* parent)
 {
 	fNodeNameControl = new BTextControl("node_name", "Node Name:", "",
-		new BMessage(MSG_SETTING_CHANGED));
-	fNodeNameControl->SetModificationMessage(new BMessage(MSG_SETTING_CHANGED));
+		new BMessage(kMsgSettingChanged));
+	fNodeNameControl->SetModificationMessage(new BMessage(kMsgSettingChanged));
 
 	fLatitudeControl = new BTextControl("latitude", "Latitude:", "",
-		new BMessage(MSG_SETTING_CHANGED));
-	fLatitudeControl->SetModificationMessage(new BMessage(MSG_SETTING_CHANGED));
+		new BMessage(kMsgSettingChanged));
+	fLatitudeControl->SetModificationMessage(new BMessage(kMsgSettingChanged));
 
 	fLongitudeControl = new BTextControl("longitude", "Longitude:", "",
-		new BMessage(MSG_SETTING_CHANGED));
-	fLongitudeControl->SetModificationMessage(new BMessage(MSG_SETTING_CHANGED));
+		new BMessage(kMsgSettingChanged));
+	fLongitudeControl->SetModificationMessage(new BMessage(kMsgSettingChanged));
 
-	fAutoSyncCheck = new BCheckBox("auto_sync", "Auto-sync messages",
-		new BMessage(MSG_SETTING_CHANGED));
-	fAutoSyncCheck->SetValue(B_CONTROL_ON);
-
-	fNotificationsCheck = new BCheckBox("notifications",
-		"Desktop notifications", new BMessage(MSG_SETTING_CHANGED));
-	fNotificationsCheck->SetValue(B_CONTROL_ON);
+	BStringView* infoLabel = new BStringView("info",
+		"Changes will be sent to the connected device.");
+	infoLabel->SetHighColor(100, 100, 100);
 
 	BLayoutBuilder::Group<>(parent, B_VERTICAL)
 		.SetInsets(B_USE_DEFAULT_SPACING)
@@ -248,8 +275,7 @@ SettingsWindow::_BuildDeviceTab(BView* parent)
 			.Add(fLongitudeControl->CreateTextViewLayoutItem(), 1, 2)
 		.End()
 		.AddStrut(B_USE_DEFAULT_SPACING)
-		.Add(fAutoSyncCheck)
-		.Add(fNotificationsCheck)
+		.Add(infoLabel)
 		.AddGlue()
 	.End();
 }
@@ -261,7 +287,7 @@ SettingsWindow::_BuildRadioTab(BView* parent)
 	// Preset menu
 	BPopUpMenu* presetPopUp = new BPopUpMenu("preset_popup");
 	for (int i = 0; i < PRESET_COUNT; i++) {
-		BMessage* msg = new BMessage(MSG_PRESET_SELECTED);
+		BMessage* msg = new BMessage(kMsgPresetSelected);
 		msg->AddInt32("preset", i);
 		BMenuItem* item = new BMenuItem(kRadioPresets[i].name, msg);
 		presetPopUp->AddItem(item);
@@ -269,33 +295,33 @@ SettingsWindow::_BuildRadioTab(BView* parent)
 	fPresetMenu = new BMenuField("preset_menu", "Preset:", presetPopUp);
 
 	fTxPowerSlider = new BSlider("tx_power", "TX Power (dBm)",
-		new BMessage(MSG_SETTING_CHANGED), 0, 22, B_HORIZONTAL);
+		new BMessage(kMsgSettingChanged), 0, 22, B_HORIZONTAL);
 	fTxPowerSlider->SetHashMarks(B_HASH_MARKS_BOTTOM);
 	fTxPowerSlider->SetHashMarkCount(12);
 	fTxPowerSlider->SetLimitLabels("0", "22");
-	fTxPowerSlider->SetModificationMessage(new BMessage(MSG_SETTING_CHANGED));
+	fTxPowerSlider->SetModificationMessage(new BMessage(kMsgSettingChanged));
 
 	fFrequencyControl = new BTextControl("frequency", "Frequency (MHz):", "",
-		new BMessage(MSG_SETTING_CHANGED));
-	fFrequencyControl->SetModificationMessage(new BMessage(MSG_SETTING_CHANGED));
+		new BMessage(kMsgSettingChanged));
+	fFrequencyControl->SetModificationMessage(new BMessage(kMsgSettingChanged));
 
 	fBandwidthControl = new BTextControl("bandwidth", "Bandwidth (kHz):", "",
-		new BMessage(MSG_SETTING_CHANGED));
-	fBandwidthControl->SetModificationMessage(new BMessage(MSG_SETTING_CHANGED));
+		new BMessage(kMsgSettingChanged));
+	fBandwidthControl->SetModificationMessage(new BMessage(kMsgSettingChanged));
 
 	fSpreadingFactorControl = new BTextControl("sf", "Spreading Factor:", "",
-		new BMessage(MSG_SETTING_CHANGED));
+		new BMessage(kMsgSettingChanged));
 	fSpreadingFactorControl->SetModificationMessage(
-		new BMessage(MSG_SETTING_CHANGED));
+		new BMessage(kMsgSettingChanged));
 
 	fCodingRateControl = new BTextControl("cr", "Coding Rate:", "",
-		new BMessage(MSG_SETTING_CHANGED));
+		new BMessage(kMsgSettingChanged));
 	fCodingRateControl->SetModificationMessage(
-		new BMessage(MSG_SETTING_CHANGED));
+		new BMessage(kMsgSettingChanged));
 
 	BStringView* warningLabel = new BStringView("warning",
 		"Warning: Changing radio parameters may break\n"
-		"communication with other nodes on different settings.");
+		"communication with other nodes.");
 	warningLabel->SetHighColor(200, 0, 0);
 
 	BLayoutBuilder::Group<>(parent, B_VERTICAL)
@@ -320,12 +346,73 @@ SettingsWindow::_BuildRadioTab(BView* parent)
 
 
 void
+SettingsWindow::_BuildMqttTab(BView* parent)
+{
+	fMqttEnableCheck = new BCheckBox("mqtt_enable", "Enable MQTT publishing",
+		new BMessage(kMsgMqttEnableChanged));
+
+	fMqttIataControl = new BTextControl("mqtt_iata", "IATA Code:", "",
+		new BMessage(kMsgSettingChanged));
+	fMqttIataControl->SetToolTip("Location code (e.g., VCE for Venice)");
+	fMqttIataControl->SetModificationMessage(new BMessage(kMsgSettingChanged));
+
+	fMqttBrokerControl = new BTextControl("mqtt_broker", "Broker:", "",
+		new BMessage(kMsgSettingChanged));
+	fMqttBrokerControl->SetModificationMessage(new BMessage(kMsgSettingChanged));
+
+	fMqttPortControl = new BTextControl("mqtt_port", "Port:", "",
+		new BMessage(kMsgSettingChanged));
+	fMqttPortControl->SetModificationMessage(new BMessage(kMsgSettingChanged));
+
+	fMqttUsernameControl = new BTextControl("mqtt_user", "Username:", "",
+		new BMessage(kMsgSettingChanged));
+	fMqttUsernameControl->SetModificationMessage(new BMessage(kMsgSettingChanged));
+
+	fMqttPasswordControl = new BTextControl("mqtt_pass", "Password:", "",
+		new BMessage(kMsgSettingChanged));
+	fMqttPasswordControl->SetModificationMessage(new BMessage(kMsgSettingChanged));
+
+	fMqttStatusLabel = new BStringView("mqtt_status", "Status: Not connected");
+	fMqttStatusLabel->SetHighColor(128, 128, 128);
+
+	BStringView* mqttInfo = new BStringView("mqtt_info",
+		"Data published to nodi.meshcoreitalia.it");
+	mqttInfo->SetHighColor(100, 100, 100);
+
+	BLayoutBuilder::Group<>(parent, B_VERTICAL)
+		.SetInsets(B_USE_DEFAULT_SPACING)
+		.Add(fMqttEnableCheck)
+		.Add(mqttInfo)
+		.AddStrut(B_USE_HALF_ITEM_SPACING)
+		.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
+			.Add(fMqttIataControl->CreateLabelLayoutItem(), 0, 0)
+			.Add(fMqttIataControl->CreateTextViewLayoutItem(), 1, 0)
+			.Add(fMqttBrokerControl->CreateLabelLayoutItem(), 0, 1)
+			.Add(fMqttBrokerControl->CreateTextViewLayoutItem(), 1, 1)
+			.Add(fMqttPortControl->CreateLabelLayoutItem(), 0, 2)
+			.Add(fMqttPortControl->CreateTextViewLayoutItem(), 1, 2)
+			.Add(fMqttUsernameControl->CreateLabelLayoutItem(), 0, 3)
+			.Add(fMqttUsernameControl->CreateTextViewLayoutItem(), 1, 3)
+			.Add(fMqttPasswordControl->CreateLabelLayoutItem(), 0, 4)
+			.Add(fMqttPasswordControl->CreateTextViewLayoutItem(), 1, 4)
+		.End()
+		.AddStrut(B_USE_HALF_ITEM_SPACING)
+		.Add(fMqttStatusLabel)
+		.AddGlue()
+	.End();
+
+	// Initial state: disabled
+	_OnMqttEnableChanged();
+}
+
+
+void
 SettingsWindow::_BuildAboutTab(BView* parent)
 {
-	BStringView* nameLabel = new BStringView("app_name", kAppName);
+	BStringView* nameLabel = new BStringView("app_name", APP_NAME);
 	nameLabel->SetFont(be_bold_font);
 
-	BStringView* versionLabel = new BStringView("version", "Version 0.1.0");
+	BStringView* versionLabel = new BStringView("version", "Version 1.1.0");
 
 	BStringView* descLabel = new BStringView("description",
 		"A native MeshCore LoRa mesh client for Haiku OS.\n\n"
@@ -357,66 +444,82 @@ SettingsWindow::_BuildAboutTab(BView* parent)
 void
 SettingsWindow::_OnApply()
 {
-	_SaveSettings();
-
-	Sestriere* app = dynamic_cast<Sestriere*>(be_app);
-	if (app == NULL || app->GetSerialHandler() == NULL ||
-		!app->GetSerialHandler()->IsConnected()) {
-		// Not connected, just save local settings
+	if (fParent == NULL) {
 		PostMessage(B_QUIT_REQUESTED);
 		return;
 	}
 
-	// Apply settings to device
-	uint8 buffer[64];
-
-	// Update node name if changed
+	// Send device name change if non-empty
 	const char* newName = fNodeNameControl->Text();
-	if (strcmp(newName, fCurrentSettings.name) != 0) {
-		size_t len = Protocol::BuildSetAdvertName(newName, buffer);
-		app->GetSerialHandler()->SendFrame(buffer, len);
+	if (newName != NULL && newName[0] != '\0') {
+		BMessage nameMsg(MSG_SET_NAME);
+		nameMsg.AddString("name", newName);
+		fParent->PostMessage(&nameMsg);
 	}
 
-	// Update TX power if changed
-	int32 newPower = fTxPowerSlider->Value();
-	if ((uint8)newPower != fCurrentSettings.txPowerDbm) {
-		size_t len = Protocol::BuildSetTxPower((uint8)newPower, buffer);
-		app->GetSerialHandler()->SendFrame(buffer, len);
+	// Send lat/lon update
+	double lat = atof(fLatitudeControl->Text());
+	double lon = atof(fLongitudeControl->Text());
+	if (lat != 0.0 || lon != 0.0) {
+		BMessage latlonMsg(MSG_APPLY_SETTINGS);
+		latlonMsg.AddDouble("latitude", lat);
+		latlonMsg.AddDouble("longitude", lon);
+		fParent->PostMessage(&latlonMsg);
 	}
 
-	// Update lat/lon if changed
-	float newLat = atof(fLatitudeControl->Text());
-	float newLon = atof(fLongitudeControl->Text());
-	int32 newLatInt = Protocol::LatLonToInt(newLat);
-	int32 newLonInt = Protocol::LatLonToInt(newLon);
-	if (newLatInt != fCurrentSettings.advLat ||
-		newLonInt != fCurrentSettings.advLon) {
-		size_t len = Protocol::BuildSetAdvertLatLon(newLatInt, newLonInt, buffer);
-		app->GetSerialHandler()->SendFrame(buffer, len);
+	// Send radio parameters
+	float freqMHz = atof(fFrequencyControl->Text());
+	float bwKHz = atof(fBandwidthControl->Text());
+	int sf = atoi(fSpreadingFactorControl->Text());
+	int cr = atoi(fCodingRateControl->Text());
+
+	if (freqMHz > 0 && bwKHz > 0 && sf > 0 && cr > 0) {
+		BMessage radioMsg(MSG_APPLY_SETTINGS);
+		radioMsg.AddUInt32("frequency", (uint32)(freqMHz * 1000000.0f));
+		radioMsg.AddUInt32("bandwidth", (uint32)(bwKHz * 1000.0f));
+		radioMsg.AddUInt8("sf", (uint8)sf);
+		radioMsg.AddUInt8("cr", (uint8)cr);
+		fParent->PostMessage(&radioMsg);
 	}
 
-	// Update radio parameters if changed
-	float newFreqMHz = atof(fFrequencyControl->Text());
-	float newBwKHz = atof(fBandwidthControl->Text());
-	int newSf = atoi(fSpreadingFactorControl->Text());
-	int newCr = atoi(fCodingRateControl->Text());
+	// Send TX power
+	int32 txPower = fTxPowerSlider->Value();
+	if (txPower > 0) {
+		BMessage powerMsg(MSG_APPLY_SETTINGS);
+		powerMsg.AddUInt8("txpower", (uint8)txPower);
+		fParent->PostMessage(&powerMsg);
+	}
 
-	uint32 newFreqHz = (uint32)(newFreqMHz * 1000000.0f);
-	uint32 newBwHz = (uint32)(newBwKHz * 1000.0f);
+	// Send MQTT settings
+	if (fMqttEnableCheck != NULL) {
+		fMqttSettings.enabled = (fMqttEnableCheck->Value() == B_CONTROL_ON);
+		strlcpy(fMqttSettings.iataCode, fMqttIataControl->Text(),
+			sizeof(fMqttSettings.iataCode));
+		strlcpy(fMqttSettings.broker, fMqttBrokerControl->Text(),
+			sizeof(fMqttSettings.broker));
+		fMqttSettings.port = atoi(fMqttPortControl->Text());
+		strlcpy(fMqttSettings.username, fMqttUsernameControl->Text(),
+			sizeof(fMqttSettings.username));
+		strlcpy(fMqttSettings.password, fMqttPasswordControl->Text(),
+			sizeof(fMqttSettings.password));
 
-	if (newFreqHz != fCurrentSettings.radioFreq ||
-		newBwHz != fCurrentSettings.radioBw ||
-		(uint8)newSf != fCurrentSettings.radioSf ||
-		(uint8)newCr != fCurrentSettings.radioCr) {
+		// Uppercase IATA code
+		for (int i = 0; fMqttSettings.iataCode[i]; i++) {
+			if (fMqttSettings.iataCode[i] >= 'a'
+				&& fMqttSettings.iataCode[i] <= 'z')
+				fMqttSettings.iataCode[i] -= 32;
+		}
 
-		RadioParams params;
-		params.freq = newFreqHz;
-		params.bw = newBwHz;
-		params.sf = (uint8)newSf;
-		params.cr = (uint8)newCr;
-
-		size_t len = Protocol::BuildSetRadioParams(params, buffer);
-		app->GetSerialHandler()->SendFrame(buffer, len);
+		BMessage mqttMsg(MSG_MQTT_SETTINGS_CHANGED);
+		mqttMsg.AddBool("enabled", fMqttSettings.enabled);
+		mqttMsg.AddDouble("latitude", fMqttSettings.latitude);
+		mqttMsg.AddDouble("longitude", fMqttSettings.longitude);
+		mqttMsg.AddString("iata", fMqttSettings.iataCode);
+		mqttMsg.AddString("broker", fMqttSettings.broker);
+		mqttMsg.AddInt32("port", fMqttSettings.port);
+		mqttMsg.AddString("username", fMqttSettings.username);
+		mqttMsg.AddString("password", fMqttSettings.password);
+		fParent->PostMessage(&mqttMsg);
 	}
 
 	fSettingsChanged = false;
@@ -443,21 +546,21 @@ SettingsWindow::_OnPresetSelected(int32 preset)
 			item->SetMarked(true);
 	}
 
-	// If not custom, fill in the preset values
+	// Fill in preset values (skip Custom)
 	if (preset != PRESET_CUSTOM) {
 		const RadioPresetInfo& info = kRadioPresets[preset];
 
 		char buf[32];
-		snprintf(buf, sizeof(buf), "%.3f", info.freq / 1000000.0);
+		snprintf(buf, sizeof(buf), "%.3f", info.frequency / 1000000.0);
 		fFrequencyControl->SetText(buf);
 
-		snprintf(buf, sizeof(buf), "%.1f", info.bw / 1000.0);
+		snprintf(buf, sizeof(buf), "%.1f", info.bandwidth / 1000.0);
 		fBandwidthControl->SetText(buf);
 
-		snprintf(buf, sizeof(buf), "%d", info.sf);
+		snprintf(buf, sizeof(buf), "%d", info.spreadingFactor);
 		fSpreadingFactorControl->SetText(buf);
 
-		snprintf(buf, sizeof(buf), "%d", info.cr);
+		snprintf(buf, sizeof(buf), "%d", info.codingRate);
 		fCodingRateControl->SetText(buf);
 
 		fSettingsChanged = true;
@@ -468,27 +571,38 @@ SettingsWindow::_OnPresetSelected(int32 preset)
 
 
 void
-SettingsWindow::_OnRevert()
+SettingsWindow::SetMqttSettings(const MqttSettings& settings)
 {
-	SetCurrentSettings(fCurrentSettings);
+	fMqttSettings = settings;
+
+	if (fMqttEnableCheck == NULL)
+		return;
+
+	fMqttEnableCheck->SetValue(settings.enabled ? B_CONTROL_ON : B_CONTROL_OFF);
+	fMqttIataControl->SetText(settings.iataCode);
+	fMqttBrokerControl->SetText(settings.broker);
+
+	char buf[16];
+	snprintf(buf, sizeof(buf), "%d", settings.port);
+	fMqttPortControl->SetText(buf);
+
+	fMqttUsernameControl->SetText(settings.username);
+	fMqttPasswordControl->SetText(settings.password);
+
+	_OnMqttEnableChanged();
 }
 
 
 void
-SettingsWindow::_LoadSettings()
+SettingsWindow::_OnMqttEnableChanged()
 {
-	// Load from current device if connected
-	Sestriere* app = dynamic_cast<Sestriere*>(be_app);
-	if (app != NULL && app->GetSerialHandler() != NULL &&
-		app->GetSerialHandler()->IsConnected()) {
-		// TODO: Request current settings from device
-	}
-}
+	if (fMqttEnableCheck == NULL)
+		return;
 
-
-void
-SettingsWindow::_SaveSettings()
-{
-	// Save to settings file
-	// TODO: Implement persistent settings
+	bool enabled = (fMqttEnableCheck->Value() == B_CONTROL_ON);
+	fMqttIataControl->SetEnabled(enabled);
+	fMqttBrokerControl->SetEnabled(enabled);
+	fMqttPortControl->SetEnabled(enabled);
+	fMqttUsernameControl->SetEnabled(enabled);
+	fMqttPasswordControl->SetEnabled(enabled);
 }

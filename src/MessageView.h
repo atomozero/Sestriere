@@ -2,7 +2,7 @@
  * Copyright 2025, Sestriere Authors
  * All rights reserved. Distributed under the terms of the MIT license.
  *
- * MessageView.h — Individual message display item
+ * MessageView.h — Individual chat message bubble display
  */
 
 #ifndef MESSAGEVIEW_H
@@ -17,8 +17,8 @@
 
 class MessageView : public BListItem {
 public:
-							MessageView(const ReceivedMessage& message,
-								bool outgoing, const char* senderName);
+							MessageView(const ChatMessage& message,
+								const char* senderName = NULL);
 	virtual					~MessageView();
 
 	virtual void			DrawItem(BView* owner, BRect frame,
@@ -26,13 +26,16 @@ public:
 	virtual void			Update(BView* owner, const BFont* font);
 
 			bool			IsOutgoing() const { return fOutgoing; }
+			bool			IsChannel() const { return fIsChannel; }
 			uint32			Timestamp() const { return fTimestamp; }
 			const char*		Text() const { return fText.String(); }
 			const char*		SenderName() const { return fSenderName.String(); }
 
+			void			SetDeliveryStatus(uint8 status, uint32 rtt = 0);
+			uint8			DeliveryStatus() const { return fDeliveryStatus; }
+
 private:
 			void			_FormatTimestamp(char* buffer, size_t size) const;
-			float			_CalcTextHeight(BView* owner, float maxWidth) const;
 			void			_WrapText(BView* owner, const BString& text,
 								float maxWidth,
 								std::vector<BString>& outLines) const;
@@ -41,11 +44,14 @@ private:
 			BString			fSenderName;
 			uint32			fTimestamp;
 			bool			fOutgoing;
+			bool			fIsChannel;
 			uint8			fPathLen;
-			uint8			fSnr;
+			int8			fSnr;
+			uint8			fDeliveryStatus;
+			uint32			fRoundTripMs;
+			uint8			fTxtType;
 
 			float			fBaselineOffset;
-			float			fTextHeight;
 };
 
 #endif // MESSAGEVIEW_H

@@ -7,33 +7,41 @@
 
 #include "MapView.h"
 
-#include <Cursor.h>
+#include <Button.h>
 #include <GroupLayout.h>
-#include <Window.h>
+#include <LayoutBuilder.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 
 #include "Constants.h"
-#include "Protocol.h"
 
 
-static const float kMinZoom = 100.0f;		// pixels per degree
+static const float kMinZoom = 100.0f;
 static const float kMaxZoom = 100000.0f;
 static const float kDefaultZoom = 5000.0f;
 static const float kZoomStep = 1.5f;
-
 static const float kNodeRadius = 8.0f;
 static const float kSelfRadius = 10.0f;
 
+static const uint32 kMsgZoomIn		= 'zmin';
+static const uint32 kMsgZoomOut		= 'zmot';
+static const uint32 kMsgZoomFit		= 'zmft';
+static const uint32 kMsgCenterSelf	= 'cnsl';
+
+
+// ============================================================================
+// MapView
+// ============================================================================
 
 MapView::MapView(const char* name)
 	:
 	BView(name, B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE | B_FRAME_EVENTS),
 	fNodes(20),
 	fHasSelfPosition(false),
-	fCenterLat(45.0f),		// Default: northern Italy
+	fCenterLat(45.0f),
 	fCenterLon(7.0f),
 	fZoom(kDefaultZoom),
 	fDragging(false),
@@ -42,9 +50,8 @@ MapView::MapView(const char* name)
 	fSelectedNode(NULL),
 	fHoverNode(NULL)
 {
-	memset(&fSelfNode, 0, sizeof(fSelfNode));
+	fSelfNode = GeoMapNode();
 	fSelfNode.isSelf = true;
-
 	SetViewColor(B_TRANSPARENT_COLOR);
 }
 
@@ -63,25 +70,17 @@ MapView::AttachedToWindow()
 
 
 void
-MapView::Draw(BRect updateRect)
+MapView::Draw(BRect /*updateRect*/)
 {
-	(void)updateRect;
 	BRect bounds = Bounds();
 
 	// Background - dark blue for "sea"
 	SetHighColor(30, 40, 60);
 	FillRect(bounds);
 
-	// Draw grid first
 	_DrawGrid();
-
-	// Draw connections between nodes
 	_DrawConnections();
-
-	// Draw all nodes
 	_DrawNodes();
-
-	// Draw UI elements
 	_DrawScaleBar();
 	_DrawCompass();
 }
@@ -98,66 +97,50 @@ MapView::MouseDown(BPoint where)
 	if (Window()->CurrentMessage()->FindInt32("clicks", &clicks) != B_OK)
 		clicks = 1;
 
-	MapNode* node = _FindNodeAt(where);
+	GeoMapNode* node = _FindNodeAt(where);
 
 	if (buttons & B_PRIMARY_MOUSE_BUTTON) {
 		if (clicks == 2 && node != NULL) {
-			// Double-click on node: center on it
-			SetCenterPosition(node->latitude, node->longitude);
+			fCenterLat = node->latitude;
+			fCenterLon = node->longitude;
+			Invalidate();
 		} else if (node != NULL) {
-			// Single click: select node
 			if (fSelectedNode != NULL)
 				fSelectedNode->isSelected = false;
 			fSelectedNode = node;
 			fSelectedNode->isSelected = true;
-
-			// Notify parent
-			BMessage msg(MSG_CONTACT_SELECTED);
-			msg.AddData(kFieldPubKey, B_RAW_TYPE, node->publicKey,
-				kPubKeyPrefixSize);
-			msg.AddString(kFieldName, node->name);
-			Window()->PostMessage(&msg);
-
 			Invalidate();
 		} else {
-			// Click on empty space: start drag
 			fDragging = true;
 			fDragStart = where;
 			fDragStartLat = fCenterLat;
 			fDragStartLon = fCenterLon;
 			SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
 		}
-	} else if (buttons & B_SECONDARY_MOUSE_BUTTON) {
-		// Right-click: context menu (future)
 	}
 }
 
 
 void
-MapView::MouseMoved(BPoint where, uint32 transit, const BMessage* dragMessage)
+MapView::MouseMoved(BPoint where, uint32 /*transit*/,
+	const BMessage* /*dragMessage*/)
 {
-	(void)transit;
-	(void)dragMessage;
 	if (fDragging) {
-		// Pan the map
 		float dx = where.x - fDragStart.x;
 		float dy = where.y - fDragStart.y;
 
-		// Convert pixel delta to lat/lon delta
 		float dLon = -dx / fZoom;
 		float dLat = dy / fZoom;
 
 		fCenterLat = fDragStartLat + dLat;
 		fCenterLon = fDragStartLon + dLon;
 
-		// Clamp latitude
 		if (fCenterLat > 85.0f) fCenterLat = 85.0f;
 		if (fCenterLat < -85.0f) fCenterLat = -85.0f;
 
 		Invalidate();
 	} else {
-		// Hover detection
-		MapNode* node = _FindNodeAt(where);
+		GeoMapNode* node = _FindNodeAt(where);
 		if (node != fHoverNode) {
 			fHoverNode = node;
 			Invalidate();
@@ -167,18 +150,9 @@ MapView::MouseMoved(BPoint where, uint32 transit, const BMessage* dragMessage)
 
 
 void
-MapView::MouseUp(BPoint where)
+MapView::MouseUp(BPoint /*where*/)
 {
-	(void)where;
 	fDragging = false;
-}
-
-
-void
-MapView::ScrollTo(BPoint where)
-{
-	// Handle scroll wheel for zoom
-	BView::ScrollTo(where);
 }
 
 
@@ -219,11 +193,9 @@ MapView::SetSelfPosition(float lat, float lon, const char* name)
 	fSelfNode.latitude = lat;
 	fSelfNode.longitude = lon;
 	strlcpy(fSelfNode.name, name, sizeof(fSelfNode.name));
-	fSelfNode.type = ADV_TYPE_CHAT;
 	fSelfNode.isSelf = true;
 	fHasSelfPosition = true;
 
-	// Center on self initially
 	fCenterLat = lat;
 	fCenterLon = lon;
 
@@ -232,64 +204,33 @@ MapView::SetSelfPosition(float lat, float lon, const char* name)
 
 
 void
-MapView::AddNode(const Contact& contact)
+MapView::AddOrUpdateNode(const ContactInfo& contact, float lat, float lon)
 {
-	// Skip contacts without position
-	if (contact.advLat == 0 && contact.advLon == 0)
+	if (lat == 0.0f && lon == 0.0f)
 		return;
 
-	MapNode* node = new MapNode();
-	memcpy(node->publicKey, contact.publicKey, kPublicKeySize);
-	strlcpy(node->name, contact.advName, sizeof(node->name));
-	node->latitude = Protocol::LatLonFromInt(contact.advLat);
-	node->longitude = Protocol::LatLonFromInt(contact.advLon);
+	// Check if node already exists
+	for (int32 i = 0; i < fNodes.CountItems(); i++) {
+		GeoMapNode* node = fNodes.ItemAt(i);
+		if (memcmp(node->publicKey, contact.publicKey, 6) == 0) {
+			node->latitude = lat;
+			node->longitude = lon;
+			strlcpy(node->name, contact.name, sizeof(node->name));
+			node->type = contact.type;
+			Invalidate();
+			return;
+		}
+	}
+
+	GeoMapNode* node = new GeoMapNode();
+	memcpy(node->publicKey, contact.publicKey, 32);
+	strlcpy(node->name, contact.name, sizeof(node->name));
+	node->latitude = lat;
+	node->longitude = lon;
 	node->type = contact.type;
-	node->pathLen = contact.outPathLen;
-	node->lastSnr = 0;
-	node->isSelected = false;
-	node->isSelf = false;
 
 	fNodes.AddItem(node);
 	Invalidate();
-}
-
-
-void
-MapView::UpdateNode(const Contact& contact)
-{
-	for (int32 i = 0; i < fNodes.CountItems(); i++) {
-		MapNode* node = fNodes.ItemAt(i);
-		if (memcmp(node->publicKey, contact.publicKey, kPublicKeySize) == 0) {
-			node->latitude = Protocol::LatLonFromInt(contact.advLat);
-			node->longitude = Protocol::LatLonFromInt(contact.advLon);
-			strlcpy(node->name, contact.advName, sizeof(node->name));
-			node->type = contact.type;
-			node->pathLen = contact.outPathLen;
-			Invalidate();
-			return;
-		}
-	}
-
-	// Not found, add it
-	AddNode(contact);
-}
-
-
-void
-MapView::RemoveNode(const uint8* publicKey)
-{
-	for (int32 i = 0; i < fNodes.CountItems(); i++) {
-		MapNode* node = fNodes.ItemAt(i);
-		if (memcmp(node->publicKey, publicKey, kPublicKeySize) == 0) {
-			if (fSelectedNode == node)
-				fSelectedNode = NULL;
-			if (fHoverNode == node)
-				fHoverNode = NULL;
-			fNodes.RemoveItemAt(i);
-			Invalidate();
-			return;
-		}
-	}
 }
 
 
@@ -304,26 +245,20 @@ MapView::ClearNodes()
 
 
 void
-MapView::SetZoom(float zoom)
-{
-	if (zoom < kMinZoom) zoom = kMinZoom;
-	if (zoom > kMaxZoom) zoom = kMaxZoom;
-	fZoom = zoom;
-	Invalidate();
-}
-
-
-void
 MapView::ZoomIn()
 {
-	SetZoom(fZoom * kZoomStep);
+	fZoom *= kZoomStep;
+	if (fZoom > kMaxZoom) fZoom = kMaxZoom;
+	Invalidate();
 }
 
 
 void
 MapView::ZoomOut()
 {
-	SetZoom(fZoom / kZoomStep);
+	fZoom /= kZoomStep;
+	if (fZoom < kMinZoom) fZoom = kMinZoom;
+	Invalidate();
 }
 
 
@@ -342,34 +277,27 @@ MapView::ZoomToFit()
 	}
 
 	for (int32 i = 0; i < fNodes.CountItems(); i++) {
-		MapNode* node = fNodes.ItemAt(i);
+		GeoMapNode* node = fNodes.ItemAt(i);
 		if (node->latitude < minLat) minLat = node->latitude;
 		if (node->latitude > maxLat) maxLat = node->latitude;
 		if (node->longitude < minLon) minLon = node->longitude;
 		if (node->longitude > maxLon) maxLon = node->longitude;
 	}
 
-	// Center on the bounding box
 	fCenterLat = (minLat + maxLat) / 2.0f;
 	fCenterLon = (minLon + maxLon) / 2.0f;
 
-	// Calculate zoom to fit
 	BRect bounds = Bounds();
-	float latSpan = maxLat - minLat + 0.001f;	// avoid division by zero
+	float latSpan = maxLat - minLat + 0.001f;
 	float lonSpan = maxLon - minLon + 0.001f;
 
 	float zoomLat = (bounds.Height() * 0.8f) / latSpan;
 	float zoomLon = (bounds.Width() * 0.8f) / lonSpan;
 
-	SetZoom(std::min(zoomLat, zoomLon));
-}
+	fZoom = std::min(zoomLat, zoomLon);
+	if (fZoom < kMinZoom) fZoom = kMinZoom;
+	if (fZoom > kMaxZoom) fZoom = kMaxZoom;
 
-
-void
-MapView::SetCenterPosition(float lat, float lon)
-{
-	fCenterLat = lat;
-	fCenterLon = lon;
 	Invalidate();
 }
 
@@ -416,12 +344,10 @@ MapView::_DrawGrid()
 {
 	BRect bounds = Bounds();
 
-	// Calculate visible area
 	float minLat, maxLat, minLon, maxLon;
 	_ScreenToLatLon(BPoint(0, bounds.Height()), minLat, minLon);
 	_ScreenToLatLon(BPoint(bounds.Width(), 0), maxLat, maxLon);
 
-	// Determine grid spacing based on zoom
 	float gridSpacing;
 	if (fZoom > 50000) gridSpacing = 0.001f;
 	else if (fZoom > 10000) gridSpacing = 0.01f;
@@ -432,7 +358,6 @@ MapView::_DrawGrid()
 	SetHighColor(50, 60, 80);
 	SetPenSize(1.0f);
 
-	// Draw latitude lines
 	float startLat = floor(minLat / gridSpacing) * gridSpacing;
 	for (float lat = startLat; lat <= maxLat; lat += gridSpacing) {
 		BPoint p1 = _LatLonToScreen(lat, minLon);
@@ -440,7 +365,6 @@ MapView::_DrawGrid()
 		StrokeLine(p1, p2);
 	}
 
-	// Draw longitude lines
 	float startLon = floor(minLon / gridSpacing) * gridSpacing;
 	for (float lon = startLon; lon <= maxLon; lon += gridSpacing) {
 		BPoint p1 = _LatLonToScreen(minLat, lon);
@@ -453,23 +377,20 @@ MapView::_DrawGrid()
 void
 MapView::_DrawNodes()
 {
-	// Draw self node
 	if (fHasSelfPosition)
 		_DrawNode(fSelfNode);
 
-	// Draw other nodes
 	for (int32 i = 0; i < fNodes.CountItems(); i++)
 		_DrawNode(*fNodes.ItemAt(i));
 }
 
 
 void
-MapView::_DrawNode(const MapNode& node)
+MapView::_DrawNode(const GeoMapNode& node)
 {
 	BPoint pos = _LatLonToScreen(node.latitude, node.longitude);
 	BRect bounds = Bounds();
 
-	// Skip if off-screen
 	if (pos.x < -20 || pos.x > bounds.Width() + 20 ||
 		pos.y < -20 || pos.y > bounds.Height() + 20)
 		return;
@@ -478,7 +399,6 @@ MapView::_DrawNode(const MapNode& node)
 	rgb_color fillColor = _ColorForType(node.type);
 	rgb_color outlineColor = {255, 255, 255, 255};
 
-	// Highlight if selected or hovered
 	if (node.isSelected) {
 		outlineColor = (rgb_color){255, 200, 0, 255};
 		radius += 2;
@@ -487,15 +407,15 @@ MapView::_DrawNode(const MapNode& node)
 		radius += 1;
 	}
 
-	// Draw outer circle (outline)
+	// Outer circle
 	SetHighColor(outlineColor);
 	FillEllipse(pos, radius + 2, radius + 2);
 
-	// Draw inner circle (fill)
+	// Inner circle
 	SetHighColor(fillColor);
 	FillEllipse(pos, radius, radius);
 
-	// Draw self indicator (star pattern)
+	// Self indicator
 	if (node.isSelf) {
 		SetHighColor(255, 255, 255);
 		SetPenSize(2.0f);
@@ -508,7 +428,7 @@ MapView::_DrawNode(const MapNode& node)
 		SetPenSize(1.0f);
 	}
 
-	// Draw name label
+	// Name label
 	SetHighColor(255, 255, 255);
 	BFont font;
 	GetFont(&font);
@@ -536,30 +456,27 @@ MapView::_DrawConnections()
 		return;
 
 	BPoint selfPos = _LatLonToScreen(fSelfNode.latitude, fSelfNode.longitude);
-
 	SetPenSize(1.5f);
 
 	for (int32 i = 0; i < fNodes.CountItems(); i++) {
-		MapNode* node = fNodes.ItemAt(i);
+		GeoMapNode* node = fNodes.ItemAt(i);
 		BPoint nodePos = _LatLonToScreen(node->latitude, node->longitude);
 
-		// Color based on path length
 		rgb_color lineColor;
 		if (node->pathLen == -1) {
-			lineColor = (rgb_color){100, 100, 100, 128};  // Unknown
-		} else if (node->pathLen == (int8)0xFF || node->pathLen == 0) {
-			lineColor = (rgb_color){0, 200, 0, 180};      // Direct
+			lineColor = (rgb_color){100, 100, 100, 128};
+		} else if (node->pathLen == (int8)kPathLenDirect || node->pathLen == 0) {
+			lineColor = (rgb_color){0, 200, 0, 180};
 		} else if (node->pathLen <= 2) {
-			lineColor = (rgb_color){200, 200, 0, 180};    // 1-2 hops
+			lineColor = (rgb_color){200, 200, 0, 180};
 		} else {
-			lineColor = (rgb_color){200, 100, 0, 180};    // 3+ hops
+			lineColor = (rgb_color){200, 100, 0, 180};
 		}
 
 		SetHighColor(lineColor);
 
-		// Draw dashed line for unknown paths
 		if (node->pathLen == -1) {
-			// Simple dashed line
+			// Dashed line
 			float length = sqrt(pow(nodePos.x - selfPos.x, 2) +
 				pow(nodePos.y - selfPos.y, 2));
 			float dashLen = 5.0f;
@@ -588,12 +505,10 @@ MapView::_DrawScaleBar()
 {
 	BRect bounds = Bounds();
 
-	// Calculate scale bar length for nice round distance
-	float metersPerPixel = 111000.0f / fZoom;  // approx meters per degree lat
+	float metersPerPixel = 111000.0f / fZoom;
 	float targetPixels = 100.0f;
 	float targetMeters = metersPerPixel * targetPixels;
 
-	// Round to nice value
 	float scale;
 	const char* unit;
 	if (targetMeters >= 1000) {
@@ -610,7 +525,6 @@ MapView::_DrawScaleBar()
 
 	float barPixels = targetMeters / metersPerPixel;
 
-	// Draw scale bar
 	float x = 20;
 	float y = bounds.Height() - 30;
 
@@ -621,7 +535,6 @@ MapView::_DrawScaleBar()
 	StrokeLine(BPoint(x + barPixels, y - 5), BPoint(x + barPixels, y + 5));
 	SetPenSize(1.0f);
 
-	// Label
 	char label[32];
 	snprintf(label, sizeof(label), "%.0f %s", scale, unit);
 	DrawString(label, BPoint(x + barPixels / 2 - 15, y - 8));
@@ -636,13 +549,10 @@ MapView::_DrawCompass()
 	float cy = 40;
 	float size = 20;
 
-	// Draw compass rose
 	SetHighColor(255, 255, 255);
 	SetPenSize(2.0f);
 
-	// N-S line
 	StrokeLine(BPoint(cx, cy - size), BPoint(cx, cy + size));
-	// E-W line
 	StrokeLine(BPoint(cx - size, cy), BPoint(cx + size, cy));
 
 	// North arrow
@@ -651,7 +561,6 @@ MapView::_DrawCompass()
 		BPoint(cx - 5, cy - size + 10),
 		BPoint(cx + 5, cy - size + 10));
 
-	// N label
 	SetHighColor(255, 255, 255);
 	DrawString("N", BPoint(cx - 4, cy - size - 5));
 
@@ -659,12 +568,11 @@ MapView::_DrawCompass()
 }
 
 
-MapNode*
+GeoMapNode*
 MapView::_FindNodeAt(BPoint where)
 {
 	float radius = kNodeRadius + 5;
 
-	// Check self node first
 	if (fHasSelfPosition) {
 		BPoint pos = _LatLonToScreen(fSelfNode.latitude, fSelfNode.longitude);
 		float dx = where.x - pos.x;
@@ -673,9 +581,8 @@ MapView::_FindNodeAt(BPoint where)
 			return &fSelfNode;
 	}
 
-	// Check other nodes
 	for (int32 i = fNodes.CountItems() - 1; i >= 0; i--) {
-		MapNode* node = fNodes.ItemAt(i);
+		GeoMapNode* node = fNodes.ItemAt(i);
 		BPoint pos = _LatLonToScreen(node->latitude, node->longitude);
 		float dx = where.x - pos.x;
 		float dy = where.y - pos.y;
@@ -688,53 +595,55 @@ MapView::_FindNodeAt(BPoint where)
 
 
 rgb_color
-MapView::_ColorForSnr(int8 snr) const
-{
-	float snrDb = snr / 4.0f;
-
-	if (snrDb >= 10)
-		return (rgb_color){0, 255, 0, 255};		// Excellent
-	else if (snrDb >= 5)
-		return (rgb_color){150, 255, 0, 255};	// Good
-	else if (snrDb >= 0)
-		return (rgb_color){255, 255, 0, 255};	// Fair
-	else if (snrDb >= -5)
-		return (rgb_color){255, 150, 0, 255};	// Poor
-	else
-		return (rgb_color){255, 0, 0, 255};		// Bad
-}
-
-
-rgb_color
 MapView::_ColorForType(uint8 type) const
 {
 	switch (type) {
-		case ADV_TYPE_CHAT:
-			return (rgb_color){100, 180, 255, 255};	// Blue
-		case ADV_TYPE_REPEATER:
-			return (rgb_color){100, 255, 100, 255};	// Green
-		case ADV_TYPE_ROOM:
-			return (rgb_color){255, 180, 100, 255};	// Orange
+		case 1:		// Companion (chat device)
+			return (rgb_color){100, 180, 255, 255};
+		case 2:		// Repeater
+			return (rgb_color){100, 255, 100, 255};
+		case 3:		// Room
+			return (rgb_color){255, 180, 100, 255};
 		default:
-			return (rgb_color){180, 180, 180, 255};	// Gray
+			return (rgb_color){180, 180, 180, 255};
 	}
 }
 
 
 // ============================================================================
-// MapWindow Implementation
+// MapWindow
 // ============================================================================
 
-MapWindow::MapWindow(BRect frame, BMessenger target)
-	: BWindow(frame, "Map View", B_TITLED_WINDOW,
+MapWindow::MapWindow(BWindow* parent)
+	:
+	BWindow(BRect(100, 100, 700, 550), "Geographic Map", B_TITLED_WINDOW,
 		B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS),
-	  fTarget(target)
+	fParent(parent)
 {
 	fMapView = new MapView("map");
 	fMapView->SetExplicitMinSize(BSize(400, 300));
 
-	SetLayout(new BGroupLayout(B_VERTICAL));
-	AddChild(fMapView);
+	fZoomInButton = new BButton("zoom_in", "+", new BMessage(kMsgZoomIn));
+	fZoomOutButton = new BButton("zoom_out", "-", new BMessage(kMsgZoomOut));
+	fFitButton = new BButton("fit", "Fit", new BMessage(kMsgZoomFit));
+	fCenterButton = new BButton("center", "Center", new BMessage(kMsgCenterSelf));
+
+	BView* controlBar = new BView("controls", 0);
+	controlBar->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+
+	BLayoutBuilder::Group<>(controlBar, B_HORIZONTAL, B_USE_SMALL_SPACING)
+		.SetInsets(B_USE_SMALL_SPACING)
+		.Add(fZoomInButton)
+		.Add(fZoomOutButton)
+		.Add(fFitButton)
+		.Add(fCenterButton)
+		.AddGlue()
+	.End();
+
+	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
+		.Add(fMapView, 1.0)
+		.Add(controlBar)
+	.End();
 }
 
 
@@ -747,6 +656,18 @@ void
 MapWindow::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
+		case kMsgZoomIn:
+			fMapView->ZoomIn();
+			break;
+		case kMsgZoomOut:
+			fMapView->ZoomOut();
+			break;
+		case kMsgZoomFit:
+			fMapView->ZoomToFit();
+			break;
+		case kMsgCenterSelf:
+			fMapView->CenterOnSelf();
+			break;
 		default:
 			BWindow::MessageReceived(message);
 			break;
@@ -763,32 +684,32 @@ MapWindow::QuitRequested()
 
 
 void
-MapWindow::AddNode(uint32 nodeId, const char* name, double lat, double lon,
-	uint8 type, uint32 lastSeen, int pathLen)
+MapWindow::SetSelfPosition(float lat, float lon, const char* name)
 {
-	Contact contact;
-	memset(&contact, 0, sizeof(contact));
-
-	// Store nodeId in first 4 bytes of publicKey
-	contact.publicKey[0] = (nodeId >> 24) & 0xFF;
-	contact.publicKey[1] = (nodeId >> 16) & 0xFF;
-	contact.publicKey[2] = (nodeId >> 8) & 0xFF;
-	contact.publicKey[3] = nodeId & 0xFF;
-
-	strlcpy(contact.advName, name, sizeof(contact.advName));
-	contact.advLat = (int32)(lat * 1000000);
-	contact.advLon = (int32)(lon * 1000000);
-	contact.type = type;
-	contact.lastAdvert = lastSeen;
-	contact.outPathLen = pathLen;
-
-	fMapView->AddNode(contact);
+	fMapView->SetSelfPosition(lat, lon, name);
 }
 
 
 void
-MapWindow::SetSelfNode(uint32 nodeId)
+MapWindow::UpdateFromContacts(BObjectList<ContactInfo, true>* contacts,
+	double defaultLat, double defaultLon)
 {
-	(void)nodeId;
-	fMapView->CenterOnSelf();
+	fMapView->ClearNodes();
+
+	for (int32 i = 0; i < contacts->CountItems(); i++) {
+		ContactInfo* contact = contacts->ItemAt(i);
+		if (contact == NULL || !contact->isValid)
+			continue;
+
+		// Use default lat/lon as placeholder for now
+		// Real positions come from contact advert data
+		float lat = (float)defaultLat;
+		float lon = (float)defaultLon;
+
+		// Offset nodes slightly so they don't overlap
+		lat += (float)(i * 0.001);
+		lon += (float)(i * 0.001);
+
+		fMapView->AddOrUpdateNode(*contact, lat, lon);
+	}
 }

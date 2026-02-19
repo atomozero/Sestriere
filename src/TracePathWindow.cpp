@@ -9,7 +9,6 @@
 
 #include <Application.h>
 #include <Button.h>
-#include <Catalog.h>
 #include <LayoutBuilder.h>
 #include <ListView.h>
 #include <ScrollView.h>
@@ -20,20 +19,14 @@
 #include <cstdio>
 
 #include "Constants.h"
-#include "Protocol.h"
-#include "Sestriere.h"
-#include "SerialHandler.h"
-
-#undef B_TRANSLATION_CONTEXT
-#define B_TRANSLATION_CONTEXT "TracePathWindow"
 
 
 static const uint32 MSG_START_TRACE = 'sttr';
 
 
-TracePathWindow::TracePathWindow(BWindow* parent, const Contact* contact)
+TracePathWindow::TracePathWindow(BWindow* parent, const ContactInfo* contact)
 	:
-	BWindow(BRect(0, 0, 350, 300), "Trace Path",
+	BWindow(BRect(0, 0, 380, 320), "Trace Path",
 		B_FLOATING_WINDOW_LOOK, B_NORMAL_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS | B_CLOSE_ON_ESCAPE),
 	fParent(parent),
@@ -46,13 +39,14 @@ TracePathWindow::TracePathWindow(BWindow* parent, const Contact* contact)
 	fTracing(false)
 {
 	if (contact != NULL)
-		memcpy(&fContact, contact, sizeof(Contact));
+		fContact = *contact;
 	else
-		memset(&fContact, 0, sizeof(Contact));
+		fContact = ContactInfo();
 
 	// Create views
 	BString titleStr;
-	titleStr.SetToFormat("Trace path to: %s", fContact.advName);
+	titleStr.SetToFormat("Trace path to: %s",
+		fContact.name[0] ? fContact.name : "Unknown");
 	fTargetLabel = new BStringView("target_label", titleStr.String());
 	fTargetLabel->SetFont(be_bold_font);
 
@@ -95,6 +89,15 @@ TracePathWindow::~TracePathWindow()
 }
 
 
+bool
+TracePathWindow::QuitRequested()
+{
+	// Just hide instead of closing - MainWindow manages our lifetime
+	Hide();
+	return false;
+}
+
+
 void
 TracePathWindow::MessageReceived(BMessage* message)
 {
@@ -102,43 +105,6 @@ TracePathWindow::MessageReceived(BMessage* message)
 		case MSG_START_TRACE:
 			_OnStartTrace();
 			break;
-
-		case PUSH_CODE_TRACE_DATA:
-		{
-			const void* data;
-			ssize_t size;
-			if (message->FindData(kFieldData, B_RAW_TYPE, &data, &size) == B_OK
-				&& size >= 7) {
-				const uint8* payload = static_cast<const uint8*>(data);
-
-				TraceHop* hop = new TraceHop();
-				memset(hop, 0, sizeof(TraceHop));
-
-				// Parse trace data
-				// [0] = PUSH_CODE_TRACE_DATA (0x89)
-				// [1-6] = pub_key_prefix
-				// [7] = snr (signed, *4)
-				// [8+] = name (optional)
-
-				memcpy(hop->pubKeyPrefix, payload + 1, kPubKeyPrefixSize);
-
-				if (size >= 8)
-					hop->snr = (int8)payload[7];
-
-				if (size > 8) {
-					size_t nameLen = size - 8;
-					if (nameLen >= sizeof(hop->name))
-						nameLen = sizeof(hop->name) - 1;
-					memcpy(hop->name, payload + 8, nameLen);
-					hop->name[nameLen] = '\0';
-				}
-
-				hop->timestamp = (uint32)real_time_clock();
-				AddTraceHop(*hop);
-				delete hop;
-			}
-			break;
-		}
 
 		default:
 			BWindow::MessageReceived(message);
@@ -174,17 +140,72 @@ TracePathWindow::SetTraceComplete(bool success)
 
 
 void
+TracePathWindow::ParseTraceData(const uint8* data, size_t length)
+{
+	// PUSH_TRACE_DATA format (per MeshCore Companion Protocol):
+	// [0]     = code (0x89)
+	// [1]     = reserved
+	// [2]     = path_len (number of hops)
+	// [3]     = flags
+	// [4-7]   = tag (int32)
+	// [8-11]  = auth_code (int32)
+	// [12..12+path_len-1]   = path_hashes (1 byte per hop)
+	// [12+path_len..12+2*path_len] = path_snrs (path_len+1 SNR values, int8 *4)
+
+	if (length < 12)
+		return;
+
+	uint8 pathLen = data[2];
+	// uint8 flags = data[3];
+
+	// Need at least: 12 header + pathLen hashes + (pathLen+1) SNRs
+	size_t expectedLen = 12 + pathLen + pathLen + 1;
+	size_t hashOffset = 12;
+	size_t snrOffset = 12 + pathLen;
+
+	// Clear previous hops for a fresh trace result
+	fHops.MakeEmpty();
+
+	for (uint8 i = 0; i < pathLen; i++) {
+		TraceHop hop;
+		memset(hop.pubKeyPrefix, 0, sizeof(hop.pubKeyPrefix));
+
+		// Store path hash in first byte of pubKeyPrefix for display
+		if (hashOffset + i < length)
+			hop.pubKeyPrefix[0] = data[hashOffset + i];
+
+		// SNR value for this hop (int8, ×4)
+		if (snrOffset + i < length)
+			hop.snr = (int8)data[snrOffset + i];
+
+		// Format hop name from hash byte
+		snprintf(hop.name, sizeof(hop.name), "Hop #%d (hash: 0x%02X)",
+			i + 1, hop.pubKeyPrefix[0]);
+
+		hop.timestamp = (uint32)real_time_clock();
+		AddTraceHop(hop);
+	}
+
+	// Last SNR entry is the destination's SNR
+	if (pathLen > 0 && snrOffset + pathLen < length) {
+		TraceHop destHop;
+		memset(destHop.pubKeyPrefix, 0, sizeof(destHop.pubKeyPrefix));
+		destHop.snr = (int8)data[snrOffset + pathLen];
+		snprintf(destHop.name, sizeof(destHop.name), "Destination");
+		destHop.timestamp = (uint32)real_time_clock();
+		AddTraceHop(destHop);
+	}
+
+	// Mark trace as complete
+	SetTraceComplete(pathLen > 0 || length >= expectedLen);
+}
+
+
+void
 TracePathWindow::_OnStartTrace()
 {
 	if (fTracing)
 		return;
-
-	Sestriere* app = dynamic_cast<Sestriere*>(be_app);
-	if (app == NULL || app->GetSerialHandler() == NULL ||
-		!app->GetSerialHandler()->IsConnected()) {
-		fStatusLabel->SetText("Not connected to device");
-		return;
-	}
 
 	// Clear previous results
 	fHops.MakeEmpty();
@@ -195,10 +216,12 @@ TracePathWindow::_OnStartTrace()
 	fTraceButton->SetLabel("Tracing...");
 	fStatusLabel->SetText("Sending trace request...");
 
-	// Send trace path request
-	uint8 buffer[16];
-	size_t len = Protocol::BuildSendTracePath(fContact.publicKey, buffer);
-	app->GetSerialHandler()->SendFrame(buffer, len);
+	// Send trace path request to parent window
+	if (fParent != NULL) {
+		BMessage msg(MSG_TRACE_PATH);
+		msg.AddData("pubkey", B_RAW_TYPE, fContact.publicKey, kPubKeyPrefixSize);
+		fParent->PostMessage(&msg);
+	}
 }
 
 
@@ -212,24 +235,52 @@ TracePathWindow::_UpdateHopList()
 	// Add hops
 	for (int32 i = 0; i < fHops.CountItems(); i++) {
 		TraceHop* hop = fHops.ItemAt(i);
+		if (hop == NULL)
+			continue;
 
 		BString hopStr;
 		float snrDb = hop->snr / 4.0f;
 
 		char keyPrefix[16];
-		Protocol::FormatPubKeyPrefix(hop->pubKeyPrefix, keyPrefix,
-			sizeof(keyPrefix));
+		_FormatPubKeyPrefix(hop->pubKeyPrefix, keyPrefix, sizeof(keyPrefix));
+
+		// Color indicator based on SNR
+		const char* quality;
+		if (snrDb >= 10.0f)
+			quality = "[++]";  // Excellent
+		else if (snrDb >= 5.0f)
+			quality = "[+ ]";  // Good
+		else if (snrDb >= 0.0f)
+			quality = "[  ]";  // Fair
+		else if (snrDb >= -5.0f)
+			quality = "[ -]";  // Poor
+		else
+			quality = "[--]";  // Bad
 
 		if (hop->name[0] != '\0') {
-			hopStr.SetToFormat("%d. %s [%s] SNR: %.1f dB",
-				(int)(i + 1), hop->name, keyPrefix, snrDb);
+			hopStr.SetToFormat("%d. %s %s [%s] SNR: %.1f dB",
+				(int)(i + 1), quality, hop->name, keyPrefix, snrDb);
 		} else {
-			hopStr.SetToFormat("%d. [%s] SNR: %.1f dB",
-				(int)(i + 1), keyPrefix, snrDb);
+			hopStr.SetToFormat("%d. %s [%s] SNR: %.1f dB",
+				(int)(i + 1), quality, keyPrefix, snrDb);
 		}
 
 		fHopList->AddItem(new BStringItem(hopStr.String()));
 	}
 
 	fHopList->Invalidate();
+}
+
+
+void
+TracePathWindow::_FormatPubKeyPrefix(const uint8* prefix, char* out, size_t outSize)
+{
+	if (outSize < 13) {
+		if (outSize > 0)
+			out[0] = '\0';
+		return;
+	}
+
+	for (size_t i = 0; i < kPubKeyPrefixSize; i++)
+		snprintf(out + i * 2, 3, "%02X", prefix[i]);
 }

@@ -10,8 +10,6 @@
 
 #include <String.h>
 
-#include "Types.h"
-
 class NotificationManager {
 public:
 	static	NotificationManager* Instance();
@@ -22,12 +20,8 @@ public:
 
 			void			NotifyNewMessage(const char* senderName,
 								const char* messageText, bool isChannel);
-			void			NotifyNewContact(const char* contactName);
 			void			NotifyConnectionStatus(bool connected,
 								const char* portName = NULL);
-			void			NotifyLoginResult(bool success,
-								const char* targetName);
-			void			NotifyMessageDelivered(const char* recipientName);
 
 private:
 							NotificationManager();

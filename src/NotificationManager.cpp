@@ -73,20 +73,6 @@ NotificationManager::NotifyNewMessage(const char* senderName,
 
 
 void
-NotificationManager::NotifyNewContact(const char* contactName)
-{
-	if (!fEnabled)
-		return;
-
-	BString title("New contact discovered");
-	BString content;
-	content.SetToFormat("%s is now visible on the mesh", contactName);
-
-	_SendNotification(title.String(), content.String(), "contact");
-}
-
-
-void
 NotificationManager::NotifyConnectionStatus(bool connected, const char* portName)
 {
 	if (!fEnabled)
@@ -111,57 +97,22 @@ NotificationManager::NotifyConnectionStatus(bool connected, const char* portName
 
 
 void
-NotificationManager::NotifyLoginResult(bool success, const char* targetName)
-{
-	if (!fEnabled)
-		return;
-
-	BString title;
-	BString content;
-
-	if (success) {
-		title = "Login successful";
-		content.SetToFormat("Logged in to %s", targetName);
-	} else {
-		title = "Login failed";
-		content.SetToFormat("Could not log in to %s", targetName);
-	}
-
-	_SendNotification(title.String(), content.String(), "login");
-}
-
-
-void
-NotificationManager::NotifyMessageDelivered(const char* recipientName)
-{
-	if (!fEnabled)
-		return;
-
-	BString title("Message delivered");
-	BString content;
-	content.SetToFormat("Your message to %s was received", recipientName);
-
-	_SendNotification(title.String(), content.String(), "delivered");
-}
-
-
-void
 NotificationManager::_SendNotification(const char* title, const char* content,
 	const char* messageId)
 {
 	BNotification notification(B_INFORMATION_NOTIFICATION);
 
-	notification.SetGroup(kAppName);
+	notification.SetGroup(APP_NAME);
 	notification.SetTitle(title);
 	notification.SetContent(content);
 
 	// Generate unique message ID
 	BString msgId;
 	if (messageId != NULL)
-		msgId.SetToFormat("%s-%s-%d", kAppSignature, messageId,
+		msgId.SetToFormat("%s-%s-%d", APP_SIGNATURE, messageId,
 			(int)++fNotificationCount);
 	else
-		msgId.SetToFormat("%s-%d", kAppSignature, (int)++fNotificationCount);
+		msgId.SetToFormat("%s-%d", APP_SIGNATURE, (int)++fNotificationCount);
 
 	notification.SetMessageID(msgId.String());
 

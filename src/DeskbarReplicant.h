@@ -14,12 +14,14 @@ class BBitmap;
 
 class DeskbarReplicant : public BView {
 public:
-							DeskbarReplicant(BRect frame, int32 resizingMode);
+							DeskbarReplicant(BRect frame,
+								int32 resizingMode);
 							DeskbarReplicant(BMessage* archive);
 	virtual					~DeskbarReplicant();
 
 	static	DeskbarReplicant* Instantiate(BMessage* archive);
-	virtual	status_t		Archive(BMessage* archive, bool deep = true) const;
+	virtual	status_t		Archive(BMessage* archive,
+								bool deep = true) const;
 
 	virtual void			AttachedToWindow();
 	virtual void			DetachedFromWindow();

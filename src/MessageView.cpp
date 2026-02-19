@@ -2,7 +2,7 @@
  * Copyright 2025, Sestriere Authors
  * All rights reserved. Distributed under the terms of the MIT license.
  *
- * MessageView.cpp — Individual message display item implementation
+ * MessageView.cpp — Individual chat message bubble display implementation
  */
 
 #include "MessageView.h"
@@ -10,38 +10,63 @@
 #include <View.h>
 #include <Font.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <ctime>
-#include <vector>
 
 
-// Modern chat bubble colors
-static const rgb_color kOutgoingBubbleColor = {66, 133, 244, 255};    // Google Blue
-static const rgb_color kOutgoingTextColor = {255, 255, 255, 255};     // White
-static const rgb_color kIncomingBubbleColor = {241, 243, 244, 255};   // Light gray
-static const rgb_color kIncomingTextColor = {32, 33, 36, 255};        // Dark gray
-static const rgb_color kMetaTextColor = {128, 134, 139, 255};         // Gray
-static const rgb_color kDirectColor = {52, 168, 83, 255};             // Green
-static const rgb_color kHopsColor = {251, 188, 4, 255};               // Yellow/Orange
+// Theme-aware colors derived from Haiku system colors
+static inline rgb_color OutgoingBubbleColor()
+{
+	return tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_1_TINT);
+}
+static inline rgb_color OutgoingBorderColor()
+{
+	return tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_2_TINT);
+}
+static inline rgb_color IncomingBubbleColor()
+{
+	return tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_LIGHTEN_1_TINT);
+}
+static inline rgb_color IncomingBorderColor()
+{
+	return tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_1_TINT);
+}
+static inline rgb_color BubbleTextColor()
+{
+	return ui_color(B_DOCUMENT_TEXT_COLOR);
+}
+static inline rgb_color MetaTextColor()
+{
+	return tint_color(ui_color(B_DOCUMENT_TEXT_COLOR), B_LIGHTEN_1_TINT);
+}
+static inline rgb_color SenderNameColor()
+{
+	return ui_color(B_CONTROL_HIGHLIGHT_COLOR);
+}
 
-static const float kBubblePadding = 10.0f;
-static const float kBubbleRadius = 12.0f;
+// Layout constants - Haiku style (smaller radius, subtle)
+static const float kBubblePadding = 8.0f;
+static const float kBubbleRadius = 4.0f;       // Haiku uses smaller radii
 static const float kBubbleMaxWidthRatio = 0.75f;
-static const float kBubbleMargin = 8.0f;
+static const float kBubbleMargin = 6.0f;
+static const float kBorderWidth = 1.0f;
 
 
-MessageView::MessageView(const ReceivedMessage& message, bool outgoing,
-	const char* senderName)
+MessageView::MessageView(const ChatMessage& message, const char* senderName)
 	:
 	BListItem(),
 	fText(message.text),
 	fSenderName(senderName != NULL ? senderName : ""),
-	fTimestamp(message.senderTimestamp),
-	fOutgoing(outgoing),
+	fTimestamp(message.timestamp),
+	fOutgoing(message.isOutgoing),
+	fIsChannel(message.isChannel),
 	fPathLen(message.pathLen),
 	fSnr(message.snr),
-	fBaselineOffset(0),
-	fTextHeight(0)
+	fDeliveryStatus(message.deliveryStatus),
+	fRoundTripMs(message.roundTripMs),
+	fTxtType(message.txtType),
+	fBaselineOffset(0)
 {
 }
 
@@ -55,25 +80,35 @@ void
 MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 {
 	(void)complete;
-	rgb_color lowColor = owner->LowColor();
-	rgb_color highColor = owner->HighColor();
+	owner->PushState();
 
-	// Clear background
-	owner->SetLowColor(ui_color(B_LIST_BACKGROUND_COLOR));
+	// Clear background (light gray to match chat view)
+	rgb_color chatBg = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_1_TINT);
+	owner->SetLowColor(chatBg);
 	owner->FillRect(frame, B_SOLID_LOW);
+
+	bool isCli = (fTxtType == 1);
+
+	// Use monospace font for CLI messages
+	if (isCli)
+		owner->SetFont(be_fixed_font);
 
 	font_height fh;
 	owner->GetFontHeight(&fh);
 	float lineHeight = fh.ascent + fh.descent + fh.leading;
 
-	// Calculate bubble dimensions
-	float maxBubbleWidth = frame.Width() * kBubbleMaxWidthRatio;
-	float textWidth = owner->StringWidth(fText.String());
-	float bubbleContentWidth = std::min(textWidth, maxBubbleWidth - kBubblePadding * 2);
+	// Calculate bubble dimensions — use owner bounds (same as Update)
+	float maxBubbleWidth = owner->Bounds().Width() * kBubbleMaxWidthRatio;
+
+	// For CLI messages, prepend "> " to outgoing commands
+	BString displayText = fText;
+	if (isCli && fOutgoing)
+		displayText.Prepend("> ");
 
 	// Wrap text if needed
 	std::vector<BString> lines;
-	_WrapText(owner, fText, maxBubbleWidth - kBubblePadding * 2, lines);
+	_WrapText(owner, isCli ? displayText : fText,
+		maxBubbleWidth - kBubblePadding * 2, lines);
 
 	// Calculate actual bubble width based on longest line
 	float maxLineWidth = 0;
@@ -84,13 +119,67 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	}
 
 	// Include sender name in width calculation for incoming messages
+	// Must use bold font since the name is drawn bold
 	float headerWidth = 0;
 	if (!fOutgoing && fSenderName.Length() > 0) {
-		headerWidth = owner->StringWidth(fSenderName.String());
+		BFont boldFont;
+		owner->GetFont(&boldFont);
+		boldFont.SetFace(B_BOLD_FACE);
+		headerWidth = boldFont.StringWidth(fSenderName.String());
 	}
 
-	bubbleContentWidth = std::max(maxLineWidth, headerWidth);
+	// Calculate meta text — build the actual displayed string for sizing
+	char timeStr[16];
+	_FormatTimestamp(timeStr, sizeof(timeStr));
+
+	BString displayMeta;
+	if (!fOutgoing) {
+		// Incoming: time + hops (no checkmarks)
+		if (fPathLen == 0 || fPathLen == kPathLenDirect)
+			displayMeta.SetToFormat("%s", timeStr);
+		else
+			displayMeta.SetToFormat("%s \xC2\xB7 %d hops", timeStr, fPathLen);
+	} else {
+		// Outgoing: time + delivery status indicator
+		switch (fDeliveryStatus) {
+			case DELIVERY_PENDING:
+				displayMeta.SetToFormat("%s \xE2\x8F\xB3", timeStr);  // ⏳
+				break;
+			case DELIVERY_CONFIRMED:
+				if (fRoundTripMs > 0)
+					displayMeta.SetToFormat("%s \xE2\x9C\x93\xE2\x9C\x93 %lums",
+						timeStr, (unsigned long)fRoundTripMs);
+				else
+					displayMeta.SetToFormat("%s \xE2\x9C\x93\xE2\x9C\x93", timeStr);
+				break;
+			default:  // DELIVERY_SENT
+				displayMeta.SetToFormat("%s \xE2\x9C\x93", timeStr);  // ✓
+				break;
+		}
+	}
+
+	BString snrStr;
+	float snrWidth = 0;
+	bool showSnr = (!fOutgoing && fSnr != 0);
+	if (showSnr) {
+		snrStr.SetToFormat(" SNR %d", fSnr);
+	}
+
+	// Measure total meta width with actual smaller font
+	BFont metaFont;
+	owner->GetFont(&metaFont);
+	metaFont.SetSize(metaFont.Size() * 0.85f);
+	float metaWidth = metaFont.StringWidth(displayMeta.String());
+	if (showSnr)
+		metaWidth += metaFont.StringWidth(snrStr.String()) + 4;
+
+	// Bubble must fit text, header, AND meta
+	float bubbleContentWidth = std::max({maxLineWidth, headerWidth, metaWidth});
 	float bubbleWidth = bubbleContentWidth + kBubblePadding * 2;
+
+	// For wrapped messages, use full max width to avoid word-boundary gaps
+	if (lines.size() > 1)
+		bubbleWidth = maxBubbleWidth;
 
 	// Calculate bubble height
 	float textHeight = lines.size() * lineHeight;
@@ -112,30 +201,38 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	bubbleRect.top = frame.top + kBubbleMargin / 2;
 	bubbleRect.bottom = bubbleRect.top + bubbleHeight;
 
-	// Draw bubble background
-	rgb_color bubbleColor = fOutgoing ? kOutgoingBubbleColor : kIncomingBubbleColor;
+	// Draw bubble background with Haiku-style subtle shadow
+	rgb_color bubbleColor;
+	rgb_color borderColor;
+	if (isCli) {
+		// Terminal-style: very dark background for CLI messages
+		bubbleColor = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_MAX_TINT);
+		borderColor = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_4_TINT);
+	} else {
+		bubbleColor = fOutgoing ? OutgoingBubbleColor() : IncomingBubbleColor();
+		borderColor = fOutgoing ? OutgoingBorderColor() : IncomingBorderColor();
+	}
+
+	// Subtle shadow (offset by 1 pixel)
+	owner->SetHighColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_2_TINT));
+	BRect shadowRect = bubbleRect;
+	shadowRect.OffsetBy(1, 1);
+	owner->FillRoundRect(shadowRect, kBubbleRadius, kBubbleRadius);
+
+	// Fill bubble
 	owner->SetHighColor(bubbleColor);
 	owner->FillRoundRect(bubbleRect, kBubbleRadius, kBubbleRadius);
 
-	// Draw bubble tail (small triangle)
-	BPoint tail[3];
-	if (fOutgoing) {
-		tail[0] = BPoint(bubbleRect.right - kBubbleRadius, bubbleRect.bottom - 8);
-		tail[1] = BPoint(bubbleRect.right + 6, bubbleRect.bottom - 4);
-		tail[2] = BPoint(bubbleRect.right - kBubbleRadius, bubbleRect.bottom);
-	} else {
-		tail[0] = BPoint(bubbleRect.left + kBubbleRadius, bubbleRect.bottom - 8);
-		tail[1] = BPoint(bubbleRect.left - 6, bubbleRect.bottom - 4);
-		tail[2] = BPoint(bubbleRect.left + kBubbleRadius, bubbleRect.bottom);
-	}
-	owner->FillPolygon(tail, 3);
+	// Draw border (Haiku-style)
+	owner->SetHighColor(borderColor);
+	owner->StrokeRoundRect(bubbleRect, kBubbleRadius, kBubbleRadius);
 
 	// Draw content
 	float yPos = bubbleRect.top + kBubblePadding + fh.ascent;
 
 	// Draw sender name for incoming messages
 	if (!fOutgoing && fSenderName.Length() > 0) {
-		owner->SetHighColor(tint_color(kIncomingTextColor, B_DARKEN_1_TINT));
+		owner->SetHighColor(SenderNameColor());
 		BFont boldFont;
 		owner->GetFont(&boldFont);
 		boldFont.SetFace(B_BOLD_FACE);
@@ -150,8 +247,15 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	}
 
 	// Draw message text
-	rgb_color textColor = fOutgoing ? kOutgoingTextColor : kIncomingTextColor;
-	owner->SetHighColor(textColor);
+	if (isCli && fOutgoing) {
+		// Bright amber prompt for outgoing CLI commands
+		owner->SetHighColor((rgb_color){255, 210, 80, 255});
+	} else if (isCli) {
+		// Bright green text for incoming CLI responses (terminal-style)
+		owner->SetHighColor((rgb_color){130, 255, 200, 255});
+	} else {
+		owner->SetHighColor(BubbleTextColor());
+	}
 
 	for (const auto& line : lines) {
 		owner->DrawString(line.String(),
@@ -160,47 +264,36 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	}
 
 	// Draw timestamp and delivery info
-	char timeStr[16];
-	_FormatTimestamp(timeStr, sizeof(timeStr));
+	owner->SetFont(&metaFont);
 
-	BString metaStr;
-	if (!fOutgoing) {
-		if (fPathLen == 0 || fPathLen == 0xFF) {
-			metaStr.SetToFormat("%s \xE2\x9C\x93", timeStr);  // Direct checkmark
-		} else {
-			metaStr.SetToFormat("%s \xC2\xB7 %d hops", timeStr, fPathLen);
-		}
-	} else {
-		metaStr.SetToFormat("%s \xE2\x9C\x93\xE2\x9C\x93", timeStr);  // Double check for sent
+	// Draw base meta text
+	owner->SetHighColor(MetaTextColor());
+
+	float metaWidthActual = metaFont.StringWidth(displayMeta.String());
+	snrWidth = showSnr ? (metaFont.StringWidth(snrStr.String()) + 4) : 0;
+
+	float totalMetaWidth = metaWidthActual + snrWidth;
+	float metaX = bubbleRect.right - kBubblePadding - totalMetaWidth;
+	float metaY = bubbleRect.bottom - kBubblePadding / 2;
+
+	owner->DrawString(displayMeta.String(), BPoint(metaX, metaY));
+
+	// Draw SNR value with color coding
+	if (showSnr) {
+		rgb_color snrColor;
+		if (fSnr > 0)
+			snrColor = (rgb_color){77, 182, 172, 255};   // Green - good
+		else if (fSnr >= -10)
+			snrColor = (rgb_color){220, 180, 60, 255};    // Yellow - fair
+		else
+			snrColor = (rgb_color){229, 115, 115, 255};   // Red - poor
+
+		owner->SetHighColor(snrColor);
+		owner->DrawString(snrStr.String(),
+			BPoint(metaX + metaWidthActual, metaY));
 	}
 
-	// Use smaller font for meta
-	BFont smallFont;
-	owner->GetFont(&smallFont);
-	float originalSize = smallFont.Size();
-	smallFont.SetSize(originalSize * 0.85f);
-	owner->SetFont(&smallFont);
-
-	rgb_color metaColor;
-	if (fOutgoing) {
-		metaColor = {255, 255, 255, 180};  // Semi-transparent white
-	} else {
-		metaColor = kMetaTextColor;
-	}
-	owner->SetHighColor(metaColor);
-
-	float metaWidth = owner->StringWidth(metaStr.String());
-	owner->DrawString(metaStr.String(),
-		BPoint(bubbleRect.right - kBubblePadding - metaWidth,
-			bubbleRect.bottom - kBubblePadding / 2));
-
-	// Restore font size
-	smallFont.SetSize(originalSize);
-	owner->SetFont(&smallFont);
-
-	// Restore colors
-	owner->SetLowColor(lowColor);
-	owner->SetHighColor(highColor);
+	owner->PopState();
 }
 
 
@@ -209,8 +302,13 @@ MessageView::Update(BView* owner, const BFont* font)
 {
 	BListItem::Update(owner, font);
 
+	bool isCli = (fTxtType == 1);
+
+	// Use monospace font metrics for CLI messages
+	const BFont* measureFont = isCli ? be_fixed_font : font;
+
 	font_height fontHeight;
-	font->GetHeight(&fontHeight);
+	measureFont->GetHeight(&fontHeight);
 
 	fBaselineOffset = fontHeight.ascent + fontHeight.leading + 2;
 
@@ -221,9 +319,31 @@ MessageView::Update(BView* owner, const BFont* font)
 	BRect ownerBounds = owner->Bounds();
 	float maxBubbleWidth = ownerBounds.Width() * kBubbleMaxWidthRatio;
 
+	// For CLI messages, prepend "> " to outgoing commands
+	BString displayText = fText;
+	if (isCli && fOutgoing)
+		displayText.Prepend("> ");
+
 	// Wrap text to calculate actual height
+	// NOTE: Do NOT call owner->SetFont() here — it triggers
+	// BListView::_UpdateItems() → Update() infinite recursion.
+	// For CLI, estimate wrapping using monospace font directly.
 	std::vector<BString> lines;
-	_WrapText(owner, fText, maxBubbleWidth - kBubblePadding * 2, lines);
+	if (isCli) {
+		// Estimate line count using monospace font width
+		float availWidth = maxBubbleWidth - kBubblePadding * 2;
+		float textWidth = be_fixed_font->StringWidth(
+			displayText.String());
+		int32 lineCount = (textWidth > availWidth)
+			? (int32)(textWidth / availWidth) + 1 : 1;
+		for (int32 i = 0; i < lineCount; i++)
+			lines.push_back("");
+		if (lines.empty())
+			lines.push_back("");
+	} else {
+		_WrapText(owner, fText,
+			maxBubbleWidth - kBubblePadding * 2, lines);
+	}
 
 	// Calculate total height
 	float textHeight = lines.size() * lineHeight;
@@ -238,29 +358,23 @@ MessageView::Update(BView* owner, const BFont* font)
 
 
 void
-MessageView::_FormatTimestamp(char* buffer, size_t size) const
+MessageView::SetDeliveryStatus(uint8 status, uint32 rtt)
 {
-	time_t timestamp = (time_t)fTimestamp;
-	struct tm* tm = localtime(&timestamp);
-
-	if (tm != NULL)
-		strftime(buffer, size, "%H:%M", tm);
-	else
-		snprintf(buffer, size, "--:--");
+	fDeliveryStatus = status;
+	fRoundTripMs = rtt;
 }
 
 
-float
-MessageView::_CalcTextHeight(BView* owner, float maxWidth) const
+void
+MessageView::_FormatTimestamp(char* buffer, size_t size) const
 {
-	std::vector<BString> lines;
-	_WrapText(owner, fText, maxWidth, lines);
+	time_t timestamp = (time_t)fTimestamp;
+	struct tm tm;
 
-	font_height fh;
-	owner->GetFontHeight(&fh);
-	float lineHeight = fh.ascent + fh.descent + fh.leading;
-
-	return lines.size() * lineHeight;
+	if (localtime_r(&timestamp, &tm) != NULL)
+		strftime(buffer, size, "%H:%M", &tm);
+	else
+		snprintf(buffer, size, "--:--");
 }
 
 

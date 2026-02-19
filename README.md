@@ -49,7 +49,7 @@ For Silicon Labs CP210x devices (like Heltec LoRa32 v3.2), you may need the patc
 ### Using Makefile (recommended)
 
 ```bash
-cd src_minimal
+cd src
 make
 ./objects.x86_64-cc13-debug/Sestriere
 ```
@@ -161,7 +161,7 @@ Sestriere requests **protocol V3** via `CMD_APP_START`. V3 adds SNR fields to in
 Sestriere/
 ├── README.md                       # This file
 ├── HAIKU_USB_SERIAL_FIX.md         # USB driver patch docs
-├── src_minimal/                    # Main project source
+├── src/                            # Main project source
 │   ├── Makefile                    # Build system
 │   ├── Sestriere.cpp/h             # BApplication entry point
 │   ├── MainWindow.cpp/h            # Main window + protocol handler
@@ -186,7 +186,6 @@ Sestriere/
 │   ├── MqttSettingsWindow.cpp/h    # MQTT connection settings
 │   ├── Types.h                     # Protocol structures & radio presets
 │   └── Constants.h                 # Application constants
-├── src/                            # Legacy project (reference)
 └── haiku-patches/                  # USB driver patches
 ```
 

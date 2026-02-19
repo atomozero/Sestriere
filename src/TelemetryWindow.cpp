@@ -1,39 +1,44 @@
 /*
- * Sestriere - MeshCore Client for Haiku OS
- * TelemetryWindow.cpp - Sensor telemetry dashboard implementation
+ * Copyright 2025, Sestriere Authors
+ * All rights reserved. Distributed under the terms of the MIT license.
+ *
+ * TelemetryWindow.cpp — Sensor telemetry dashboard implementation
  */
 
 #include "TelemetryWindow.h"
-#include "Constants.h"
 
 #include <Alert.h>
-#include <Application.h>
 #include <Box.h>
 #include <File.h>
 #include <FindDirectory.h>
 #include <LayoutBuilder.h>
 #include <Path.h>
-#include <SeparatorView.h>
 
-#include <stdio.h>
-#include <math.h>
-#include <float.h>
+#include <cmath>
+#include <cstdio>
+#include <cfloat>
+#include <climits>
+#include <ctime>
+
+#include "Constants.h"
+#include "DatabaseManager.h"
 
 
 // ============================================================================
-// TelemetryGraphView Implementation
+// TelemetryGraphView
 // ============================================================================
 
 TelemetryGraphView::TelemetryGraphView(BRect frame)
-	: BView(frame, "telemetry_graph", B_FOLLOW_ALL_SIDES,
+	:
+	BView(frame, "telemetry_graph", B_FOLLOW_ALL_SIDES,
 		B_WILL_DRAW | B_FRAME_EVENTS),
-	  fSensor(NULL),
-	  fTimeRange(60 * 1000000LL),	// 1 minute default
-	  fShowCursor(false),
-	  fMarginLeft(60),
-	  fMarginRight(20),
-	  fMarginTop(20),
-	  fMarginBottom(40)
+	fSensor(NULL),
+	fTimeRange(60 * 1000000LL),
+	fShowCursor(false),
+	fMarginLeft(60),
+	fMarginRight(20),
+	fMarginTop(20),
+	fMarginBottom(40)
 {
 	SetViewColor(30, 30, 35);
 }
@@ -49,35 +54,28 @@ TelemetryGraphView::Draw(BRect /*updateRect*/)
 {
 	BRect bounds = Bounds();
 
-	// Calculate graph area
 	fGraphRect.left = bounds.left + fMarginLeft;
 	fGraphRect.top = bounds.top + fMarginTop;
 	fGraphRect.right = bounds.right - fMarginRight;
 	fGraphRect.bottom = bounds.bottom - fMarginBottom;
 
-	// Draw background
+	// Background
 	SetHighColor(30, 30, 35);
 	FillRect(bounds);
-
-	// Draw graph area background
 	SetHighColor(25, 25, 30);
 	FillRect(fGraphRect);
 
-	// Draw grid
 	_DrawGrid();
 
-	// Draw graph line
 	if (fSensor != NULL)
 		_DrawGraph();
 
-	// Draw cursor
 	if (fShowCursor)
 		_DrawCursor();
 
-	// Draw legend
 	_DrawLegend();
 
-	// Draw border
+	// Border
 	SetHighColor(60, 60, 70);
 	StrokeRect(fGraphRect);
 }
@@ -96,7 +94,8 @@ TelemetryGraphView::MouseDown(BPoint where)
 
 
 void
-TelemetryGraphView::MouseMoved(BPoint where, uint32 transit, const BMessage* /*dragMessage*/)
+TelemetryGraphView::MouseMoved(BPoint where, uint32 transit,
+	const BMessage* /*dragMessage*/)
 {
 	if (fShowCursor) {
 		if (transit == B_EXITED_VIEW) {
@@ -136,7 +135,6 @@ TelemetryGraphView::_DrawGrid()
 	SetHighColor(45, 45, 55);
 	SetPenSize(1.0);
 
-	// Vertical grid lines (time)
 	int numVLines = 6;
 	float vStep = fGraphRect.Width() / numVLines;
 	for (int i = 0; i <= numVLines; i++) {
@@ -144,7 +142,6 @@ TelemetryGraphView::_DrawGrid()
 		StrokeLine(BPoint(x, fGraphRect.top), BPoint(x, fGraphRect.bottom));
 	}
 
-	// Horizontal grid lines (values)
 	int numHLines = 5;
 	float hStep = fGraphRect.Height() / numHLines;
 	for (int i = 0; i <= numHLines; i++) {
@@ -152,7 +149,7 @@ TelemetryGraphView::_DrawGrid()
 		StrokeLine(BPoint(fGraphRect.left, y), BPoint(fGraphRect.right, y));
 	}
 
-	// Draw time labels
+	// Time labels
 	SetHighColor(150, 150, 160);
 	SetLowColor(30, 30, 35);
 	BFont font(be_plain_font);
@@ -176,7 +173,7 @@ TelemetryGraphView::_DrawGrid()
 		DrawString(label, BPoint(x - labelWidth / 2, fGraphRect.bottom + 15));
 	}
 
-	// Draw value labels if sensor is set
+	// Value labels
 	if (fSensor != NULL && fSensor->history.CountItems() > 0) {
 		float minVal = fSensor->minValue;
 		float maxVal = fSensor->maxValue;
@@ -186,10 +183,9 @@ TelemetryGraphView::_DrawGrid()
 			maxVal += 1;
 		}
 
-		// Add 10% padding
 		float range = maxVal - minVal;
-		minVal -= range * 0.1;
-		maxVal += range * 0.1;
+		minVal -= range * 0.1f;
+		maxVal += range * 0.1f;
 
 		for (int i = 0; i <= numHLines; i++) {
 			float y = fGraphRect.top + i * hStep;
@@ -224,10 +220,9 @@ TelemetryGraphView::_DrawGraph()
 		maxVal += 1;
 	}
 
-	// Add 10% padding
 	float range = maxVal - minVal;
-	minVal -= range * 0.1;
-	maxVal += range * 0.1;
+	minVal -= range * 0.1f;
+	maxVal += range * 0.1f;
 
 	bigtime_t now = system_time();
 	bigtime_t startTime = now - fTimeRange;
@@ -239,7 +234,7 @@ TelemetryGraphView::_DrawGraph()
 	BPoint prevPoint;
 	bool havePrev = false;
 
-	for (int i = 0; i < fSensor->history.CountItems(); i++) {
+	for (int32 i = 0; i < fSensor->history.CountItems(); i++) {
 		TelemetryDataPoint* point = fSensor->history.ItemAt(i);
 
 		if (point->timestamp < startTime)
@@ -250,15 +245,13 @@ TelemetryGraphView::_DrawGraph()
 		float y = fGraphRect.bottom -
 			(point->value - minVal) / (maxVal - minVal) * fGraphRect.Height();
 
-		// Clamp to graph area
 		if (y < fGraphRect.top) y = fGraphRect.top;
 		if (y > fGraphRect.bottom) y = fGraphRect.bottom;
 
 		BPoint currentPoint(x, y);
 
-		if (havePrev) {
+		if (havePrev)
 			StrokeLine(prevPoint, currentPoint);
-		}
 
 		prevPoint = currentPoint;
 		havePrev = true;
@@ -266,7 +259,7 @@ TelemetryGraphView::_DrawGraph()
 
 	// Draw data points
 	SetPenSize(1.0);
-	for (int i = 0; i < fSensor->history.CountItems(); i++) {
+	for (int32 i = 0; i < fSensor->history.CountItems(); i++) {
 		TelemetryDataPoint* point = fSensor->history.ItemAt(i);
 
 		if (point->timestamp < startTime)
@@ -291,13 +284,11 @@ TelemetryGraphView::_DrawGraph()
 void
 TelemetryGraphView::_DrawCursor()
 {
-	// Draw vertical cursor line
 	SetHighColor(255, 255, 0, 180);
 	SetPenSize(1.0);
 	StrokeLine(BPoint(fCursorPos.x, fGraphRect.top),
 		BPoint(fCursorPos.x, fGraphRect.bottom));
 
-	// Find value at cursor position
 	if (fSensor == NULL || fSensor->history.CountItems() == 0)
 		return;
 
@@ -310,9 +301,9 @@ TelemetryGraphView::_DrawCursor()
 	TelemetryDataPoint* closest = NULL;
 	bigtime_t closestDiff = LLONG_MAX;
 
-	for (int i = 0; i < fSensor->history.CountItems(); i++) {
+	for (int32 i = 0; i < fSensor->history.CountItems(); i++) {
 		TelemetryDataPoint* point = fSensor->history.ItemAt(i);
-		bigtime_t diff = abs(point->timestamp - cursorTime);
+		bigtime_t diff = llabs(point->timestamp - cursorTime);
 		if (diff < closestDiff) {
 			closestDiff = diff;
 			closest = point;
@@ -320,7 +311,6 @@ TelemetryGraphView::_DrawCursor()
 	}
 
 	if (closest != NULL && closestDiff < fTimeRange / 10) {
-		// Draw tooltip
 		char tooltip[64];
 		snprintf(tooltip, sizeof(tooltip), "%.2f %s", closest->value,
 			fSensor->unit.String());
@@ -337,7 +327,6 @@ TelemetryGraphView::_DrawCursor()
 			fCursorPos.x + tooltipWidth / 2,
 			fGraphRect.top - 5);
 
-		// Adjust if off-screen
 		if (tooltipRect.left < fGraphRect.left)
 			tooltipRect.OffsetBy(fGraphRect.left - tooltipRect.left, 0);
 		if (tooltipRect.right > fGraphRect.right)
@@ -387,43 +376,24 @@ TelemetryGraphView::_ValueToY(float value)
 	}
 
 	float range = maxVal - minVal;
-	minVal -= range * 0.1;
-	maxVal += range * 0.1;
+	minVal -= range * 0.1f;
+	maxVal += range * 0.1f;
 
 	return fGraphRect.bottom -
 		(value - minVal) / (maxVal - minVal) * fGraphRect.Height();
 }
 
 
-bigtime_t
-TelemetryGraphView::_XToTime(float x)
-{
-	bigtime_t now = system_time();
-	bigtime_t startTime = now - fTimeRange;
-	return startTime +
-		(bigtime_t)((x - fGraphRect.left) / fGraphRect.Width() * fTimeRange);
-}
-
-
-float
-TelemetryGraphView::_TimeToX(bigtime_t time)
-{
-	bigtime_t now = system_time();
-	bigtime_t startTime = now - fTimeRange;
-	return fGraphRect.left +
-		(float)(time - startTime) / fTimeRange * fGraphRect.Width();
-}
-
-
 // ============================================================================
-// TelemetrySensorView Implementation
+// TelemetrySensorView
 // ============================================================================
 
 TelemetrySensorView::TelemetrySensorView(BRect frame, SensorInfo* sensor)
-	: BView(frame, "sensor_view", B_FOLLOW_LEFT_RIGHT | B_FOLLOW_TOP,
+	:
+	BView(frame, "sensor_view", B_FOLLOW_LEFT_RIGHT | B_FOLLOW_TOP,
 		B_WILL_DRAW | B_FRAME_EVENTS),
-	  fSensor(sensor),
-	  fSelected(false)
+	fSensor(sensor),
+	fSelected(false)
 {
 	SetViewColor(B_TRANSPARENT_COLOR);
 }
@@ -435,17 +405,14 @@ TelemetrySensorView::~TelemetrySensorView()
 
 
 void
-TelemetrySensorView::Draw(BRect updateRect)
+TelemetrySensorView::Draw(BRect /*updateRect*/)
 {
-	(void)updateRect;
 	BRect bounds = Bounds();
 
-	// Background
-	if (fSelected) {
+	if (fSelected)
 		SetHighColor(60, 100, 140);
-	} else {
+	else
 		SetHighColor(45, 45, 50);
-	}
 	FillRect(bounds);
 
 	// Border
@@ -453,7 +420,7 @@ TelemetrySensorView::Draw(BRect updateRect)
 	StrokeLine(BPoint(bounds.left, bounds.bottom),
 		BPoint(bounds.right, bounds.bottom));
 
-	// Sensor color indicator
+	// Color indicator
 	SetHighColor(fSensor->color);
 	FillRect(BRect(bounds.left + 5, bounds.top + 8,
 		bounds.left + 15, bounds.bottom - 8));
@@ -478,9 +445,12 @@ TelemetrySensorView::Draw(BRect updateRect)
 	SetHighColor(180, 180, 190);
 	DrawString(valueStr, BPoint(bounds.left + 25, bounds.top + 32));
 
-	// Node ID
-	char nodeStr[32];
-	snprintf(nodeStr, sizeof(nodeStr), "Node: %08X", fSensor->nodeId);
+	// Node ID or contact name
+	char nodeStr[80];
+	if (fSensor->displayName.Length() > 0)
+		snprintf(nodeStr, sizeof(nodeStr), "%s", fSensor->displayName.String());
+	else
+		snprintf(nodeStr, sizeof(nodeStr), "Node: %08X", fSensor->nodeId);
 	float nodeWidth = StringWidth(nodeStr);
 	SetHighColor(120, 120, 130);
 	DrawString(nodeStr, BPoint(bounds.right - nodeWidth - 10, bounds.top + 25));
@@ -488,10 +458,8 @@ TelemetrySensorView::Draw(BRect updateRect)
 
 
 void
-TelemetrySensorView::MouseDown(BPoint where)
+TelemetrySensorView::MouseDown(BPoint /*where*/)
 {
-	(void)where;
-	// Notify parent
 	BMessage msg(MSG_TELEMETRY_SELECT_SENSOR);
 	msg.AddPointer("sensor", fSensor);
 	Window()->PostMessage(&msg);
@@ -516,24 +484,24 @@ TelemetrySensorView::UpdateValue()
 
 
 // ============================================================================
-// TelemetryWindow Implementation
+// TelemetryWindow
 // ============================================================================
 
-TelemetryWindow::TelemetryWindow(BRect frame, BMessenger target)
-	: BWindow(frame, "Sensor Telemetry", B_TITLED_WINDOW,
+TelemetryWindow::TelemetryWindow(BWindow* parent)
+	:
+	BWindow(BRect(100, 100, 750, 500), "Sensor Telemetry", B_TITLED_WINDOW,
 		B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS),
-	  fTarget(target),
-	  fRefreshRunner(NULL),
-	  fSelectedSensor(-1),
-	  fCurrentTimeRange(60 * 1000000LL),	// 1 minute
-	  fSensors(20)
+	fParent(parent),
+	fRefreshRunner(NULL),
+	fSelectedSensor(-1),
+	fCurrentTimeRange(60 * 1000000LL),
+	fSensors(20)
 {
 	_BuildLayout();
 
-	// Start refresh timer (update every second)
 	BMessage timerMsg(MSG_TELEMETRY_TIMER);
 	fRefreshRunner = new BMessageRunner(BMessenger(this), &timerMsg,
-		1000000, -1);	// 1 second interval, infinite count
+		1000000, -1);
 }
 
 
@@ -546,19 +514,17 @@ TelemetryWindow::~TelemetryWindow()
 void
 TelemetryWindow::_BuildLayout()
 {
-	fRootView = new BView("root", B_WILL_DRAW);
-	fRootView->SetViewColor(40, 40, 45);
-
-	// Left panel - sensor list
-	fSensorListView = new BView("sensor_list", B_WILL_DRAW);
+	// Left panel - sensor list (BRect constructor required for BScrollView target)
+	fSensorListView = new BView(BRect(0, 0, 205, 300), "sensor_list",
+		B_FOLLOW_ALL_SIDES, B_WILL_DRAW);
 	fSensorListView->SetViewColor(40, 40, 45);
-	fSensorListView->SetExplicitMinSize(BSize(220, B_SIZE_UNSET));
-	fSensorListView->SetExplicitMaxSize(BSize(220, B_SIZE_UNLIMITED));
 
 	fSensorScrollView = new BScrollView("sensor_scroll", fSensorListView,
 		B_FOLLOW_ALL_SIDES, 0, false, true);
+	fSensorScrollView->SetExplicitMinSize(BSize(220, B_SIZE_UNSET));
+	fSensorScrollView->SetExplicitMaxSize(BSize(220, B_SIZE_UNLIMITED));
 
-	// Right panel - graph and stats
+	// Right panel - graph
 	fGraphView = new TelemetryGraphView(BRect(0, 0, 400, 250));
 	fGraphView->SetExplicitMinSize(BSize(400, 250));
 
@@ -573,7 +539,7 @@ TelemetryWindow::_BuildLayout()
 	fNodeIdView = new BStringView("node", "Node: --");
 
 	BView* statsContent = new BView("stats_content", 0);
-	statsContent->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+	statsContent->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 
 	BLayoutBuilder::Group<>(statsContent, B_HORIZONTAL, 20)
 		.SetInsets(10)
@@ -589,13 +555,16 @@ TelemetryWindow::_BuildLayout()
 
 	// Time range buttons
 	BView* timeRangeView = new BView("time_range", 0);
-	timeRangeView->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+	timeRangeView->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 
 	BStringView* timeLabel = new BStringView("time_label", "Time Range:");
 	fRange1MinButton = new BButton("1m", "1 min", new BMessage('tr1m'));
 	fRange5MinButton = new BButton("5m", "5 min", new BMessage('tr5m'));
 	fRange15MinButton = new BButton("15m", "15 min", new BMessage('tr15'));
 	fRange1HourButton = new BButton("1h", "1 hour", new BMessage('tr1h'));
+	fRange6HourButton = new BButton("6h", "6 hours", new BMessage('tr6h'));
+	fRange24HourButton = new BButton("24h", "24 hours", new BMessage('t24h'));
+	fRange7DayButton = new BButton("7d", "7 days", new BMessage('tr7d'));
 
 	BLayoutBuilder::Group<>(timeRangeView, B_HORIZONTAL, 5)
 		.SetInsets(5)
@@ -604,25 +573,39 @@ TelemetryWindow::_BuildLayout()
 		.Add(fRange5MinButton)
 		.Add(fRange15MinButton)
 		.Add(fRange1HourButton)
+		.Add(fRange6HourButton)
+		.Add(fRange24HourButton)
+		.Add(fRange7DayButton)
 		.AddGlue()
 	.End();
 
 	// Control buttons
-	fExportButton = new BButton("export", "Export CSV", new BMessage(MSG_TELEMETRY_EXPORT));
-	fClearButton = new BButton("clear", "Clear History", new BMessage(MSG_TELEMETRY_CLEAR_HISTORY));
+	fExportButton = new BButton("export", "Export CSV",
+		new BMessage(MSG_TELEMETRY_EXPORT));
+	fClearButton = new BButton("clear", "Clear History",
+		new BMessage(MSG_TELEMETRY_CLEAR_HISTORY));
+	fLoadHistoryButton = new BButton("loadhist", "Load History",
+		new BMessage('tldb'));
+	fRequestAllButton = new BButton("reqall", "Request All",
+		new BMessage(MSG_REQUEST_ALL_TELEMETRY));
 
 	BView* buttonView = new BView("buttons", 0);
-	buttonView->SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+	buttonView->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 
 	BLayoutBuilder::Group<>(buttonView, B_HORIZONTAL, 10)
 		.SetInsets(5)
+		.Add(fLoadHistoryButton)
+		.Add(fRequestAllButton)
 		.AddGlue()
 		.Add(fExportButton)
 		.Add(fClearButton)
 	.End();
 
 	// Main layout
-	BLayoutBuilder::Group<>(fRootView, B_HORIZONTAL, 0)
+	BView* rootView = new BView("root", B_WILL_DRAW);
+	rootView->SetViewColor(40, 40, 45);
+
+	BLayoutBuilder::Group<>(rootView, B_HORIZONTAL, 0)
 		.Add(fSensorScrollView, 0.3)
 		.AddGroup(B_VERTICAL, 5, 0.7)
 			.SetInsets(10)
@@ -634,7 +617,7 @@ TelemetryWindow::_BuildLayout()
 	.End();
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
-		.Add(fRootView)
+		.Add(rootView)
 	.End();
 }
 
@@ -647,7 +630,7 @@ TelemetryWindow::MessageReceived(BMessage* message)
 		{
 			SensorInfo* sensor;
 			if (message->FindPointer("sensor", (void**)&sensor) == B_OK) {
-				for (int i = 0; i < fSensors.CountItems(); i++) {
+				for (int32 i = 0; i < fSensors.CountItems(); i++) {
 					if (fSensors.ItemAt(i) == sensor) {
 						_SelectSensor(i);
 						break;
@@ -658,8 +641,7 @@ TelemetryWindow::MessageReceived(BMessage* message)
 		}
 
 		case MSG_TELEMETRY_TIMER:
-			// Update all sensor views
-			for (int i = 0; i < fSensorListView->CountChildren(); i++) {
+			for (int32 i = 0; i < fSensorListView->CountChildren(); i++) {
 				TelemetrySensorView* view =
 					dynamic_cast<TelemetrySensorView*>(fSensorListView->ChildAt(i));
 				if (view != NULL)
@@ -696,6 +678,30 @@ TelemetryWindow::MessageReceived(BMessage* message)
 			fGraphView->SetTimeRange(fCurrentTimeRange);
 			break;
 
+		case 'tr6h':
+			fCurrentTimeRange = 6LL * 60 * 60 * 1000000LL;
+			fGraphView->SetTimeRange(fCurrentTimeRange);
+			break;
+
+		case 't24h':
+			fCurrentTimeRange = 24LL * 60 * 60 * 1000000LL;
+			fGraphView->SetTimeRange(fCurrentTimeRange);
+			break;
+
+		case 'tr7d':
+			fCurrentTimeRange = 7LL * 24 * 60 * 60 * 1000000LL;
+			fGraphView->SetTimeRange(fCurrentTimeRange);
+			break;
+
+		case 'tldb':
+			LoadHistoryFromDB();
+			break;
+
+		case MSG_REQUEST_ALL_TELEMETRY:
+			if (fParent != NULL)
+				BMessenger(fParent).SendMessage(message);
+			break;
+
 		default:
 			BWindow::MessageReceived(message);
 			break;
@@ -713,20 +719,28 @@ TelemetryWindow::QuitRequested()
 
 void
 TelemetryWindow::AddTelemetryData(uint32 nodeId, const BString& sensorName,
-	SensorType type, float value, const BString& unit)
+	SensorType type, float value, const BString& unit,
+	const char* contactName)
 {
 	SensorInfo* sensor = _FindOrCreateSensor(nodeId, sensorName, type, unit);
 
-	// Add data point
+	if (contactName != NULL && contactName[0] != '\0')
+		sensor->displayName = contactName;
+
 	TelemetryDataPoint* point = new TelemetryDataPoint();
 	point->timestamp = system_time();
 	point->value = value;
 	sensor->history.AddItem(point);
 
-	// Update current value
+	// Save to database
+	DatabaseManager* db = DatabaseManager::Instance();
+	if (db->IsOpen()) {
+		db->InsertTelemetry(nodeId, sensorName.String(),
+			(uint8)type, value, unit.String());
+	}
+
 	sensor->currentValue = value;
 
-	// Update min/max
 	if (value < sensor->minValue)
 		sensor->minValue = value;
 	if (value > sensor->maxValue)
@@ -734,17 +748,14 @@ TelemetryWindow::AddTelemetryData(uint32 nodeId, const BString& sensorName,
 
 	// Calculate average
 	float sum = 0;
-	for (int i = 0; i < sensor->history.CountItems(); i++) {
+	for (int32 i = 0; i < sensor->history.CountItems(); i++)
 		sum += sensor->history.ItemAt(i)->value;
-	}
 	sensor->avgValue = sum / sensor->history.CountItems();
 
-	// Limit history size (keep last 1000 points)
-	while (sensor->history.CountItems() > 1000) {
+	// Limit history
+	while (sensor->history.CountItems() > 1000)
 		sensor->history.RemoveItemAt(0);
-	}
 
-	// Update UI
 	_UpdateSensorList();
 	if (fSelectedSensor >= 0 && fSensors.ItemAt(fSelectedSensor) == sensor) {
 		_UpdateStats();
@@ -756,7 +767,7 @@ TelemetryWindow::AddTelemetryData(uint32 nodeId, const BString& sensorName,
 void
 TelemetryWindow::ClearAllData()
 {
-	for (int i = 0; i < fSensors.CountItems(); i++) {
+	for (int32 i = 0; i < fSensors.CountItems(); i++) {
 		SensorInfo* sensor = fSensors.ItemAt(i);
 		sensor->history.MakeEmpty();
 		sensor->currentValue = 0;
@@ -774,14 +785,12 @@ SensorInfo*
 TelemetryWindow::_FindOrCreateSensor(uint32 nodeId, const BString& name,
 	SensorType type, const BString& unit)
 {
-	// Look for existing sensor
-	for (int i = 0; i < fSensors.CountItems(); i++) {
+	for (int32 i = 0; i < fSensors.CountItems(); i++) {
 		SensorInfo* sensor = fSensors.ItemAt(i);
 		if (sensor->nodeId == nodeId && sensor->name == name)
 			return sensor;
 	}
 
-	// Create new sensor
 	SensorInfo* sensor = new SensorInfo();
 	sensor->name = name;
 	sensor->unit = unit;
@@ -792,7 +801,6 @@ TelemetryWindow::_FindOrCreateSensor(uint32 nodeId, const BString& name,
 	fSensors.AddItem(sensor);
 	_UpdateSensorList();
 
-	// Select first sensor if none selected
 	if (fSelectedSensor < 0)
 		_SelectSensor(0);
 
@@ -803,21 +811,27 @@ TelemetryWindow::_FindOrCreateSensor(uint32 nodeId, const BString& name,
 void
 TelemetryWindow::_UpdateSensorList()
 {
-	// Remove old views
 	while (fSensorListView->CountChildren() > 0) {
 		BView* child = fSensorListView->ChildAt(0);
 		fSensorListView->RemoveChild(child);
 		delete child;
 	}
 
-	// Add sensor views
 	float y = 0;
 	float viewHeight = 45;
-	BRect listBounds = fSensorListView->Bounds();
 
-	for (int i = 0; i < fSensors.CountItems(); i++) {
+	// Get usable width from scroll view's visible area
+	float scrollWidth = fSensorScrollView->Bounds().Width();
+	if (scrollWidth < 20)
+		scrollWidth = 220;
+
+	float itemWidth = scrollWidth - B_V_SCROLL_BAR_WIDTH;
+	if (itemWidth < 20)
+		itemWidth = 200;
+
+	for (int32 i = 0; i < fSensors.CountItems(); i++) {
 		SensorInfo* sensor = fSensors.ItemAt(i);
-		BRect frame(0, y, listBounds.Width() - B_V_SCROLL_BAR_WIDTH, y + viewHeight);
+		BRect frame(0, y, itemWidth, y + viewHeight);
 
 		TelemetrySensorView* view = new TelemetrySensorView(frame, sensor);
 		view->SetSelected(i == fSelectedSensor);
@@ -826,8 +840,9 @@ TelemetryWindow::_UpdateSensorList()
 		y += viewHeight;
 	}
 
-	// Update scroll view data rect
-	fSensorListView->ResizeTo(listBounds.Width(), y);
+	// Set total height for scroll area (minimum 10px)
+	float totalHeight = y > 0 ? y : 10;
+	fSensorListView->ResizeTo(itemWidth, totalHeight);
 }
 
 
@@ -837,22 +852,17 @@ TelemetryWindow::_SelectSensor(int32 index)
 	if (index < 0 || index >= fSensors.CountItems())
 		return;
 
-	// Update selection state
 	fSelectedSensor = index;
 
-	// Update sensor views
-	for (int i = 0; i < fSensorListView->CountChildren(); i++) {
+	for (int32 i = 0; i < fSensorListView->CountChildren(); i++) {
 		TelemetrySensorView* view =
 			dynamic_cast<TelemetrySensorView*>(fSensorListView->ChildAt(i));
 		if (view != NULL)
 			view->SetSelected(i == fSelectedSensor);
 	}
 
-	// Update graph
 	SensorInfo* sensor = fSensors.ItemAt(fSelectedSensor);
 	fGraphView->SetSensor(sensor);
-
-	// Update stats
 	_UpdateStats();
 }
 
@@ -876,31 +886,32 @@ TelemetryWindow::_UpdateStats()
 		sensor->currentValue, sensor->unit.String());
 	fCurrentValueView->SetText(buffer);
 
-	if (sensor->minValue != FLT_MAX) {
+	if (sensor->minValue != FLT_MAX)
 		snprintf(buffer, sizeof(buffer), "Min: %.2f %s",
 			sensor->minValue, sensor->unit.String());
-	} else {
+	else
 		snprintf(buffer, sizeof(buffer), "Min: --");
-	}
 	fMinValueView->SetText(buffer);
 
-	if (sensor->maxValue != -FLT_MAX) {
+	if (sensor->maxValue != -FLT_MAX)
 		snprintf(buffer, sizeof(buffer), "Max: %.2f %s",
 			sensor->maxValue, sensor->unit.String());
-	} else {
+	else
 		snprintf(buffer, sizeof(buffer), "Max: --");
-	}
 	fMaxValueView->SetText(buffer);
 
-	if (sensor->history.CountItems() > 0) {
+	if (sensor->history.CountItems() > 0)
 		snprintf(buffer, sizeof(buffer), "Average: %.2f %s",
 			sensor->avgValue, sensor->unit.String());
-	} else {
+	else
 		snprintf(buffer, sizeof(buffer), "Average: --");
-	}
 	fAvgValueView->SetText(buffer);
 
-	snprintf(buffer, sizeof(buffer), "Node: %08X", sensor->nodeId);
+	if (sensor->displayName.Length() > 0)
+		snprintf(buffer, sizeof(buffer), "%s (%08X)",
+			sensor->displayName.String(), sensor->nodeId);
+	else
+		snprintf(buffer, sizeof(buffer), "Node: %08X", sensor->nodeId);
 	fNodeIdView->SetText(buffer);
 }
 
@@ -915,12 +926,10 @@ TelemetryWindow::_ExportData()
 	if (sensor->history.CountItems() == 0)
 		return;
 
-	// Get desktop path
 	BPath path;
 	if (find_directory(B_DESKTOP_DIRECTORY, &path) != B_OK)
 		return;
 
-	// Create filename
 	BString filename;
 	filename << "telemetry_" << sensor->name << "_";
 	filename << system_time() / 1000000 << ".csv";
@@ -928,31 +937,130 @@ TelemetryWindow::_ExportData()
 
 	path.Append(filename.String());
 
-	// Write CSV
 	BFile file(path.Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
 	if (file.InitCheck() != B_OK)
 		return;
 
-	// Header
-	BString header;
-	header << "timestamp,value,unit\n";
+	BString header("timestamp,value,unit\n");
 	file.Write(header.String(), header.Length());
 
-	// Data
-	for (int i = 0; i < sensor->history.CountItems(); i++) {
+	for (int32 i = 0; i < sensor->history.CountItems(); i++) {
 		TelemetryDataPoint* point = sensor->history.ItemAt(i);
-
 		BString line;
 		line << point->timestamp << "," << point->value << ","
 			 << sensor->unit << "\n";
 		file.Write(line.String(), line.Length());
 	}
 
-	// Show notification
 	BString msg;
 	msg << "Telemetry data exported to:\n" << path.Path();
 	BAlert* alert = new BAlert("Export", msg.String(), "OK");
 	alert->Go();
+}
+
+
+void
+TelemetryWindow::LoadHistoryFromDB()
+{
+	DatabaseManager* db = DatabaseManager::Instance();
+	if (!db->IsOpen())
+		return;
+
+	// Get all sensor+node combinations from DB
+	BObjectList<BString, true> nodeNames(20);
+	int32 count = db->GetTelemetryNodeIds(nodeNames);
+
+	if (count == 0) {
+		(new BAlert("No Data",
+			"No historical telemetry data found in database.",
+			"OK"))->Go();
+		return;
+	}
+
+	// Load last 7 days of data for each sensor
+	uint32 since = (uint32)time(NULL) - (7 * 86400);
+	int32 totalLoaded = 0;
+
+	for (int32 i = 0; i < nodeNames.CountItems(); i++) {
+		BString* entry = nodeNames.ItemAt(i);
+		if (entry == NULL)
+			continue;
+
+		// Parse "nodeId:sensorName"
+		int32 colonPos = entry->FindFirst(':');
+		if (colonPos < 0)
+			continue;
+
+		BString nodeIdStr;
+		entry->CopyInto(nodeIdStr, 0, colonPos);
+		uint32 nodeId = (uint32)atoi(nodeIdStr.String());
+
+		BString sensorName;
+		entry->CopyInto(sensorName, colonPos + 1, entry->Length() - colonPos - 1);
+
+		BObjectList<TelemetryRecord, true> records(100);
+		int32 loaded = db->LoadTelemetryHistory(nodeId,
+			sensorName.String(), since, records);
+
+		if (loaded == 0)
+			continue;
+
+		// Determine sensor type and unit from first record
+		SensorType type = SENSOR_CUSTOM;
+		BString unit;
+		if (records.CountItems() > 0) {
+			type = (SensorType)records.ItemAt(0)->sensorType;
+			unit = records.ItemAt(0)->unit;
+		}
+
+		// Find or create the sensor
+		SensorInfo* sensor = _FindOrCreateSensor(nodeId, sensorName,
+			type, unit);
+
+		// Convert DB records to TelemetryDataPoint
+		// Only add points not already present
+		bigtime_t existingLatest = 0;
+		if (sensor->history.CountItems() > 0)
+			existingLatest = sensor->history.ItemAt(
+				sensor->history.CountItems() - 1)->timestamp;
+
+		for (int32 j = 0; j < records.CountItems(); j++) {
+			TelemetryRecord* rec = records.ItemAt(j);
+			// Convert unix timestamp to system_time (microseconds)
+			bigtime_t recTime = (bigtime_t)rec->timestamp * 1000000LL;
+
+			if (recTime <= existingLatest)
+				continue;
+
+			TelemetryDataPoint* point = new TelemetryDataPoint();
+			point->timestamp = recTime;
+			point->value = rec->value;
+			sensor->history.AddItem(point);
+			totalLoaded++;
+
+			if (rec->value < sensor->minValue)
+				sensor->minValue = rec->value;
+			if (rec->value > sensor->maxValue)
+				sensor->maxValue = rec->value;
+		}
+
+		// Recalculate average
+		if (sensor->history.CountItems() > 0) {
+			float sum = 0;
+			for (int32 k = 0; k < sensor->history.CountItems(); k++)
+				sum += sensor->history.ItemAt(k)->value;
+			sensor->avgValue = sum / sensor->history.CountItems();
+		}
+	}
+
+	_UpdateSensorList();
+	if (fSelectedSensor >= 0) {
+		_UpdateStats();
+		fGraphView->Invalidate();
+	}
+
+	fprintf(stderr, "[TelemetryWindow] Loaded %d historical data points\n",
+		(int)totalLoaded);
 }
 
 
@@ -961,44 +1069,20 @@ TelemetryWindow::_ColorForSensorType(SensorType type)
 {
 	switch (type) {
 		case SENSOR_TEMPERATURE:
-			return (rgb_color){255, 100, 100, 255};	// Red
+			return (rgb_color){255, 100, 100, 255};
 		case SENSOR_HUMIDITY:
-			return (rgb_color){100, 180, 255, 255};	// Light blue
+			return (rgb_color){100, 180, 255, 255};
 		case SENSOR_PRESSURE:
-			return (rgb_color){180, 100, 255, 255};	// Purple
+			return (rgb_color){180, 100, 255, 255};
 		case SENSOR_BATTERY:
-			return (rgb_color){100, 255, 100, 255};	// Green
+			return (rgb_color){100, 255, 100, 255};
 		case SENSOR_ALTITUDE:
-			return (rgb_color){255, 200, 100, 255};	// Orange
+			return (rgb_color){255, 200, 100, 255};
 		case SENSOR_LIGHT:
-			return (rgb_color){255, 255, 100, 255};	// Yellow
+			return (rgb_color){255, 255, 100, 255};
 		case SENSOR_CO2:
-			return (rgb_color){100, 255, 200, 255};	// Cyan
+			return (rgb_color){100, 255, 200, 255};
 		default:
-			return (rgb_color){150, 150, 200, 255};	// Gray-blue
-	}
-}
-
-
-const char*
-TelemetryWindow::_IconForSensorType(SensorType type)
-{
-	switch (type) {
-		case SENSOR_TEMPERATURE:
-			return "temp";
-		case SENSOR_HUMIDITY:
-			return "humidity";
-		case SENSOR_PRESSURE:
-			return "pressure";
-		case SENSOR_BATTERY:
-			return "battery";
-		case SENSOR_ALTITUDE:
-			return "altitude";
-		case SENSOR_LIGHT:
-			return "light";
-		case SENSOR_CO2:
-			return "co2";
-		default:
-			return "sensor";
+			return (rgb_color){150, 150, 200, 255};
 	}
 }

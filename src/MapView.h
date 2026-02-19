@@ -2,34 +2,42 @@
  * Copyright 2025, Sestriere Authors
  * All rights reserved. Distributed under the terms of the MIT license.
  *
- * MapView.h — Geographic map visualization of contacts
+ * MapView.h — Geographic map visualization of mesh nodes
  */
 
 #ifndef MAPVIEW_H
 #define MAPVIEW_H
 
-#include <Messenger.h>
+#include <ObjectList.h>
 #include <View.h>
 #include <Window.h>
-#include <ObjectList.h>
 
 #include "Types.h"
 
-class BStringView;
-class MapView;
+class BButton;
 
-// Map node representation
-struct MapNode {
-	uint8		publicKey[kPublicKeySize];
-	char		name[kMaxNameLen];
+
+// Geographic map node representation
+struct GeoMapNode {
+	uint8		publicKey[32];
+	char		name[64];
 	float		latitude;
 	float		longitude;
 	uint8		type;
-	int8		pathLen;		// -1 = unknown, 0xFF = direct
-	int8		lastSnr;		// SNR * 4
+	int8		pathLen;
+	int8		lastSnr;
 	bool		isSelected;
 	bool		isSelf;
+
+	GeoMapNode()
+		: latitude(0), longitude(0), type(0), pathLen(-1),
+		  lastSnr(0), isSelected(false), isSelf(false)
+	{
+		memset(publicKey, 0, sizeof(publicKey));
+		memset(name, 0, sizeof(name));
+	}
 };
+
 
 class MapView : public BView {
 public:
@@ -42,24 +50,18 @@ public:
 	virtual void			MouseMoved(BPoint where, uint32 transit,
 								const BMessage* dragMessage);
 	virtual void			MouseUp(BPoint where);
-	virtual void			ScrollTo(BPoint where);
 	virtual void			FrameResized(float newWidth, float newHeight);
 	virtual void			MessageReceived(BMessage* message);
 
 			void			SetSelfPosition(float lat, float lon,
 								const char* name);
-			void			AddNode(const Contact& contact);
-			void			UpdateNode(const Contact& contact);
-			void			RemoveNode(const uint8* publicKey);
+			void			AddOrUpdateNode(const ContactInfo& contact,
+								float lat, float lon);
 			void			ClearNodes();
 
-			void			SetZoom(float zoom);
-			float			Zoom() const { return fZoom; }
 			void			ZoomIn();
 			void			ZoomOut();
 			void			ZoomToFit();
-
-			void			SetCenterPosition(float lat, float lon);
 			void			CenterOnSelf();
 
 private:
@@ -68,49 +70,53 @@ private:
 								float& lon) const;
 			void			_DrawGrid();
 			void			_DrawNodes();
-			void			_DrawNode(const MapNode& node);
+			void			_DrawNode(const GeoMapNode& node);
 			void			_DrawConnections();
 			void			_DrawScaleBar();
 			void			_DrawCompass();
-			MapNode*		_FindNodeAt(BPoint where);
-			rgb_color		_ColorForSnr(int8 snr) const;
+			GeoMapNode*		_FindNodeAt(BPoint where);
 			rgb_color		_ColorForType(uint8 type) const;
 
-			BObjectList<MapNode, true>	fNodes;
-			MapNode			fSelfNode;
+			BObjectList<GeoMapNode, true>	fNodes;
+			GeoMapNode		fSelfNode;
 			bool			fHasSelfPosition;
 
 			float			fCenterLat;
 			float			fCenterLon;
-			float			fZoom;			// pixels per degree
+			float			fZoom;
 
 			bool			fDragging;
 			BPoint			fDragStart;
 			float			fDragStartLat;
 			float			fDragStartLon;
 
-			MapNode*		fSelectedNode;
-			MapNode*		fHoverNode;
+			GeoMapNode*		fSelectedNode;
+			GeoMapNode*		fHoverNode;
 };
 
 
 // Window wrapper for MapView
 class MapWindow : public BWindow {
 public:
-						MapWindow(BRect frame, BMessenger target);
+						MapWindow(BWindow* parent);
 	virtual				~MapWindow();
 
 	virtual void		MessageReceived(BMessage* message);
 	virtual bool		QuitRequested();
 
-	void				AddNode(uint32 nodeId, const char* name,
-							double lat, double lon, uint8 type,
-							uint32 lastSeen, int pathLen);
-	void				SetSelfNode(uint32 nodeId);
+	void				SetSelfPosition(float lat, float lon,
+							const char* name);
+	void				UpdateFromContacts(
+							BObjectList<ContactInfo, true>* contacts,
+							double defaultLat, double defaultLon);
 
 private:
 	MapView*			fMapView;
-	BMessenger			fTarget;
+	BButton*			fZoomInButton;
+	BButton*			fZoomOutButton;
+	BButton*			fFitButton;
+	BButton*			fCenterButton;
+	BWindow*			fParent;
 };
 
 #endif // MAPVIEW_H

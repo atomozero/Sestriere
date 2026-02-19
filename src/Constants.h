@@ -10,196 +10,190 @@
 
 #include <SupportDefs.h>
 
-// =============================================================================
-// Application Signature
-// =============================================================================
+// Application info
+#define APP_SIGNATURE "application/x-vnd.Sestriere"
+#define APP_NAME "Sestriere"
 
-inline const char* kAppSignature = "application/x-vnd.Sestriere";
-inline const char* kAppName = "Sestriere";
+// Serial frame constants
+const uint8 kFrameMarkerInbound = '<';   // App -> Device
+const uint8 kFrameMarkerOutbound = '>';  // Device -> App
+const size_t kFrameHeaderSize = 3;       // marker + len_lo + len_hi
+const size_t kMaxFramePayload = 512;
+const size_t kMaxFrameSize = kFrameHeaderSize + kMaxFramePayload;
 
 // =============================================================================
-// Internal BMessage Codes
+// MeshCore Companion Protocol - Inbound Commands (App -> Radio)
 // =============================================================================
+const uint8 CMD_APP_START = 1;
+const uint8 CMD_SEND_TXT_MSG = 2;
+const uint8 CMD_SEND_CHANNEL_TXT_MSG = 3;
+const uint8 CMD_GET_CONTACTS = 4;
+const uint8 CMD_GET_DEVICE_TIME = 5;
+const uint8 CMD_SET_DEVICE_TIME = 6;
+const uint8 CMD_SEND_SELF_ADVERT = 7;
+const uint8 CMD_SET_ADVERT_NAME = 8;
+const uint8 CMD_ADD_UPDATE_CONTACT = 9;
+const uint8 CMD_SYNC_NEXT_MESSAGE = 10;
+const uint8 CMD_SET_RADIO_PARAMS = 11;
+const uint8 CMD_SET_RADIO_TX_POWER = 12;
+const uint8 CMD_RESET_PATH = 13;
+const uint8 CMD_SET_ADVERT_LATLON = 14;
+const uint8 CMD_REMOVE_CONTACT = 15;
+const uint8 CMD_SHARE_CONTACT = 16;
+const uint8 CMD_EXPORT_CONTACT = 17;
+const uint8 CMD_IMPORT_CONTACT = 18;
+const uint8 CMD_REBOOT = 19;
+const uint8 CMD_GET_BATT_AND_STORAGE = 20;
+const uint8 CMD_SET_TUNING_PARAMS = 21;
+const uint8 CMD_DEVICE_QUERY = 22;
+const uint8 CMD_GET_CHANNEL = 31;
+const uint8 CMD_SET_CHANNEL = 32;
+const uint8 CMD_SEND_RAW_DATA = 25;
+const uint8 CMD_SEND_LOGIN = 26;
+const uint8 CMD_SEND_STATUS_REQ = 27;
+const uint8 CMD_SEND_TRACE_PATH = 36;
+const uint8 CMD_SET_DEVICE_PIN = 37;
+const uint8 CMD_SET_OTHER_PARAMS = 38;
+const uint8 CMD_SEND_TELEMETRY_REQ = 39;
+const uint8 CMD_GET_CUSTOM_VARS = 40;
+const uint8 CMD_SET_CUSTOM_VAR = 41;
+const uint8 CMD_GET_ADVERT_PATH = 42;
+const uint8 CMD_GET_TUNING_PARAMS = 43;
+const uint8 CMD_SEND_BINARY_REQ = 50;
+const uint8 CMD_FACTORY_RESET = 51;
+const uint8 CMD_SEND_CONTROL_DATA = 55;
+const uint8 CMD_GET_STATS = 56;
 
+// =============================================================================
+// MeshCore Companion Protocol - Outbound Responses (Radio -> App)
+// =============================================================================
+const uint8 RSP_OK = 0;
+const uint8 RSP_ERR = 1;
+const uint8 RSP_CONTACTS_START = 2;
+const uint8 RSP_CONTACT = 3;
+const uint8 RSP_END_OF_CONTACTS = 4;
+const uint8 RSP_SELF_INFO = 5;
+const uint8 RSP_SENT = 6;
+const uint8 RSP_CONTACT_MSG_RECV = 7;
+const uint8 RSP_CHANNEL_MSG_RECV = 8;
+const uint8 RSP_CURR_TIME = 9;
+const uint8 RSP_NO_MORE_MESSAGES = 10;
+const uint8 RSP_EXPORT_CONTACT = 11;
+const uint8 RSP_BATT_AND_STORAGE = 12;
+const uint8 RSP_DEVICE_INFO = 13;
+const uint8 RSP_CONTACT_MSG_RECV_V3 = 16;
+const uint8 RSP_CHANNEL_INFO = 18;
+const uint8 RSP_CHANNEL_MSG_RECV_V3 = 17;
+const uint8 RSP_CUSTOM_VARS = 21;
+const uint8 RSP_ADVERT_PATH = 22;
+const uint8 RSP_STATS = 24;
+
+// =============================================================================
+// MeshCore Companion Protocol - Push Notifications (Radio -> App, unsolicited)
+// =============================================================================
+const uint8 PUSH_ADVERT = 0x80;
+const uint8 PUSH_PATH_UPDATED = 0x81;
+const uint8 PUSH_SEND_CONFIRMED = 0x82;
+const uint8 PUSH_MSG_WAITING = 0x83;
+const uint8 PUSH_RAW_DATA = 0x84;
+const uint8 PUSH_LOGIN_SUCCESS = 0x85;
+const uint8 PUSH_LOGIN_FAIL = 0x86;
+const uint8 PUSH_STATUS_RESPONSE = 0x87;
+const uint8 PUSH_RAW_RADIO_PACKET = 0x88;
+const uint8 PUSH_TRACE_DATA = 0x89;
+const uint8 PUSH_NEW_ADVERT = 0x8A;
+const uint8 PUSH_TELEMETRY_RESPONSE = 0x8B;
+const uint8 PUSH_BINARY_RESPONSE = 0x8C;
+const uint8 PUSH_CONTROL_DATA = 0x8E;
+
+// Text message types
+const uint8 TXT_TYPE_PLAIN = 0;
+const uint8 TXT_TYPE_CLI_DATA = 1;
+
+// Message field names
+const char* const kFieldPort = "port";
+const char* const kFieldData = "data";
+const char* const kFieldSize = "size";
+const char* const kFieldError = "error";
+const char* const kFieldErrorCode = "error_code";
+
+// Application messages
 enum {
-	// Serial communication
-	MSG_SERIAL_CONNECT			= 'srco',
-	MSG_SERIAL_DISCONNECT		= 'srdc',
-	MSG_SERIAL_PORT_SELECTED	= 'srps',
-	MSG_SERIAL_DATA_RECEIVED	= 'srdr',
-	MSG_SERIAL_ERROR			= 'srer',
-	MSG_SERIAL_CONNECTED		= 'srcd',
-	MSG_SERIAL_DISCONNECTED		= 'srdd',
+	// Serial connection
+	MSG_SERIAL_CONNECT = 'scon',
+	MSG_SERIAL_DISCONNECT = 'sdis',
+	MSG_SERIAL_CONNECTED = 'scok',
+	MSG_SERIAL_DISCONNECTED = 'scdc',
+	MSG_SERIAL_ERROR = 'serr',
+	MSG_FRAME_RECEIVED = 'frec',
+	MSG_FRAME_SENT = 'fsnt',
 
-	// Protocol messages
-	MSG_FRAME_RECEIVED			= 'frrc',
-	MSG_DEVICE_INFO_RECEIVED	= 'dvir',
-	MSG_SELF_INFO_RECEIVED		= 'sfir',
-	MSG_CONTACTS_START			= 'ctst',
-	MSG_CONTACT_RECEIVED		= 'ctrc',
-	MSG_CONTACTS_END			= 'cten',
-	MSG_MESSAGE_RECEIVED		= 'msrc',
-	MSG_ACK_RECEIVED			= 'akrc',
-	MSG_BATTERY_RECEIVED		= 'btrc',
-	MSG_PUSH_NOTIFICATION		= 'push',
-	MSG_SEND_CONFIRMED			= 'sdcf',
-	MSG_NO_MORE_MESSAGES		= 'nomm',
+	// Settings & UI
+	MSG_PORT_SELECTED = 'psel',
+	MSG_PRESET_SELECTED = 'pres',
+	MSG_APPLY_SETTINGS = 'aply',
+	MSG_REFRESH_PORTS = 'rfpt',
+	MSG_CLEAR_LOG = 'clog',
+	MSG_SET_NAME = 'snam',
+	MSG_INSTALL_DESKBAR = 'idkb',
+	MSG_REMOVE_DESKBAR = 'rdkb',
 
-	// UI actions
-	MSG_CONTACT_SELECTED		= 'ctsl',
-	MSG_SEND_MESSAGE			= 'sdms',
-	MSG_REFRESH_CONTACTS		= 'rfct',
-	MSG_SEND_ADVERT				= 'sdad',
-	MSG_SHOW_SETTINGS			= 'shst',
-	MSG_SHOW_ABOUT				= 'shab',
-	MSG_SHOW_PORT_SELECTION		= 'shps',
-	MSG_SYNC_MESSAGES			= 'symg',
-	MSG_UPDATE_STATUS			= 'upst',
-	MSG_REQUEST_BATTERY			= 'rqbt',
+	// Contacts & messages
+	MSG_SYNC_CONTACTS = 'sync',
+	MSG_CONTACT_SELECTED = 'csel',
+	MSG_SEND_MESSAGE = 'smsg',
+	MSG_CONTACT_ADDED = 'cadd',
+	MSG_MESSAGE_RECEIVED = 'mrec',
+	MSG_SEND_ADVERT = 'advt',
+	MSG_DEVICE_QUERY = 'dqry',
+	MSG_GET_BATTERY = 'batt',
+	MSG_GET_STATS = 'stat',
+	MSG_REQUEST_STATS_DATA = 'rsta',
 
-	// Settings
-	MSG_SETTINGS_CHANGED		= 'stch',
-	MSG_RADIO_PARAMS_CHANGED	= 'rdpc',
-	MSG_NAME_CHANGED			= 'nmch',
+	// Window navigation (shared across files)
+	MSG_SHOW_NETWORK_MAP = 'nmap',
+	MSG_SHOW_MAP = 'shmp',
+	MSG_TRACE_PATH = 'trcp',
+	MSG_SEND_LOGIN_CMD = 'slgn',
+	MSG_EXPORT_CONTACT_CMD = 'exct',
+	MSG_IMPORT_CONTACT_CMD = 'imct',
 
-	// Timer/periodic
-	MSG_POLL_TIMER				= 'pltm',
-	MSG_BATTERY_TIMER			= 'bttm',
+	// Tool windows
+	MSG_SHOW_DEBUG_LOG = 'dbgl',
+	MSG_SHOW_STATS = 'shss',
+	MSG_SHOW_TELEMETRY = 'shtl',
 
-	// Contact actions
-	MSG_SHOW_LOGIN				= 'shlg',
-	MSG_SHOW_TRACE_PATH			= 'shtp',
-	MSG_EXPORT_CONTACT			= 'exct',
-	MSG_IMPORT_CONTACT			= 'imct',
-	MSG_SEND_CHANNEL_MESSAGE	= 'scms',
+	// Packet Analyzer
+	MSG_SHOW_PACKET_ANALYZER = 'pkan',
+	MSG_PACKET_CAPTURED = 'pkcp',
+	MSG_PACKET_CAPTURE_START = 'pcst',
+	MSG_PACKET_CAPTURE_STOP = 'pcsp',
+	MSG_PACKET_CAPTURE_CLEAR = 'pccl',
+	MSG_PACKET_EXPORT_CSV = 'pxcv',
+	MSG_PACKET_FILTER_CHANGED = 'pfch',
 
-	// Channel
-	MSG_CHANNEL_SELECTED		= 'chsl',
-	MSG_PUBLIC_CHANNEL			= 'pbch',
+	// MQTT toggle and log
+	MSG_MQTT_TOGGLE = 'mqtg',
+	MSG_SHOW_MQTT_LOG = 'mqlg',
+	MSG_MQTT_LOG_ENTRY = 'mqle',
 
-	// Statistics
-	MSG_SHOW_STATS				= 'shss',
+	// Input
+	MSG_INPUT_MODIFIED = 'inmd',
 
-	// Deskbar
-	MSG_INSTALL_DESKBAR			= 'idkb',
-	MSG_REMOVE_DESKBAR			= 'rdkb',
+	// Admin panel (inline in ContactInfoPanel)
+	MSG_ADMIN_REFRESH_TICK = 'artk',
+	MSG_ADMIN_REBOOT = 'arbt',
+	MSG_ADMIN_FACTORY_RESET = 'arfr',
 
-	// View windows
-	MSG_SHOW_MAP				= 'shmp',
-	MSG_SHOW_MESH_GRAPH			= 'shmg',
-	MSG_SHOW_TELEMETRY			= 'shtl',
-	MSG_TELEMETRY_DATA			= 'tldt'
+	// Remote telemetry polling
+	MSG_REQUEST_ALL_TELEMETRY = 'rqat',
+	MSG_TELEMETRY_POLL_TICK   = 'tptk',
+
+	// Admin CLI commands (sent as TXT_TYPE_CLI_DATA to logged-in repeater/room)
+	MSG_ADMIN_SEND_CLI = 'ascl',
+
+	// Mission Control dashboard
+	MSG_SHOW_MISSION_CONTROL = 'mctr',
 };
-
-// =============================================================================
-// BMessage Field Names
-// =============================================================================
-
-inline const char* kFieldPort		= "port";
-inline const char* kFieldData		= "data";
-inline const char* kFieldSize		= "size";
-inline const char* kFieldError		= "error";
-inline const char* kFieldErrorCode	= "error_code";
-inline const char* kFieldContact	= "contact";
-inline const char* kFieldMessage	= "message";
-inline const char* kFieldTimestamp	= "timestamp";
-inline const char* kFieldText		= "text";
-inline const char* kFieldPubKey		= "pubkey";
-inline const char* kFieldName		= "name";
-inline const char* kFieldType		= "type";
-inline const char* kFieldCode		= "code";
-inline const char* kFieldCount		= "count";
-inline const char* kFieldBattery	= "battery";
-inline const char* kFieldUsedKb		= "used_kb";
-inline const char* kFieldTotalKb	= "total_kb";
-inline const char* kFieldRoundTrip	= "round_trip";
-inline const char* kFieldSnr		= "snr";
-inline const char* kFieldPathLen	= "path_len";
-
-// =============================================================================
-// Default Settings
-// =============================================================================
-
-inline constexpr uint32 kDefaultBaudRate		= 115200;
-inline constexpr uint8 kDefaultDataBits			= 8;
-inline constexpr uint8 kDefaultStopBits			= 1;
-inline constexpr int32 kDefaultWindowWidth		= 800;
-inline constexpr int32 kDefaultWindowHeight		= 600;
-inline constexpr int32 kMinWindowWidth			= 640;
-inline constexpr int32 kMinWindowHeight			= 480;
-inline constexpr int32 kContactListWidth		= 200;
-
-// Timing constants (microseconds)
-inline constexpr bigtime_t kSerialReadTimeout	= 100000;		// 100ms
-inline constexpr bigtime_t kBatteryPollInterval	= 60000000;		// 60s
-inline constexpr bigtime_t kMessagePollInterval	= 1000000;		// 1s
-
-// Protocol constants
-inline constexpr uint8 kAppProtocolVersion		= 1;
-inline const char* kAppIdentifier				= "Sestriere";
-
-// =============================================================================
-// Settings File
-// =============================================================================
-
-inline const char* kSettingsFileName = "Sestriere_settings";
-inline const char* kSettingsFieldLastPort = "last_port";
-inline const char* kSettingsFieldWindowFrame = "window_frame";
-inline const char* kSettingsFieldLastContactSync = "last_contact_sync";
-
-// =============================================================================
-// UI Strings (for localization)
-// =============================================================================
-
-#define TR_APP_NAME					"Sestriere"
-#define TR_MENU_FILE				"File"
-#define TR_MENU_EDIT				"Edit"
-#define TR_MENU_DEVICE				"Device"
-#define TR_MENU_HELP				"Help"
-#define TR_MENU_CONNECT				"Connect" B_UTF8_ELLIPSIS
-#define TR_MENU_DISCONNECT			"Disconnect"
-#define TR_MENU_SETTINGS			"Settings" B_UTF8_ELLIPSIS
-#define TR_MENU_QUIT				"Quit"
-#define TR_MENU_ABOUT				"About Sestriere" B_UTF8_ELLIPSIS
-#define TR_MENU_REFRESH_CONTACTS	"Refresh Contacts"
-#define TR_MENU_SEND_ADVERT			"Send Advertisement"
-#define TR_MENU_REBOOT_DEVICE		"Reboot Device"
-#define TR_MENU_CONTACT				"Contact"
-#define TR_MENU_LOGIN				"Login" B_UTF8_ELLIPSIS
-#define TR_MENU_TRACE_PATH			"Trace Path" B_UTF8_ELLIPSIS
-#define TR_MENU_EXPORT_CONTACT		"Export Contact" B_UTF8_ELLIPSIS
-#define TR_MENU_IMPORT_CONTACT		"Import Contact" B_UTF8_ELLIPSIS
-#define TR_MENU_PUBLIC_CHANNEL		"Public Channel"
-#define TR_MENU_STATISTICS			"Statistics" B_UTF8_ELLIPSIS
-#define TR_MENU_INSTALL_DESKBAR		"Show in Deskbar"
-#define TR_MENU_REMOVE_DESKBAR		"Remove from Deskbar"
-
-#define TR_MENU_VIEW				"View"
-#define TR_MENU_MAP_VIEW			"Map View"
-#define TR_MENU_MESH_GRAPH			"Network Graph"
-#define TR_MENU_TELEMETRY			"Sensor Telemetry"
-
-#define TR_STATUS_DISCONNECTED		"Disconnected"
-#define TR_STATUS_CONNECTING		"Connecting..."
-#define TR_STATUS_CONNECTED			"Connected"
-#define TR_STATUS_ERROR				"Error"
-
-#define TR_BUTTON_SEND				"Send"
-#define TR_BUTTON_CONNECT			"Connect"
-#define TR_BUTTON_CANCEL			"Cancel"
-#define TR_BUTTON_OK				"OK"
-#define TR_BUTTON_REFRESH			"Refresh"
-
-#define TR_LABEL_PORT				"Port:"
-#define TR_LABEL_NO_PORTS			"No serial ports found"
-#define TR_LABEL_SELECT_PORT		"Select a serial port:"
-#define TR_LABEL_MESSAGE			"Message:"
-#define TR_LABEL_CONTACTS			"Contacts"
-#define TR_LABEL_NO_CONTACTS		"No contacts"
-#define TR_LABEL_NO_SELECTION		"Select a contact to start chatting"
-
-#define TR_TITLE_PORT_SELECTION		"Select Serial Port"
-#define TR_TITLE_SETTINGS			"Settings"
-#define TR_TITLE_ABOUT				"About Sestriere"
 
 #endif // CONSTANTS_H

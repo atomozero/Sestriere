@@ -13,17 +13,20 @@
 #include "Types.h"
 
 class BButton;
-class BTextView;
 class BStringView;
+class BTextView;
+
 
 class ContactExportWindow : public BWindow {
 public:
-	// Mode: true = export, false = import
-							ContactExportWindow(BWindow* parent, bool exportMode,
-								const Contact* contact = NULL);
+	// exportMode: true = export, false = import
+							ContactExportWindow(BWindow* parent,
+								bool exportMode,
+								const ContactInfo* contact = NULL);
 	virtual					~ContactExportWindow();
 
 	virtual void			MessageReceived(BMessage* message);
+	virtual bool			QuitRequested();
 
 			void			SetExportData(const uint8* data, size_t length);
 
@@ -33,7 +36,8 @@ private:
 
 			BWindow*		fParent;
 			bool			fExportMode;
-			Contact			fContact;
+			uint8			fPublicKey[32];
+			char			fContactName[64];
 
 			BStringView*	fTitleLabel;
 			BTextView*		fDataView;

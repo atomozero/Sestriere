@@ -3,7 +3,6 @@
  * All rights reserved. Distributed under the terms of the MIT license.
  *
  * SerialHandler.cpp — Serial communication handler using POSIX APIs
- * Note: BSerialPort has bugs on Haiku with USB serial, so we use raw POSIX
  */
 
 #include "SerialHandler.h"
@@ -22,8 +21,6 @@
 
 #include <cstdio>
 #include <cstring>
-
-#include "Constants.h"
 
 
 SerialHandler::SerialHandler(BHandler* target)
@@ -186,27 +183,32 @@ SerialHandler::Connect(const char* portName)
 void
 SerialHandler::Disconnect()
 {
+	thread_id threadToWait = -1;
+
 	{
 		BAutolock lock(fLock);
 		if (!fConnected)
 			return;
 
 		fRunning = false;
-	}
+		threadToWait = fReadThread;
 
-	// Wait for read thread to finish
-	if (fReadThread >= 0) {
-		status_t exitValue;
-		wait_for_thread(fReadThread, &exitValue);
-		fReadThread = -1;
-	}
-
-	{
-		BAutolock lock(fLock);
+		// Close fd first to unblock the read thread
 		if (fSerialFd >= 0) {
 			close(fSerialFd);
 			fSerialFd = -1;
 		}
+	}
+
+	// Wait for read thread to finish (outside the lock)
+	if (threadToWait >= 0) {
+		status_t exitValue;
+		wait_for_thread(threadToWait, &exitValue);
+	}
+
+	{
+		BAutolock lock(fLock);
+		fReadThread = -1;
 		fConnected = false;
 		fPortName = "";
 	}
@@ -248,6 +250,9 @@ SerialHandler::SendFrame(const uint8* payload, size_t length)
 
 	if ((size_t)written != totalLen)
 		return B_IO_ERROR;
+
+	// Notify about sent frame (for logging)
+	_NotifyFrameSent(payload, length);
 
 	return B_OK;
 }
@@ -417,6 +422,23 @@ SerialHandler::_NotifyFrameReceived(const uint8* data, size_t length)
 		return;
 
 	BMessage msg(MSG_FRAME_RECEIVED);
+	msg.AddData(kFieldData, B_RAW_TYPE, data, length);
+	msg.AddInt32(kFieldSize, length);
+
+	BLooper* looper = fTarget->Looper();
+	if (looper != NULL)
+		looper->PostMessage(&msg, fTarget);
+}
+
+
+void
+SerialHandler::_NotifyFrameSent(const uint8* data, size_t length)
+{
+	BAutolock lock(fLock);
+	if (fTarget == NULL)
+		return;
+
+	BMessage msg(MSG_FRAME_SENT);
 	msg.AddData(kFieldData, B_RAW_TYPE, data, length);
 	msg.AddInt32(kFieldSize, length);
 

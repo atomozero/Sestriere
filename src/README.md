@@ -1,10 +1,10 @@
-# Sestriere Minimal
+# Sestriere
 
-> Lightweight MeshCore LoRa client for Haiku OS
+> Native MeshCore LoRa mesh client for Haiku OS
 
 ## Overview
 
-**Sestriere Minimal** is a streamlined version of the Sestriere MeshCore client, focused on essential messaging and radio analysis features with a Telegram-style user interface.
+**Sestriere** is a native Haiku OS MeshCore client for LoRa mesh networking, with a Telegram-style user interface.
 
 ## Screenshots
 
@@ -105,7 +105,7 @@ pkgman install mosquitto_devel
 
 ### Build
 ```bash
-cd src_minimal
+cd src
 make
 ./objects.x86_64-cc13-debug/Sestriere
 ```
@@ -189,7 +189,7 @@ Quality indicators:
 ## File Structure
 
 ```
-src_minimal/
+src/
 ├── Makefile
 ├── README.md                   # This file
 ├── Constants.h                 # Protocol constants
@@ -218,27 +218,6 @@ src_minimal/
 ├── MqttSettingsWindow.cpp/h    # MQTT configuration (legacy)
 └── DeskbarReplicant.cpp/h      # Deskbar integration
 ```
-
-## Feature Comparison
-
-| Feature | Full | Minimal |
-|---------|------|---------|
-| Telegram-style UI | — | ✓ |
-| Network Map | — | ✓ |
-| MQTT Integration | — | ✓ |
-| Statistics Window | ✓ | ✓ |
-| Trace Path | ✓ | ✓ |
-| Raw Packet Analysis | — | ✓ |
-| Debug Log Window | ✓ | ✓ |
-| Desktop Notifications | ✓ | ✓ |
-| Message Persistence | ✓ | ✓ |
-| Top Bar (menu + status) | — | ✓ |
-| Contact Info Panel | — | ✓ |
-| Contact Search | — | ✓ |
-| Multi-line Input | — | ✓ |
-| Map View (full) | ✓ | — |
-| Mesh Graph | ✓ | — |
-| Telemetry Dashboard | ✓ | — |
 
 ## Credits
 

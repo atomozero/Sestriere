@@ -7,33 +7,30 @@
 
 #include "ContactExportWindow.h"
 
-#include <Application.h>
 #include <Button.h>
-#include <Catalog.h>
 #include <Clipboard.h>
 #include <LayoutBuilder.h>
 #include <ScrollView.h>
 #include <StringView.h>
 #include <TextView.h>
 
-#include <cstring>
 #include <cstdio>
+#include <cstring>
+#include <cstdlib>
 
 #include "Constants.h"
-#include "Protocol.h"
-#include "Sestriere.h"
-#include "SerialHandler.h"
-
-#undef B_TRANSLATION_CONTEXT
-#define B_TRANSLATION_CONTEXT "ContactExportWindow"
 
 
-static const uint32 MSG_COPY_CLIPBOARD	= 'cpcp';
-static const uint32 MSG_DO_IMPORT		= 'dimp';
+static const uint32 kMsgCopyClipboard	= 'cpcp';
+static const uint32 kMsgDoImport		= 'dimp';
+
+// Messages sent to parent window
+static const uint32 kMsgExportContact	= 'exct';
+static const uint32 kMsgImportContact	= 'imct';
 
 
 ContactExportWindow::ContactExportWindow(BWindow* parent, bool exportMode,
-	const Contact* contact)
+	const ContactInfo* contact)
 	:
 	BWindow(BRect(0, 0, 400, 300),
 		exportMode ? "Export Contact" : "Import Contact",
@@ -47,15 +44,17 @@ ContactExportWindow::ContactExportWindow(BWindow* parent, bool exportMode,
 	fCloseButton(NULL),
 	fStatusLabel(NULL)
 {
-	if (contact != NULL)
-		memcpy(&fContact, contact, sizeof(Contact));
-	else
-		memset(&fContact, 0, sizeof(Contact));
+	memset(fPublicKey, 0, sizeof(fPublicKey));
+	memset(fContactName, 0, sizeof(fContactName));
 
-	// Create views
+	if (contact != NULL) {
+		memcpy(fPublicKey, contact->publicKey, 32);
+		strlcpy(fContactName, contact->name, sizeof(fContactName));
+	}
+
 	if (fExportMode) {
 		BString titleStr;
-		titleStr.SetToFormat("Export: %s", fContact.advName);
+		titleStr.SetToFormat("Export: %s", fContactName);
 		fTitleLabel = new BStringView("title_label", titleStr.String());
 	} else {
 		fTitleLabel = new BStringView("title_label",
@@ -76,10 +75,10 @@ ContactExportWindow::ContactExportWindow(BWindow* parent, bool exportMode,
 
 	if (fExportMode) {
 		fActionButton = new BButton("action_button", "Copy to Clipboard",
-			new BMessage(MSG_COPY_CLIPBOARD));
+			new BMessage(kMsgCopyClipboard));
 	} else {
 		fActionButton = new BButton("action_button", "Import",
-			new BMessage(MSG_DO_IMPORT));
+			new BMessage(kMsgDoImport));
 	}
 
 	fCloseButton = new BButton("close_button", "Close",
@@ -87,7 +86,6 @@ ContactExportWindow::ContactExportWindow(BWindow* parent, bool exportMode,
 
 	fStatusLabel = new BStringView("status_label", "");
 
-	// Layout
 	BLayoutBuilder::Group<>(this, B_VERTICAL)
 		.SetInsets(B_USE_WINDOW_SPACING)
 		.Add(fTitleLabel)
@@ -100,28 +98,17 @@ ContactExportWindow::ContactExportWindow(BWindow* parent, bool exportMode,
 		.End()
 	.End();
 
-	// Center on parent
 	if (parent != NULL)
 		CenterIn(parent->Frame());
 	else
 		CenterOnScreen();
 
-	// If export mode, request export data from device
-	if (fExportMode && contact != NULL) {
-		Sestriere* app = dynamic_cast<Sestriere*>(be_app);
-		if (app != NULL && app->GetSerialHandler() != NULL &&
-			app->GetSerialHandler()->IsConnected()) {
-			// CMD_EXPORT_CONTACT format:
-			// [0] = CMD_EXPORT_CONTACT (17)
-			// [1-6] = pub_key_prefix
-
-			uint8 buffer[16];
-			buffer[0] = CMD_EXPORT_CONTACT;
-			memcpy(buffer + 1, fContact.publicKey, kPubKeyPrefixSize);
-			app->GetSerialHandler()->SendFrame(buffer, 7);
-
-			fStatusLabel->SetText("Requesting export data...");
-		}
+	// If export mode, request data from parent
+	if (fExportMode && contact != NULL && fParent != NULL) {
+		BMessage exportReq(kMsgExportContact);
+		exportReq.AddData("pubkey", B_RAW_TYPE, fPublicKey, 6);
+		fParent->PostMessage(&exportReq);
+		fStatusLabel->SetText("Requesting export data...");
 	}
 }
 
@@ -131,26 +118,25 @@ ContactExportWindow::~ContactExportWindow()
 }
 
 
+bool
+ContactExportWindow::QuitRequested()
+{
+	Hide();
+	return false;
+}
+
+
 void
 ContactExportWindow::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
-		case MSG_COPY_CLIPBOARD:
+		case kMsgCopyClipboard:
 			_OnCopyToClipboard();
 			break;
 
-		case MSG_DO_IMPORT:
+		case kMsgDoImport:
 			_OnImport();
 			break;
-
-		case RESP_CODE_EXPORT_CONTACT:
-		{
-			const void* data;
-			ssize_t size;
-			if (message->FindData(kFieldData, B_RAW_TYPE, &data, &size) == B_OK)
-				SetExportData(static_cast<const uint8*>(data), size);
-			break;
-		}
 
 		default:
 			BWindow::MessageReceived(message);
@@ -162,18 +148,15 @@ ContactExportWindow::MessageReceived(BMessage* message)
 void
 ContactExportWindow::SetExportData(const uint8* data, size_t length)
 {
-	// Convert to hex string for display
 	BString hexStr;
 	for (size_t i = 0; i < length; i++) {
 		char hex[4];
 		snprintf(hex, sizeof(hex), "%02X", data[i]);
 		hexStr.Append(hex);
 
-		// Add space every 2 bytes for readability
 		if ((i + 1) % 2 == 0 && i + 1 < length)
 			hexStr.Append(" ");
 
-		// Add newline every 32 bytes
 		if ((i + 1) % 32 == 0 && i + 1 < length)
 			hexStr.Append("\n");
 	}
@@ -223,7 +206,7 @@ ContactExportWindow::_OnImport()
 		return;
 	}
 
-	// Parse hex string to bytes
+	// Parse hex string
 	BString cleanHex;
 	for (const char* p = hexText; *p != '\0'; p++) {
 		if ((*p >= '0' && *p <= '9') ||
@@ -247,36 +230,18 @@ ContactExportWindow::_OnImport()
 		data[i] = (uint8)strtoul(byteStr, NULL, 16);
 	}
 
-	// Send import command to device
-	Sestriere* app = dynamic_cast<Sestriere*>(be_app);
-	if (app == NULL || app->GetSerialHandler() == NULL ||
-		!app->GetSerialHandler()->IsConnected()) {
-		fStatusLabel->SetHighColor(200, 0, 0);
-		fStatusLabel->SetText("Not connected to device.");
-		delete[] data;
-		return;
-	}
+	// Send import command to parent
+	if (fParent != NULL) {
+		BMessage importMsg(kMsgImportContact);
+		importMsg.AddData("data", B_RAW_TYPE, data, dataLen);
+		fParent->PostMessage(&importMsg);
 
-	// CMD_IMPORT_CONTACT format:
-	// [0] = CMD_IMPORT_CONTACT (18)
-	// [1+] = contact data
-
-	uint8 buffer[256];
-	buffer[0] = CMD_IMPORT_CONTACT;
-
-	size_t copyLen = dataLen;
-	if (copyLen > sizeof(buffer) - 1)
-		copyLen = sizeof(buffer) - 1;
-
-	memcpy(buffer + 1, data, copyLen);
-	delete[] data;
-
-	status_t status = app->GetSerialHandler()->SendFrame(buffer, 1 + copyLen);
-	if (status == B_OK) {
 		fStatusLabel->SetHighColor(0, 150, 0);
 		fStatusLabel->SetText("Import command sent. Check contacts.");
 	} else {
 		fStatusLabel->SetHighColor(200, 0, 0);
-		fStatusLabel->SetText("Failed to send import command.");
+		fStatusLabel->SetText("Not connected.");
 	}
+
+	delete[] data;
 }

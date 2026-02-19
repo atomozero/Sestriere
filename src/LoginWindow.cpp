@@ -7,28 +7,25 @@
 
 #include "LoginWindow.h"
 
-#include <Application.h>
 #include <Button.h>
-#include <Catalog.h>
 #include <LayoutBuilder.h>
+#include <MessageRunner.h>
 #include <StringView.h>
 #include <TextControl.h>
 
 #include <cstring>
 
 #include "Constants.h"
-#include "Protocol.h"
-#include "Sestriere.h"
-#include "SerialHandler.h"
-
-#undef B_TRANSLATION_CONTEXT
-#define B_TRANSLATION_CONTEXT "LoginWindow"
 
 
-static const uint32 MSG_DO_LOGIN = 'dlog';
+static const uint32 kMsgDoLogin		= 'dlog';
+static const uint32 kMsgLoginTimeout	= 'ltmo';
+
+// Message sent to parent to execute the login command
+static const uint32 kMsgSendLogin = 'slgn';
 
 
-LoginWindow::LoginWindow(BWindow* parent, const Contact* contact)
+LoginWindow::LoginWindow(BWindow* parent, const ContactInfo* contact)
 	:
 	BWindow(BRect(0, 0, 300, 150), "Login",
 		B_FLOATING_WINDOW_LOOK, B_MODAL_APP_WINDOW_FEEL,
@@ -40,39 +37,50 @@ LoginWindow::LoginWindow(BWindow* parent, const Contact* contact)
 	fLoginButton(NULL),
 	fCancelButton(NULL),
 	fStatusLabel(NULL),
-	fLoggingIn(false)
+	fLoggingIn(false),
+	fTimeoutRunner(NULL)
 {
-	if (contact != NULL)
-		memcpy(&fContact, contact, sizeof(Contact));
-	else
-		memset(&fContact, 0, sizeof(Contact));
+	memset(fPublicKey, 0, sizeof(fPublicKey));
+	memset(fContactName, 0, sizeof(fContactName));
 
-	// Title based on contact type
-	const char* typeStr = Protocol::GetAdvTypeName(fContact.type);
+	if (contact != NULL) {
+		memcpy(fPublicKey, contact->publicKey, 32);
+		strlcpy(fContactName, contact->name, sizeof(fContactName));
+	}
+
+	// Contact type description
+	const char* typeStr = "Node";
+	if (contact != NULL) {
+		switch (contact->type) {
+			case 1: typeStr = "Companion"; break;
+			case 2: typeStr = "Repeater"; break;
+			case 3: typeStr = "Room"; break;
+			default: typeStr = "Node"; break;
+		}
+	}
+
 	BString title;
 	title.SetToFormat("Login to %s", typeStr);
 	SetTitle(title.String());
 
-	// Create views
 	BString targetStr;
-	targetStr.SetToFormat("Target: %s (%s)", fContact.advName, typeStr);
+	targetStr.SetToFormat("Target: %s (%s)", fContactName, typeStr);
 	fTargetLabel = new BStringView("target_label", targetStr.String());
 
 	fPasswordControl = new BTextControl("password", "Password:", "",
-		new BMessage(MSG_DO_LOGIN));
+		new BMessage(kMsgDoLogin));
 	fPasswordControl->TextView()->HideTyping(true);
 
 	fLoginButton = new BButton("login_button", "Login",
-		new BMessage(MSG_DO_LOGIN));
+		new BMessage(kMsgDoLogin));
 	fLoginButton->MakeDefault(true);
 
-	fCancelButton = new BButton("cancel_button", B_TRANSLATE(TR_BUTTON_CANCEL),
+	fCancelButton = new BButton("cancel_button", "Cancel",
 		new BMessage(B_QUIT_REQUESTED));
 
 	fStatusLabel = new BStringView("status_label", "");
 	fStatusLabel->SetHighColor(100, 100, 100);
 
-	// Layout
 	BLayoutBuilder::Group<>(this, B_VERTICAL)
 		.SetInsets(B_USE_WINDOW_SPACING)
 		.Add(fTargetLabel)
@@ -88,7 +96,6 @@ LoginWindow::LoginWindow(BWindow* parent, const Contact* contact)
 		.End()
 	.End();
 
-	// Center on parent
 	if (parent != NULL)
 		CenterIn(parent->Frame());
 	else
@@ -100,6 +107,15 @@ LoginWindow::LoginWindow(BWindow* parent, const Contact* contact)
 
 LoginWindow::~LoginWindow()
 {
+	delete fTimeoutRunner;
+}
+
+
+bool
+LoginWindow::QuitRequested()
+{
+	Hide();
+	return false;
 }
 
 
@@ -107,22 +123,15 @@ void
 LoginWindow::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
-		case MSG_DO_LOGIN:
+		case kMsgDoLogin:
 			_OnLogin();
 			break;
 
-		case MSG_PUSH_NOTIFICATION:
-		{
-			uint8 code;
-			if (message->FindUInt8(kFieldCode, &code) == B_OK) {
-				if (code == PUSH_CODE_LOGIN_SUCCESS) {
-					SetLoginResult(true, "Login successful!");
-				} else if (code == PUSH_CODE_LOGIN_FAIL) {
-					SetLoginResult(false, "Login failed. Check password.");
-				}
+		case kMsgLoginTimeout:
+			if (fLoggingIn) {
+				SetLoginResult(false, "No response from device (timeout).");
 			}
 			break;
-		}
 
 		default:
 			BWindow::MessageReceived(message);
@@ -138,12 +147,15 @@ LoginWindow::SetLoginResult(bool success, const char* message)
 	fLoginButton->SetEnabled(true);
 	fPasswordControl->SetEnabled(true);
 
+	// Cancel timeout timer
+	delete fTimeoutRunner;
+	fTimeoutRunner = NULL;
+
 	if (success) {
 		fStatusLabel->SetHighColor(0, 150, 0);
 		fStatusLabel->SetText(message != NULL ? message : "Success!");
 
-		// Close after short delay
-		snooze(500000);  // 500ms
+		snooze(500000);
 		PostMessage(B_QUIT_REQUESTED);
 	} else {
 		fStatusLabel->SetHighColor(200, 0, 0);
@@ -165,36 +177,23 @@ LoginWindow::_OnLogin()
 		return;
 	}
 
-	Sestriere* app = dynamic_cast<Sestriere*>(be_app);
-	if (app == NULL || app->GetSerialHandler() == NULL ||
-		!app->GetSerialHandler()->IsConnected()) {
-		fStatusLabel->SetHighColor(200, 0, 0);
-		fStatusLabel->SetText("Not connected to device.");
-		return;
-	}
-
 	fLoggingIn = true;
 	fLoginButton->SetEnabled(false);
 	fPasswordControl->SetEnabled(false);
 	fStatusLabel->SetHighColor(100, 100, 100);
 	fStatusLabel->SetText("Logging in...");
 
-	// Build and send login command
-	// CMD_SEND_LOGIN format:
-	// [0] = CMD_SEND_LOGIN (26)
-	// [1-6] = pub_key_prefix (6 bytes)
-	// [7+] = password (null-terminated)
+	// Send login request to parent window
+	if (fParent != NULL) {
+		BMessage loginMsg(kMsgSendLogin);
+		loginMsg.AddData("pubkey", B_RAW_TYPE, fPublicKey, 32);
+		loginMsg.AddString("password", password);
+		fParent->PostMessage(&loginMsg);
+	}
 
-	uint8 buffer[128];
-	buffer[0] = CMD_SEND_LOGIN;
-	memcpy(buffer + 1, fContact.publicKey, kPubKeyPrefixSize);
-
-	size_t passLen = strlen(password);
-	if (passLen > 64)
-		passLen = 64;
-	memcpy(buffer + 7, password, passLen);
-	buffer[7 + passLen] = '\0';
-
-	size_t totalLen = 8 + passLen;
-	app->GetSerialHandler()->SendFrame(buffer, totalLen);
+	// Start 10-second timeout
+	delete fTimeoutRunner;
+	BMessage timeoutMsg(kMsgLoginTimeout);
+	fTimeoutRunner = new BMessageRunner(BMessenger(this), &timeoutMsg,
+		10000000, 1);
 }

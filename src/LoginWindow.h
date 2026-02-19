@@ -13,23 +13,29 @@
 #include "Types.h"
 
 class BButton;
-class BTextControl;
+class BMessageRunner;
 class BStringView;
+class BTextControl;
+
 
 class LoginWindow : public BWindow {
 public:
-							LoginWindow(BWindow* parent, const Contact* contact);
+							LoginWindow(BWindow* parent,
+								const ContactInfo* contact);
 	virtual					~LoginWindow();
 
 	virtual void			MessageReceived(BMessage* message);
+	virtual bool			QuitRequested();
 
-			void			SetLoginResult(bool success, const char* message = NULL);
+			void			SetLoginResult(bool success,
+								const char* message = NULL);
 
 private:
 			void			_OnLogin();
 
 			BWindow*		fParent;
-			Contact			fContact;
+			uint8			fPublicKey[32];
+			char			fContactName[64];
 
 			BStringView*	fTargetLabel;
 			BTextControl*	fPasswordControl;
@@ -38,6 +44,7 @@ private:
 			BStringView*	fStatusLabel;
 
 			bool			fLoggingIn;
+			BMessageRunner*	fTimeoutRunner;
 };
 
 #endif // LOGINWINDOW_H

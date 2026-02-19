@@ -10,41 +10,40 @@
 
 #include <Window.h>
 
-#include "Types.h"
-
 class BButton;
-class BListView;
 class BMessageRunner;
-class BStringView;
-class BTabView;
+class BScrollView;
+class StatRowView;
 
-// Statistics data structures
+// Statistics data structures — MeshCore V3 protocol fields
 struct CoreStats {
 	uint32	uptime;
-	uint32	txPackets;
-	uint32	rxPackets;
-	uint32	txBytes;
-	uint32	rxBytes;
-	uint32	routedPackets;
-	uint32	droppedPackets;
+	uint16	batteryMv;
+
+	CoreStats() : uptime(0), batteryMv(0) {}
 };
 
 struct RadioStats {
+	int16	noiseFloor;
 	int8	lastRssi;
 	int8	lastSnr;
-	uint32	txTimeMs;
-	uint32	rxTimeMs;
-	uint8	channelBusy;
-	uint32	crcErrors;
+	uint32	txAirTimeMs;
+	uint32	rxAirTimeMs;
+
+	RadioStats() : noiseFloor(0), lastRssi(0), lastSnr(0),
+				   txAirTimeMs(0), rxAirTimeMs(0) {}
 };
 
 struct PacketStats {
-	uint32	advertsSent;
-	uint32	advertsReceived;
-	uint32	messagesSent;
-	uint32	messagesReceived;
-	uint32	acksSent;
-	uint32	acksReceived;
+	uint32	recvPackets;
+	uint32	sentPackets;
+	uint32	sentFlood;
+	uint32	sentDirect;
+	uint32	recvFlood;
+	uint32	recvDirect;
+
+	PacketStats() : recvPackets(0), sentPackets(0), sentFlood(0),
+					sentDirect(0), recvFlood(0), recvDirect(0) {}
 };
 
 class StatsWindow : public BWindow {
@@ -53,45 +52,40 @@ public:
 	virtual					~StatsWindow();
 
 	virtual void			MessageReceived(BMessage* message);
+	virtual bool			QuitRequested();
 
 			void			SetCoreStats(const CoreStats& stats);
 			void			SetRadioStats(const RadioStats& stats);
 			void			SetPacketStats(const PacketStats& stats);
 
+			// Parse stats response from device
+			void			ParseStatsResponse(const uint8* data, size_t length);
+
 private:
-			void			_BuildCoreTab(BView* parent);
-			void			_BuildRadioTab(BView* parent);
-			void			_BuildPacketTab(BView* parent);
 			void			_RequestStats();
 			void			_UpdateDisplay();
 
 			BWindow*		fParent;
-			BTabView*		fTabView;
+			BScrollView*	fScrollView;
 
 			// Core stats views
-			BStringView*	fUptimeView;
-			BStringView*	fTxPacketsView;
-			BStringView*	fRxPacketsView;
-			BStringView*	fTxBytesView;
-			BStringView*	fRxBytesView;
-			BStringView*	fRoutedView;
-			BStringView*	fDroppedView;
+			StatRowView*	fUptimeView;
+			StatRowView*	fBatteryView;
 
 			// Radio stats views
-			BStringView*	fRssiView;
-			BStringView*	fSnrView;
-			BStringView*	fTxTimeView;
-			BStringView*	fRxTimeView;
-			BStringView*	fChannelBusyView;
-			BStringView*	fCrcErrorsView;
+			StatRowView*	fNoiseFloorView;
+			StatRowView*	fRssiView;
+			StatRowView*	fSnrView;
+			StatRowView*	fTxAirTimeView;
+			StatRowView*	fRxAirTimeView;
 
 			// Packet stats views
-			BStringView*	fAdvertsSentView;
-			BStringView*	fAdvertsReceivedView;
-			BStringView*	fMsgsSentView;
-			BStringView*	fMsgsReceivedView;
-			BStringView*	fAcksSentView;
-			BStringView*	fAcksReceivedView;
+			StatRowView*	fRecvPacketsView;
+			StatRowView*	fSentPacketsView;
+			StatRowView*	fSentFloodView;
+			StatRowView*	fSentDirectView;
+			StatRowView*	fRecvFloodView;
+			StatRowView*	fRecvDirectView;
 
 			BButton*		fRefreshButton;
 			BButton*		fCloseButton;
