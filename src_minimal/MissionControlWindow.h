@@ -27,10 +27,14 @@ class MiniTopoView;
 class SessionTimelineView;
 
 // Node data for mini topology
+static const int32 kSparklinePoints = 8;
+
 struct TopoNode {
 	char		name[32];
 	uint8		status;		// 0=offline, 1=recent, 2=online
 	int8		snr;
+	int8		snrHistory[kSparklinePoints];  // Recent SNR samples
+	int32		snrHistoryCount;
 };
 
 class MissionControlWindow : public BWindow {

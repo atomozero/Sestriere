@@ -1228,6 +1228,47 @@ public:
 				labelX = bounds.right - 2 - nameW;
 
 			DrawString(shortName, BPoint(labelX, labelY));
+
+			// Sparkline (small SNR history line chart)
+			if (fNodes[i].snrHistoryCount > 1) {
+				float sparkW = 20.0f;
+				float sparkH = 8.0f;
+				float sparkX = nx + dotR + 3;
+				float sparkY = ny - sparkH / 2;
+
+				// Adjust position to avoid going off-screen
+				if (sparkX + sparkW > bounds.right - 2)
+					sparkX = nx - dotR - sparkW - 3;
+
+				int32 cnt = fNodes[i].snrHistoryCount;
+				float stepX = sparkW / (cnt - 1);
+
+				// Find min/max for normalization
+				int8 minSnr = fNodes[i].snrHistory[0];
+				int8 maxSnr = fNodes[i].snrHistory[0];
+				for (int32 j = 1; j < cnt; j++) {
+					if (fNodes[i].snrHistory[j] < minSnr)
+						minSnr = fNodes[i].snrHistory[j];
+					if (fNodes[i].snrHistory[j] > maxSnr)
+						maxSnr = fNodes[i].snrHistory[j];
+				}
+				if (maxSnr == minSnr) maxSnr = minSnr + 1;
+
+				SetPenSize(1.0f);
+				SetHighColor(SnrColor(fNodes[i].snr));
+				BPoint prev(sparkX,
+					sparkY + sparkH - (sparkH *
+					(fNodes[i].snrHistory[0] - minSnr))
+					/ (maxSnr - minSnr));
+				for (int32 j = 1; j < cnt; j++) {
+					float sx = sparkX + j * stepX;
+					float sy = sparkY + sparkH - (sparkH *
+						(fNodes[i].snrHistory[j] - minSnr))
+						/ (maxSnr - minSnr);
+					StrokeLine(prev, BPoint(sx, sy));
+					prev.Set(sx, sy);
+				}
+			}
 		}
 	}
 

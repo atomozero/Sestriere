@@ -3592,6 +3592,32 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 							"%s", c->name);
 						nodes[i].snr = lastSnr;
 						nodes[i].status = status;
+
+						// Collect SNR sparkline from last N
+						// incoming messages
+						nodes[i].snrHistoryCount = 0;
+						int32 msgCount = c->messages.CountItems();
+						for (int32 j = msgCount - 1;
+							j >= 0 && nodes[i].snrHistoryCount
+								< kSparklinePoints; j--) {
+							ChatMessage* msg =
+								c->messages.ItemAt(j);
+							if (msg != NULL && !msg->isOutgoing
+								&& msg->snr != 0) {
+								nodes[i].snrHistory[
+									nodes[i].snrHistoryCount++]
+									= msg->snr;
+							}
+						}
+						// Reverse to chronological order
+						for (int32 a = 0,
+							b = nodes[i].snrHistoryCount - 1;
+							a < b; a++, b--) {
+							int8 tmp = nodes[i].snrHistory[a];
+							nodes[i].snrHistory[a] =
+								nodes[i].snrHistory[b];
+							nodes[i].snrHistory[b] = tmp;
+						}
 					}
 
 					// Heatmap data
