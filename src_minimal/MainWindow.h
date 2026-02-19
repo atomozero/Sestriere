@@ -86,6 +86,8 @@ private:
 			void			_SendStatusRequest(const uint8* pubkey);
 			void			_SendTelemetryRequest(const uint8* pubkey);
 			void			_SendCliCommand(const char* command);
+			void			_SendGetDeviceTime();
+			void			_SendSetDeviceTime(uint32 epoch);
 
 			// Frame handling
 			void			_OnFrameReceived(BMessage* message);
@@ -107,6 +109,7 @@ private:
 			void			_HandleBattAndStorage(const uint8* data, size_t length);
 			void			_HandleStats(const uint8* data, size_t length);
 			void			_HandleCmdErr(const uint8* data, size_t length);
+			void			_HandleCurrTime(const uint8* data, size_t length);
 
 			// Push notification handlers
 			void			_HandleChannelInfo(const uint8* data, size_t length);

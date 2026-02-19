@@ -2539,6 +2539,40 @@ MainWindow::_SendChannelMessage(const char* text)
 
 
 void
+MainWindow::_SendGetDeviceTime()
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+	_LogMessage("INFO", "Requesting device time...");
+	uint8 payload[1];
+	payload[0] = CMD_GET_DEVICE_TIME;
+	fSerialHandler->SendFrame(payload, 1);
+}
+
+
+void
+MainWindow::_SendSetDeviceTime(uint32 epoch)
+{
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
+		return;
+	}
+
+	uint8 payload[5];
+	payload[0] = CMD_SET_DEVICE_TIME;
+	payload[1] = epoch & 0xFF;
+	payload[2] = (epoch >> 8) & 0xFF;
+	payload[3] = (epoch >> 16) & 0xFF;
+	payload[4] = (epoch >> 24) & 0xFF;
+	fSerialHandler->SendFrame(payload, 5);
+	_LogMessage("INFO", BString().SetToFormat(
+		"Setting device time to epoch %u", (unsigned)epoch));
+}
+
+
+void
 MainWindow::_OnFrameReceived(BMessage* message)
 {
 	const void* data;
@@ -2779,10 +2813,36 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			_HandlePushStatusResponse(data, length);
 			break;
 
+		case RSP_CURR_TIME:
+			_HandleCurrTime(data, length);
+			break;
+
 		default:
 			_LogMessage("WARN", BString().SetToFormat("Unknown response: 0x%02X", cmd));
 			break;
 	}
+}
+
+
+void
+MainWindow::_HandleCurrTime(const uint8* data, size_t length)
+{
+	// RSP_CURR_TIME: [0]=code [1-4]=epoch_secs(uint32 LE)
+	if (length < 5) {
+		_LogMessage("WARN", "RSP_CURR_TIME: frame too short");
+		return;
+	}
+
+	uint32 epoch = (uint32)data[1] | ((uint32)data[2] << 8)
+		| ((uint32)data[3] << 16) | ((uint32)data[4] << 24);
+
+	time_t t = (time_t)epoch;
+	struct tm tm;
+	localtime_r(&t, &tm);
+	char timeBuf[64];
+	strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", &tm);
+	_LogMessage("INFO", BString().SetToFormat(
+		"Device time: %s (epoch %u)", timeBuf, (unsigned)epoch));
 }
 
 
