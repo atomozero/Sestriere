@@ -178,50 +178,38 @@ StatsWindow::StatsWindow(BWindow* parent)
 	fParent(parent),
 	fScrollView(NULL),
 	fUptimeView(NULL),
-	fTxPacketsView(NULL),
-	fRxPacketsView(NULL),
-	fTxBytesView(NULL),
-	fRxBytesView(NULL),
-	fRoutedView(NULL),
-	fDroppedView(NULL),
+	fBatteryView(NULL),
+	fNoiseFloorView(NULL),
 	fRssiView(NULL),
 	fSnrView(NULL),
-	fTxTimeView(NULL),
-	fRxTimeView(NULL),
-	fChannelBusyView(NULL),
-	fCrcErrorsView(NULL),
-	fAdvertsSentView(NULL),
-	fAdvertsReceivedView(NULL),
-	fMsgsSentView(NULL),
-	fMsgsReceivedView(NULL),
-	fAcksSentView(NULL),
-	fAcksReceivedView(NULL),
+	fTxAirTimeView(NULL),
+	fRxAirTimeView(NULL),
+	fRecvPacketsView(NULL),
+	fSentPacketsView(NULL),
+	fSentFloodView(NULL),
+	fSentDirectView(NULL),
+	fRecvFloodView(NULL),
+	fRecvDirectView(NULL),
 	fRefreshButton(NULL),
 	fCloseButton(NULL),
 	fRefreshTimer(NULL)
 {
 	// Create stat row views
 	fUptimeView = new StatRowView("Uptime:");
-	fTxPacketsView = new StatRowView("TX Packets:");
-	fRxPacketsView = new StatRowView("RX Packets:");
-	fTxBytesView = new StatRowView("TX Bytes:");
-	fRxBytesView = new StatRowView("RX Bytes:");
-	fRoutedView = new StatRowView("Routed:");
-	fDroppedView = new StatRowView("Dropped:");
+	fBatteryView = new StatRowView("Battery:");
 
-	fRssiView = new StatRowView("Signal (RSSI):");
+	fNoiseFloorView = new StatRowView("Noise Floor:");
+	fRssiView = new StatRowView("RSSI:");
 	fSnrView = new StatRowView("SNR:");
-	fTxTimeView = new StatRowView("TX Time:");
-	fRxTimeView = new StatRowView("RX Time:");
-	fChannelBusyView = new StatRowView("Channel Busy:");
-	fCrcErrorsView = new StatRowView("CRC Errors:");
+	fTxAirTimeView = new StatRowView("TX Air Time:");
+	fRxAirTimeView = new StatRowView("RX Air Time:");
 
-	fAdvertsSentView = new StatRowView("Adverts Sent:");
-	fAdvertsReceivedView = new StatRowView("Adverts Received:");
-	fMsgsSentView = new StatRowView("Messages Sent:");
-	fMsgsReceivedView = new StatRowView("Messages Received:");
-	fAcksSentView = new StatRowView("ACKs Sent:");
-	fAcksReceivedView = new StatRowView("ACKs Received:");
+	fRecvPacketsView = new StatRowView("Received Packets:");
+	fSentPacketsView = new StatRowView("Sent Packets:");
+	fSentFloodView = new StatRowView("Sent (Flood):");
+	fSentDirectView = new StatRowView("Sent (Direct):");
+	fRecvFloodView = new StatRowView("Received (Flood):");
+	fRecvDirectView = new StatRowView("Received (Direct):");
 
 	// Buttons
 	fRefreshButton = new BButton("refresh", "Refresh Now",
@@ -240,17 +228,7 @@ StatsWindow::StatsWindow(BWindow* parent)
 		.Add(new SectionHeaderView("Device Status"))
 		.AddStrut(4)
 		.Add(fUptimeView)
-		.AddStrut(12)
-
-		// === Traffic Section ===
-		.Add(new SectionHeaderView("Network Traffic"))
-		.AddStrut(4)
-		.Add(fTxPacketsView)
-		.Add(fRxPacketsView)
-		.Add(fTxBytesView)
-		.Add(fRxBytesView)
-		.Add(fRoutedView)
-		.Add(fDroppedView)
+		.Add(fBatteryView)
 		.AddStrut(12)
 
 		// === Radio Section ===
@@ -258,21 +236,20 @@ StatsWindow::StatsWindow(BWindow* parent)
 		.AddStrut(4)
 		.Add(fRssiView)
 		.Add(fSnrView)
-		.Add(fTxTimeView)
-		.Add(fRxTimeView)
-		.Add(fChannelBusyView)
-		.Add(fCrcErrorsView)
+		.Add(fNoiseFloorView)
+		.Add(fTxAirTimeView)
+		.Add(fRxAirTimeView)
 		.AddStrut(12)
 
-		// === Messages Section ===
-		.Add(new SectionHeaderView("Message Statistics"))
+		// === Packet Section ===
+		.Add(new SectionHeaderView("Packet Statistics"))
 		.AddStrut(4)
-		.Add(fAdvertsSentView)
-		.Add(fAdvertsReceivedView)
-		.Add(fMsgsSentView)
-		.Add(fMsgsReceivedView)
-		.Add(fAcksSentView)
-		.Add(fAcksReceivedView)
+		.Add(fRecvPacketsView)
+		.Add(fSentPacketsView)
+		.Add(fSentFloodView)
+		.Add(fSentDirectView)
+		.Add(fRecvFloodView)
+		.Add(fRecvDirectView)
 
 		.AddGlue()
 	.End();
@@ -374,40 +351,43 @@ StatsWindow::ParseStatsResponse(const uint8* data, size_t length)
 	uint8 subType = data[1];
 
 	switch (subType) {
-		case 0:  // Core stats (11 bytes)
-			// [2-3]=batt_mv(int16) [4-7]=uptime(uint32) [8-9]=err_flags [10]=queue_len
-			if (length >= 8) {
+		case 0:  // Core stats
+			// [2-3]=batt_mv(uint16 LE) [4-7]=uptime(uint32 LE)
+			if (length >= 4)
+				fCoreStats.batteryMv = data[2] | (data[3] << 8);
+			if (length >= 8)
 				fCoreStats.uptime = ReadU32LE(data + 4);
-			}
 			break;
 
-		case 1:  // Radio stats (14 bytes)
-			// [2-3]=noise_floor(int16) [4]=rssi(int8) [5]=snr(int8)
+		case 1:  // Radio stats
+			// [2-3]=noise_floor(int16 LE) [4]=rssi(int8) [5]=snr(int8)
 			// [6-9]=tx_air_time(uint32) [10-13]=rx_air_time(uint32)
+			if (length >= 4)
+				fRadioStats.noiseFloor = (int16)(data[2] | (data[3] << 8));
 			if (length >= 6) {
 				fRadioStats.lastRssi = (int8)data[4];
 				fRadioStats.lastSnr = (int8)data[5];
 			}
 			if (length >= 14) {
-				fRadioStats.txTimeMs = ReadU32LE(data + 6);
-				fRadioStats.rxTimeMs = ReadU32LE(data + 10);
+				fRadioStats.txAirTimeMs = ReadU32LE(data + 6);
+				fRadioStats.rxAirTimeMs = ReadU32LE(data + 10);
 			}
 			break;
 
 		case 2:  // Packet stats (26 bytes)
-			// [2-5]=recvPkts [6-9]=sentPkts [10-13]=sentFlood [14-17]=sentDirect
-			// [18-21]=recvFlood [22-25]=recvDirect
+			// [2-5]=recvPkts [6-9]=sentPkts [10-13]=sentFlood
+			// [14-17]=sentDirect [18-21]=recvFlood [22-25]=recvDirect
 			if (length >= 10) {
-				fCoreStats.rxPackets = ReadU32LE(data + 2);
-				fCoreStats.txPackets = ReadU32LE(data + 6);
+				fPacketStats.recvPackets = ReadU32LE(data + 2);
+				fPacketStats.sentPackets = ReadU32LE(data + 6);
 			}
 			if (length >= 18) {
-				fCoreStats.txBytes = ReadU32LE(data + 10);
-				fCoreStats.rxBytes = ReadU32LE(data + 14);
+				fPacketStats.sentFlood = ReadU32LE(data + 10);
+				fPacketStats.sentDirect = ReadU32LE(data + 14);
 			}
 			if (length >= 26) {
-				fCoreStats.routedPackets = ReadU32LE(data + 18);
-				fCoreStats.droppedPackets = ReadU32LE(data + 22);
+				fPacketStats.recvFlood = ReadU32LE(data + 18);
+				fPacketStats.recvDirect = ReadU32LE(data + 22);
 			}
 			break;
 	}
@@ -432,6 +412,7 @@ StatsWindow::_UpdateDisplay()
 {
 	char buf[64];
 
+	// === Device Status ===
 	// Uptime
 	uint32 uptime = fCoreStats.uptime;
 	uint32 days = uptime / 86400;
@@ -444,41 +425,29 @@ StatsWindow::_UpdateDisplay()
 		snprintf(buf, sizeof(buf), "%uh %um %us", hours, mins, secs);
 	else
 		snprintf(buf, sizeof(buf), "%um %us", mins, secs);
-	((StatRowView*)fUptimeView)->SetValue(buf);
+	fUptimeView->SetValue(buf);
 
-	// Traffic stats
-	snprintf(buf, sizeof(buf), "%u", fCoreStats.txPackets);
-	((StatRowView*)fTxPacketsView)->SetValue(buf);
+	// Battery
+	if (fCoreStats.batteryMv > 0) {
+		int32 pct = 0;
+		if (fCoreStats.batteryMv >= 4200) pct = 100;
+		else if (fCoreStats.batteryMv >= 3300)
+			pct = (int32)((fCoreStats.batteryMv - 3300) / 9.0f);
+		snprintf(buf, sizeof(buf), "%u mV (%d%%)",
+			(unsigned)fCoreStats.batteryMv, (int)pct);
+		rgb_color battColor;
+		if (fCoreStats.batteryMv >= 3900)
+			battColor = kGoodColor;
+		else if (fCoreStats.batteryMv >= 3600)
+			battColor = kWarningColor;
+		else
+			battColor = kBadColor;
+		fBatteryView->SetValue(buf, battColor);
+	}
 
-	snprintf(buf, sizeof(buf), "%u", fCoreStats.rxPackets);
-	((StatRowView*)fRxPacketsView)->SetValue(buf);
-
-	// Format bytes nicely
-	if (fCoreStats.txBytes >= 1048576)
-		snprintf(buf, sizeof(buf), "%.1f MB", fCoreStats.txBytes / 1048576.0);
-	else if (fCoreStats.txBytes >= 1024)
-		snprintf(buf, sizeof(buf), "%.1f KB", fCoreStats.txBytes / 1024.0);
-	else
-		snprintf(buf, sizeof(buf), "%u B", fCoreStats.txBytes);
-	((StatRowView*)fTxBytesView)->SetValue(buf);
-
-	if (fCoreStats.rxBytes >= 1048576)
-		snprintf(buf, sizeof(buf), "%.1f MB", fCoreStats.rxBytes / 1048576.0);
-	else if (fCoreStats.rxBytes >= 1024)
-		snprintf(buf, sizeof(buf), "%.1f KB", fCoreStats.rxBytes / 1024.0);
-	else
-		snprintf(buf, sizeof(buf), "%u B", fCoreStats.rxBytes);
-	((StatRowView*)fRxBytesView)->SetValue(buf);
-
-	snprintf(buf, sizeof(buf), "%u", fCoreStats.routedPackets);
-	((StatRowView*)fRoutedView)->SetValue(buf);
-
-	snprintf(buf, sizeof(buf), "%u", fCoreStats.droppedPackets);
-	rgb_color dropColor = fCoreStats.droppedPackets > 0 ? kWarningColor : kValueColor;
-	((StatRowView*)fDroppedView)->SetValue(buf, dropColor);
-
-	// Radio stats with color coding
-	snprintf(buf, sizeof(buf), "%d dBm", fRadioStats.lastRssi);
+	// === Radio Performance ===
+	// RSSI
+	snprintf(buf, sizeof(buf), "%d dBm", (int)fRadioStats.lastRssi);
 	rgb_color rssiColor;
 	if (fRadioStats.lastRssi >= -70)
 		rssiColor = kGoodColor;
@@ -486,61 +455,57 @@ StatsWindow::_UpdateDisplay()
 		rssiColor = kWarningColor;
 	else
 		rssiColor = kBadColor;
-	((StatRowView*)fRssiView)->SetValue(buf, rssiColor);
+	fRssiView->SetValue(buf, rssiColor);
 
-	float snrDb = fRadioStats.lastSnr / 4.0f;
-	snprintf(buf, sizeof(buf), "%.1f dB", snrDb);
+	// SNR (V3: direct int8, NOT divided by 4)
+	snprintf(buf, sizeof(buf), "%+d dB", (int)fRadioStats.lastSnr);
 	rgb_color snrColor;
-	if (snrDb >= 10.0f)
+	if (fRadioStats.lastSnr >= 5)
 		snrColor = kGoodColor;
-	else if (snrDb >= 0.0f)
+	else if (fRadioStats.lastSnr >= 0)
 		snrColor = kWarningColor;
 	else
 		snrColor = kBadColor;
-	((StatRowView*)fSnrView)->SetValue(buf, snrColor);
+	fSnrView->SetValue(buf, snrColor);
 
-	if (fRadioStats.txTimeMs >= 60000)
-		snprintf(buf, sizeof(buf), "%.1f min", fRadioStats.txTimeMs / 60000.0);
+	// Noise Floor
+	snprintf(buf, sizeof(buf), "%d dBm", (int)fRadioStats.noiseFloor);
+	fNoiseFloorView->SetValue(buf);
+
+	// TX Air Time
+	if (fRadioStats.txAirTimeMs >= 60000)
+		snprintf(buf, sizeof(buf), "%.1f min",
+			fRadioStats.txAirTimeMs / 60000.0);
 	else
-		snprintf(buf, sizeof(buf), "%.1f s", fRadioStats.txTimeMs / 1000.0);
-	((StatRowView*)fTxTimeView)->SetValue(buf);
+		snprintf(buf, sizeof(buf), "%.1f s",
+			fRadioStats.txAirTimeMs / 1000.0);
+	fTxAirTimeView->SetValue(buf);
 
-	if (fRadioStats.rxTimeMs >= 60000)
-		snprintf(buf, sizeof(buf), "%.1f min", fRadioStats.rxTimeMs / 60000.0);
+	// RX Air Time
+	if (fRadioStats.rxAirTimeMs >= 60000)
+		snprintf(buf, sizeof(buf), "%.1f min",
+			fRadioStats.rxAirTimeMs / 60000.0);
 	else
-		snprintf(buf, sizeof(buf), "%.1f s", fRadioStats.rxTimeMs / 1000.0);
-	((StatRowView*)fRxTimeView)->SetValue(buf);
+		snprintf(buf, sizeof(buf), "%.1f s",
+			fRadioStats.rxAirTimeMs / 1000.0);
+	fRxAirTimeView->SetValue(buf);
 
-	snprintf(buf, sizeof(buf), "%u%%", fRadioStats.channelBusy);
-	rgb_color busyColor;
-	if (fRadioStats.channelBusy <= 30)
-		busyColor = kGoodColor;
-	else if (fRadioStats.channelBusy <= 70)
-		busyColor = kWarningColor;
-	else
-		busyColor = kBadColor;
-	((StatRowView*)fChannelBusyView)->SetValue(buf, busyColor);
+	// === Packet Statistics ===
+	snprintf(buf, sizeof(buf), "%u", (unsigned)fPacketStats.recvPackets);
+	fRecvPacketsView->SetValue(buf);
 
-	snprintf(buf, sizeof(buf), "%u", fRadioStats.crcErrors);
-	rgb_color crcColor = fRadioStats.crcErrors > 0 ? kBadColor : kValueColor;
-	((StatRowView*)fCrcErrorsView)->SetValue(buf, crcColor);
+	snprintf(buf, sizeof(buf), "%u", (unsigned)fPacketStats.sentPackets);
+	fSentPacketsView->SetValue(buf);
 
-	// Message stats
-	snprintf(buf, sizeof(buf), "%u", fPacketStats.advertsSent);
-	((StatRowView*)fAdvertsSentView)->SetValue(buf);
+	snprintf(buf, sizeof(buf), "%u", (unsigned)fPacketStats.sentFlood);
+	fSentFloodView->SetValue(buf);
 
-	snprintf(buf, sizeof(buf), "%u", fPacketStats.advertsReceived);
-	((StatRowView*)fAdvertsReceivedView)->SetValue(buf);
+	snprintf(buf, sizeof(buf), "%u", (unsigned)fPacketStats.sentDirect);
+	fSentDirectView->SetValue(buf);
 
-	snprintf(buf, sizeof(buf), "%u", fPacketStats.messagesSent);
-	((StatRowView*)fMsgsSentView)->SetValue(buf);
+	snprintf(buf, sizeof(buf), "%u", (unsigned)fPacketStats.recvFlood);
+	fRecvFloodView->SetValue(buf);
 
-	snprintf(buf, sizeof(buf), "%u", fPacketStats.messagesReceived);
-	((StatRowView*)fMsgsReceivedView)->SetValue(buf);
-
-	snprintf(buf, sizeof(buf), "%u", fPacketStats.acksSent);
-	((StatRowView*)fAcksSentView)->SetValue(buf);
-
-	snprintf(buf, sizeof(buf), "%u", fPacketStats.acksReceived);
-	((StatRowView*)fAcksReceivedView)->SetValue(buf);
+	snprintf(buf, sizeof(buf), "%u", (unsigned)fPacketStats.recvDirect);
+	fRecvDirectView->SetValue(buf);
 }
