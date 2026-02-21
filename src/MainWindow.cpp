@@ -2375,10 +2375,10 @@ MainWindow::_SendResetPath(const uint8* pubkey)
 		return;
 	}
 
-	uint8 payload[7];
+	uint8 payload[1 + kPubKeySize];
 	payload[0] = CMD_RESET_PATH;
-	memcpy(payload + 1, pubkey, 6);
-	fSerialHandler->SendFrame(payload, 7);
+	memcpy(payload + 1, pubkey, kPubKeySize);
+	fSerialHandler->SendFrame(payload, sizeof(payload));
 	_LogMessage("INFO", "Sending reset path command...");
 }
 
@@ -2391,10 +2391,10 @@ MainWindow::_SendRemoveContact(const uint8* pubkey)
 		return;
 	}
 
-	uint8 payload[7];
+	uint8 payload[1 + kPubKeySize];
 	payload[0] = CMD_REMOVE_CONTACT;
-	memcpy(payload + 1, pubkey, 6);
-	fSerialHandler->SendFrame(payload, 7);
+	memcpy(payload + 1, pubkey, kPubKeySize);
+	fSerialHandler->SendFrame(payload, sizeof(payload));
 	_LogMessage("INFO", "Sending remove contact command...");
 }
 
