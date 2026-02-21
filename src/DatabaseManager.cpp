@@ -186,14 +186,8 @@ DatabaseManager::LoadMessages(const char* contactKeyHex,
 
 		// Parse sender key hex
 		const char* senderHex = (const char*)sqlite3_column_text(stmt, 2);
-		if (senderHex != NULL) {
-			for (int i = 0; i < 6 && senderHex[i * 2] != '\0'; i++) {
-				unsigned int byte;
-				if (sscanf(senderHex + i * 2, "%2x", &byte) != 1)
-					break;
-				msg->pubKeyPrefix[i] = (uint8)byte;
-			}
-		}
+		if (senderHex != NULL)
+			ParseHexPrefix(msg->pubKeyPrefix, senderHex);
 
 		const char* text = (const char*)sqlite3_column_text(stmt, 3);
 		if (text != NULL)
@@ -239,14 +233,8 @@ DatabaseManager::LoadChannelMessages(BObjectList<ChatMessage, true>& outMessages
 		msg->isChannel = true;
 
 		const char* senderHex = (const char*)sqlite3_column_text(stmt, 2);
-		if (senderHex != NULL) {
-			for (int i = 0; i < 6 && senderHex[i * 2] != '\0'; i++) {
-				unsigned int byte;
-				if (sscanf(senderHex + i * 2, "%2x", &byte) != 1)
-					break;
-				msg->pubKeyPrefix[i] = (uint8)byte;
-			}
-		}
+		if (senderHex != NULL)
+			ParseHexPrefix(msg->pubKeyPrefix, senderHex);
 
 		const char* text = (const char*)sqlite3_column_text(stmt, 3);
 		if (text != NULL)
@@ -373,14 +361,8 @@ DatabaseManager::SearchMessages(const char* query,
 		msg->isChannel = sqlite3_column_int(stmt, 2) != 0;
 
 		const char* senderHex = (const char*)sqlite3_column_text(stmt, 3);
-		if (senderHex != NULL) {
-			for (int i = 0; i < 6 && senderHex[i * 2] != '\0'; i++) {
-				unsigned int byte;
-				if (sscanf(senderHex + i * 2, "%2x", &byte) != 1)
-					break;
-				msg->pubKeyPrefix[i] = (uint8)byte;
-			}
-		}
+		if (senderHex != NULL)
+			ParseHexPrefix(msg->pubKeyPrefix, senderHex);
 
 		const char* text = (const char*)sqlite3_column_text(stmt, 4);
 		if (text != NULL)
@@ -694,12 +676,7 @@ DatabaseManager::_MigrateFromTextFile(const char* directory)
 			if (sscanf(line + 2, "%u|%d|%12[^|]|%255[^\n]",
 					&timestamp, &outgoing, senderHex, text) == 4) {
 				ChatMessage msg;
-				for (int i = 0; i < 6; i++) {
-					unsigned int byte;
-					if (sscanf(senderHex + i * 2, "%2x", &byte) != 1)
-						break;
-					msg.pubKeyPrefix[i] = (uint8)byte;
-				}
+				ParseHexPrefix(msg.pubKeyPrefix, senderHex);
 				msg.timestamp = timestamp;
 				msg.isOutgoing = (outgoing == 1);
 				msg.isChannel = true;
@@ -720,12 +697,7 @@ DatabaseManager::_MigrateFromTextFile(const char* directory)
 			if (sscanf(line + 2, "%12[^|]|%u|%d|%255[^\n]",
 					contactHex, &timestamp, &outgoing, text) == 4) {
 				ChatMessage msg;
-				for (int i = 0; i < 6; i++) {
-					unsigned int byte;
-					if (sscanf(contactHex + i * 2, "%2x", &byte) != 1)
-						break;
-					msg.pubKeyPrefix[i] = (uint8)byte;
-				}
+				ParseHexPrefix(msg.pubKeyPrefix, contactHex);
 				msg.timestamp = timestamp;
 				msg.isOutgoing = (outgoing == 1);
 				msg.isChannel = false;

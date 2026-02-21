@@ -82,6 +82,39 @@ FormatContactKey(char* dest, const uint8* prefix)
 }
 
 
+// Hex string to byte array parsing helpers
+// These replace the duplicated sscanf(..., "%2x", ...) loop patterns.
+
+// Parse 6 hex bytes (12 chars) into a pubkey prefix. Returns true on success.
+inline bool
+ParseHexPrefix(uint8* dest, const char* hexStr)
+{
+	for (int i = 0; i < 6; i++) {
+		if (hexStr[i * 2] == '\0')
+			return false;
+		unsigned int byte;
+		if (sscanf(hexStr + i * 2, "%2x", &byte) != 1)
+			return false;
+		dest[i] = (uint8)byte;
+	}
+	return true;
+}
+
+
+// Parse 32 hex bytes (64 chars) into a full public key. Returns true on success.
+inline bool
+ParseHexPubKey(uint8* dest, const char* hexStr)
+{
+	for (int i = 0; i < 32; i++) {
+		unsigned int byte;
+		if (sscanf(hexStr + i * 2, "%2x", &byte) != 1)
+			return false;
+		dest[i] = (uint8)byte;
+	}
+	return true;
+}
+
+
 // Uptime formatting: "Xd Yh Zm" / "Yh Zm" / "Zm"
 // dest must be at least 16 bytes. Returns dest for convenience.
 inline char*

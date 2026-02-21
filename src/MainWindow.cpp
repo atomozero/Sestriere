@@ -4769,11 +4769,7 @@ MainWindow::_LoadPeopleContacts()
 		ContactInfo* contact = new ContactInfo();
 
 		// Parse public key from hex
-		for (int i = 0; i < 32; i++) {
-			unsigned int byte;
-			if (sscanf(pubkeyHex + i * 2, "%2x", &byte) == 1)
-				contact->publicKey[i] = (uint8)byte;
-		}
+		ParseHexPubKey(contact->publicKey, pubkeyHex);
 
 		// Read name
 		char name[64];
