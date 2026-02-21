@@ -40,7 +40,7 @@ ProtocolHandler::IsConnected() const
 // =============================================================================
 
 
-void
+status_t
 ProtocolHandler::SendAppStart()
 {
 	// CMD_APP_START: [0]=code [1]=app_ver [2-7]=reserved [8+]=app_name
@@ -53,68 +53,68 @@ ProtocolHandler::SendAppStart()
 	if (nameLen > sizeof(payload) - 9)
 		nameLen = sizeof(payload) - 9;
 	memcpy(payload + 8, appName, nameLen);
-	fSerial->SendFrame(payload, 8 + nameLen);
+	return fSerial->SendFrame(payload, 8 + nameLen);
 }
 
 
-void
+status_t
 ProtocolHandler::SendDeviceQuery()
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[2];
 	payload[0] = CMD_DEVICE_QUERY;
 	payload[1] = 3;  // Request V3
-	fSerial->SendFrame(payload, 2);
+	return fSerial->SendFrame(payload, 2);
 }
 
 
-void
+status_t
 ProtocolHandler::SendExportSelf()
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[1];
 	payload[0] = CMD_EXPORT_CONTACT;
-	fSerial->SendFrame(payload, 1);
+	return fSerial->SendFrame(payload, 1);
 }
 
 
-void
+status_t
 ProtocolHandler::SendGetContacts()
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[1];
 	payload[0] = CMD_GET_CONTACTS;
-	fSerial->SendFrame(payload, 1);
+	return fSerial->SendFrame(payload, 1);
 }
 
 
-void
+status_t
 ProtocolHandler::SendSelfAdvert()
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[1];
 	payload[0] = CMD_SEND_SELF_ADVERT;
-	fSerial->SendFrame(payload, 1);
+	return fSerial->SendFrame(payload, 1);
 }
 
 
-void
+status_t
 ProtocolHandler::SendSyncNextMessage()
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[1];
 	payload[0] = CMD_SYNC_NEXT_MESSAGE;
-	fSerial->SendFrame(payload, 1);
+	return fSerial->SendFrame(payload, 1);
 }
 
 
@@ -123,23 +123,23 @@ ProtocolHandler::SendSyncNextMessage()
 // =============================================================================
 
 
-void
+status_t
 ProtocolHandler::SendGetBattery()
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[1];
 	payload[0] = CMD_GET_BATT_AND_STORAGE;
-	fSerial->SendFrame(payload, 1);
+	return fSerial->SendFrame(payload, 1);
 }
 
 
-void
+status_t
 ProtocolHandler::SendGetStats()
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[2];
 	payload[0] = CMD_GET_STATS;
@@ -150,27 +150,27 @@ ProtocolHandler::SendGetStats()
 	payload[1] = 1;  // Radio
 	fSerial->SendFrame(payload, 2);
 	payload[1] = 2;  // Packets
-	fSerial->SendFrame(payload, 2);
+	return fSerial->SendFrame(payload, 2);
 }
 
 
-void
+status_t
 ProtocolHandler::SendGetDeviceTime()
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[1];
 	payload[0] = CMD_GET_DEVICE_TIME;
-	fSerial->SendFrame(payload, 1);
+	return fSerial->SendFrame(payload, 1);
 }
 
 
-void
+status_t
 ProtocolHandler::SendSetDeviceTime(uint32 epoch)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[5];
 	payload[0] = CMD_SET_DEVICE_TIME;
@@ -178,31 +178,31 @@ ProtocolHandler::SendSetDeviceTime(uint32 epoch)
 	payload[2] = (epoch >> 8) & 0xFF;
 	payload[3] = (epoch >> 16) & 0xFF;
 	payload[4] = (epoch >> 24) & 0xFF;
-	fSerial->SendFrame(payload, 5);
+	return fSerial->SendFrame(payload, 5);
 }
 
 
-void
+status_t
 ProtocolHandler::SendReboot()
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[1];
 	payload[0] = CMD_REBOOT;
-	fSerial->SendFrame(payload, 1);
+	return fSerial->SendFrame(payload, 1);
 }
 
 
-void
+status_t
 ProtocolHandler::SendFactoryReset()
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[1];
 	payload[0] = CMD_FACTORY_RESET;
-	fSerial->SendFrame(payload, 1);
+	return fSerial->SendFrame(payload, 1);
 }
 
 
@@ -211,11 +211,11 @@ ProtocolHandler::SendFactoryReset()
 // =============================================================================
 
 
-void
+status_t
 ProtocolHandler::SendRadioParams(uint32 freqHz, uint32 bwHz, uint8 sf, uint8 cr)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	// Protocol wire format: frequency in kHz, bandwidth in Hz
 	uint32 freqKHz = freqHz / 1000;
@@ -232,40 +232,40 @@ ProtocolHandler::SendRadioParams(uint32 freqHz, uint32 bwHz, uint8 sf, uint8 cr)
 	payload[8] = (bwHz >> 24) & 0xFF;
 	payload[9] = sf;
 	payload[10] = cr;
-	fSerial->SendFrame(payload, sizeof(payload));
+	return fSerial->SendFrame(payload, sizeof(payload));
 }
 
 
-void
+status_t
 ProtocolHandler::SendSetTxPower(uint8 power)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[2];
 	payload[0] = CMD_SET_RADIO_TX_POWER;
 	payload[1] = power;
-	fSerial->SendFrame(payload, 2);
+	return fSerial->SendFrame(payload, 2);
 }
 
 
-void
+status_t
 ProtocolHandler::SendGetTuningParams()
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[1];
 	payload[0] = CMD_GET_TUNING_PARAMS;
-	fSerial->SendFrame(payload, 1);
+	return fSerial->SendFrame(payload, 1);
 }
 
 
-void
+status_t
 ProtocolHandler::SendSetTuningParams(uint32 rxDelayBase, uint32 airtimeFactor)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[17];
 	memset(payload, 0, sizeof(payload));
@@ -278,7 +278,7 @@ ProtocolHandler::SendSetTuningParams(uint32 rxDelayBase, uint32 airtimeFactor)
 	payload[6] = (airtimeFactor >> 8) & 0xFF;
 	payload[7] = (airtimeFactor >> 16) & 0xFF;
 	payload[8] = (airtimeFactor >> 24) & 0xFF;
-	fSerial->SendFrame(payload, sizeof(payload));
+	return fSerial->SendFrame(payload, sizeof(payload));
 }
 
 
@@ -287,11 +287,11 @@ ProtocolHandler::SendSetTuningParams(uint32 rxDelayBase, uint32 airtimeFactor)
 // =============================================================================
 
 
-void
+status_t
 ProtocolHandler::SendSetName(const char* name)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	size_t nameLen = strlen(name);
 	if (nameLen > 31)
@@ -301,15 +301,15 @@ ProtocolHandler::SendSetName(const char* name)
 	payload[0] = CMD_SET_ADVERT_NAME;
 	memcpy(payload + 1, name, nameLen);
 	payload[1 + nameLen] = '\0';
-	fSerial->SendFrame(payload, 2 + nameLen);
+	return fSerial->SendFrame(payload, 2 + nameLen);
 }
 
 
-void
+status_t
 ProtocolHandler::SendSetLatLon(double lat, double lon)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	int32 latInt = (int32)(lat * 1000000.0);
 	int32 lonInt = (int32)(lon * 1000000.0);
@@ -324,16 +324,16 @@ ProtocolHandler::SendSetLatLon(double lat, double lon)
 	payload[6] = (lonInt >> 8) & 0xFF;
 	payload[7] = (lonInt >> 16) & 0xFF;
 	payload[8] = (lonInt >> 24) & 0xFF;
-	fSerial->SendFrame(payload, sizeof(payload));
+	return fSerial->SendFrame(payload, sizeof(payload));
 }
 
 
-void
+status_t
 ProtocolHandler::SendOtherParams(uint8 manualAdd, uint8 telemetry,
 	uint8 locPolicy, uint8 multiAcks)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[5];
 	payload[0] = CMD_SET_OTHER_PARAMS;
@@ -341,15 +341,15 @@ ProtocolHandler::SendOtherParams(uint8 manualAdd, uint8 telemetry,
 	payload[2] = telemetry;
 	payload[3] = locPolicy;
 	payload[4] = multiAcks;
-	fSerial->SendFrame(payload, sizeof(payload));
+	return fSerial->SendFrame(payload, sizeof(payload));
 }
 
 
-void
+status_t
 ProtocolHandler::SendSetDevicePin(uint32 pin)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[5];
 	payload[0] = CMD_SET_DEVICE_PIN;
@@ -357,7 +357,7 @@ ProtocolHandler::SendSetDevicePin(uint32 pin)
 	payload[2] = (pin >> 8) & 0xFF;
 	payload[3] = (pin >> 16) & 0xFF;
 	payload[4] = (pin >> 24) & 0xFF;
-	fSerial->SendFrame(payload, 5);
+	return fSerial->SendFrame(payload, 5);
 }
 
 
@@ -366,38 +366,38 @@ ProtocolHandler::SendSetDevicePin(uint32 pin)
 // =============================================================================
 
 
-void
+status_t
 ProtocolHandler::SendResetPath(const uint8* pubkey)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[1 + kPubKeySize];
 	payload[0] = CMD_RESET_PATH;
 	memcpy(payload + 1, pubkey, kPubKeySize);
-	fSerial->SendFrame(payload, sizeof(payload));
+	return fSerial->SendFrame(payload, sizeof(payload));
 }
 
 
-void
+status_t
 ProtocolHandler::SendRemoveContact(const uint8* pubkey)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[1 + kPubKeySize];
 	payload[0] = CMD_REMOVE_CONTACT;
 	memcpy(payload + 1, pubkey, kPubKeySize);
-	fSerial->SendFrame(payload, sizeof(payload));
+	return fSerial->SendFrame(payload, sizeof(payload));
 }
 
 
-void
+status_t
 ProtocolHandler::SendAddUpdateContact(const uint8* pubkey, const char* name,
 	uint8 type)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	// Frame: [CMD][pubkey*32][type][flags][outPathLen][outPath*64][name*32]
 	// [lastAdvert*4][lat*4][lon*4] = 144 bytes
@@ -412,20 +412,20 @@ ProtocolHandler::SendAddUpdateContact(const uint8* pubkey, const char* name,
 	if (nameLen > 31)
 		nameLen = 31;
 	memcpy(payload + 100, name, nameLen);
-	fSerial->SendFrame(payload, sizeof(payload));
+	return fSerial->SendFrame(payload, sizeof(payload));
 }
 
 
-void
+status_t
 ProtocolHandler::SendShareContact(const uint8* pubkey)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[33];
 	payload[0] = CMD_SHARE_CONTACT;
 	memcpy(payload + 1, pubkey, kPubKeySize);
-	fSerial->SendFrame(payload, 33);
+	return fSerial->SendFrame(payload, 33);
 }
 
 
@@ -434,12 +434,12 @@ ProtocolHandler::SendShareContact(const uint8* pubkey)
 // =============================================================================
 
 
-void
+status_t
 ProtocolHandler::SendDM(const uint8* pubkeyPrefix, uint8 txtType,
 	uint32 timestamp, const char* text, size_t textLen)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[256];
 	size_t pos = 0;
@@ -459,16 +459,16 @@ ProtocolHandler::SendDM(const uint8* pubkeyPrefix, uint8 txtType,
 	memcpy(payload + pos, text, textLen);
 	pos += textLen;
 
-	fSerial->SendFrame(payload, pos);
+	return fSerial->SendFrame(payload, pos);
 }
 
 
-void
+status_t
 ProtocolHandler::SendChannelMsg(uint8 channelIdx, uint32 timestamp,
 	const char* text, size_t textLen)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[256];
 	size_t pos = 0;
@@ -485,7 +485,7 @@ ProtocolHandler::SendChannelMsg(uint8 channelIdx, uint32 timestamp,
 	memcpy(payload + pos, text, textLen);
 	pos += textLen;
 
-	fSerial->SendFrame(payload, pos);
+	return fSerial->SendFrame(payload, pos);
 }
 
 
@@ -494,11 +494,11 @@ ProtocolHandler::SendChannelMsg(uint8 channelIdx, uint32 timestamp,
 // =============================================================================
 
 
-void
+status_t
 ProtocolHandler::SendLogin(const uint8* pubkey, const char* password)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	size_t passLen = strlen(password);
 	if (passLen > 15)
@@ -509,28 +509,28 @@ ProtocolHandler::SendLogin(const uint8* pubkey, const char* password)
 	memcpy(payload + 1, pubkey, kPubKeySize);  // Full 32-byte key
 	memcpy(payload + 33, password, passLen);
 	payload[33 + passLen] = '\0';
-	fSerial->SendFrame(payload, 34 + passLen);
+	return fSerial->SendFrame(payload, 34 + passLen);
 }
 
 
-void
+status_t
 ProtocolHandler::SendStatusRequest(const uint8* pubkey)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[33];
 	payload[0] = CMD_SEND_STATUS_REQ;
 	memcpy(&payload[1], pubkey, 32);
-	fSerial->SendFrame(payload, 33);
+	return fSerial->SendFrame(payload, 33);
 }
 
 
-void
+status_t
 ProtocolHandler::SendTelemetryRequest(const uint8* pubkey)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	// V3: [CMD][reserved*3][pubkey*32] = 36 bytes
 	uint8 payload[36];
@@ -539,22 +539,22 @@ ProtocolHandler::SendTelemetryRequest(const uint8* pubkey)
 	payload[2] = 0;
 	payload[3] = 0;
 	memcpy(&payload[4], pubkey, 32);
-	fSerial->SendFrame(payload, 36);
+	return fSerial->SendFrame(payload, 36);
 }
 
 
-void
+status_t
 ProtocolHandler::SendTracePath(const uint8* pubkey)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	// Frame: [CMD][tag*4][authCode*4][flags][path...]
 	uint8 payload[16];
 	memset(payload, 0, sizeof(payload));
 	payload[0] = CMD_SEND_TRACE_PATH;
 	memcpy(payload + 10, pubkey, kPubKeyPrefixSize);
-	fSerial->SendFrame(payload, 10 + kPubKeyPrefixSize);
+	return fSerial->SendFrame(payload, 10 + kPubKeyPrefixSize);
 }
 
 
@@ -563,25 +563,25 @@ ProtocolHandler::SendTracePath(const uint8* pubkey)
 // =============================================================================
 
 
-void
+status_t
 ProtocolHandler::SendGetChannel(uint8 index)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[2];
 	payload[0] = CMD_GET_CHANNEL;
 	payload[1] = index;
-	fSerial->SendFrame(payload, 2);
+	return fSerial->SendFrame(payload, 2);
 }
 
 
-void
+status_t
 ProtocolHandler::SendSetChannel(uint8 index, const char* name,
 	const uint8* secret)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[50];
 	payload[0] = CMD_SET_CHANNEL;
@@ -589,21 +589,21 @@ ProtocolHandler::SendSetChannel(uint8 index, const char* name,
 	memset(payload + 2, 0, 32);
 	strlcpy((char*)(payload + 2), name, 32);
 	memcpy(payload + 34, secret, 16);
-	fSerial->SendFrame(payload, sizeof(payload));
+	return fSerial->SendFrame(payload, sizeof(payload));
 }
 
 
-void
+status_t
 ProtocolHandler::SendRemoveChannel(uint8 index)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[50];
 	memset(payload, 0, sizeof(payload));
 	payload[0] = CMD_SET_CHANNEL;
 	payload[1] = index;
-	fSerial->SendFrame(payload, sizeof(payload));
+	return fSerial->SendFrame(payload, sizeof(payload));
 }
 
 
@@ -612,95 +612,95 @@ ProtocolHandler::SendRemoveChannel(uint8 index)
 // =============================================================================
 
 
-void
+status_t
 ProtocolHandler::SendRawData(const uint8* rawPayload, size_t rawLength)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	if (rawLength > kMaxFramePayload - 1)
-		return;
+		return B_BAD_VALUE;
 
 	uint8 payload[kMaxFramePayload];
 	payload[0] = CMD_SEND_RAW_DATA;
 	memcpy(payload + 1, rawPayload, rawLength);
-	fSerial->SendFrame(payload, 1 + rawLength);
+	return fSerial->SendFrame(payload, 1 + rawLength);
 }
 
 
-void
+status_t
 ProtocolHandler::SendGetCustomVars()
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	uint8 payload[1];
 	payload[0] = CMD_GET_CUSTOM_VARS;
-	fSerial->SendFrame(payload, 1);
+	return fSerial->SendFrame(payload, 1);
 }
 
 
-void
+status_t
 ProtocolHandler::SendSetCustomVar(const char* nameValue)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	size_t len = strlen(nameValue);
 	if (len > kMaxFramePayload - 2)
-		return;
+		return B_BAD_VALUE;
 
 	uint8 payload[kMaxFramePayload];
 	payload[0] = CMD_SET_CUSTOM_VAR;
 	memcpy(payload + 1, nameValue, len);
 	payload[1 + len] = '\0';
-	fSerial->SendFrame(payload, 2 + len);
+	return fSerial->SendFrame(payload, 2 + len);
 }
 
 
-void
+status_t
 ProtocolHandler::SendGetAdvertPath(const uint8* pubkey)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	// Frame: [CMD][reserved=0][pubkey*32] = 34 bytes
 	uint8 payload[34];
 	payload[0] = CMD_GET_ADVERT_PATH;
 	payload[1] = 0;
 	memcpy(payload + 2, pubkey, kPubKeySize);
-	fSerial->SendFrame(payload, 34);
+	return fSerial->SendFrame(payload, 34);
 }
 
 
-void
+status_t
 ProtocolHandler::SendBinaryRequest(const uint8* pubkey, const uint8* reqData,
 	size_t reqLength)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	if (reqLength > kMaxFramePayload - 33)
-		return;
+		return B_BAD_VALUE;
 
 	uint8 payload[kMaxFramePayload];
 	payload[0] = CMD_SEND_BINARY_REQ;
 	memcpy(payload + 1, pubkey, kPubKeySize);
 	if (reqLength > 0)
 		memcpy(payload + 33, reqData, reqLength);
-	fSerial->SendFrame(payload, 33 + reqLength);
+	return fSerial->SendFrame(payload, 33 + reqLength);
 }
 
 
-void
+status_t
 ProtocolHandler::SendControlData(uint8 subType, const uint8* ctrlPayload,
 	size_t ctrlLength)
 {
 	if (!IsConnected())
-		return;
+		return B_NOT_INITIALIZED;
 
 	if (ctrlLength > kMaxFramePayload - 3)
-		return;
+		return B_BAD_VALUE;
 
 	uint8 payload[kMaxFramePayload];
 	payload[0] = CMD_SEND_CONTROL_DATA;
@@ -708,5 +708,5 @@ ProtocolHandler::SendControlData(uint8 subType, const uint8* ctrlPayload,
 	payload[2] = subType;
 	if (ctrlLength > 0)
 		memcpy(payload + 3, ctrlPayload, ctrlLength);
-	fSerial->SendFrame(payload, 3 + ctrlLength);
+	return fSerial->SendFrame(payload, 3 + ctrlLength);
 }

@@ -18,83 +18,83 @@ class SerialHandler;
 
 class ProtocolHandler {
 public:
-							ProtocolHandler(SerialHandler* serial);
+						ProtocolHandler(SerialHandler* serial);
 
-			void			SetSerialHandler(SerialHandler* serial);
-			bool			IsConnected() const;
+		void			SetSerialHandler(SerialHandler* serial);
+		bool			IsConnected() const;
 
-			// App lifecycle
-			void			SendAppStart();
-			void			SendDeviceQuery();
-			void			SendExportSelf();
-			void			SendGetContacts();
-			void			SendSelfAdvert();
-			void			SendSyncNextMessage();
+		// App lifecycle
+		status_t		SendAppStart();
+		status_t		SendDeviceQuery();
+		status_t		SendExportSelf();
+		status_t		SendGetContacts();
+		status_t		SendSelfAdvert();
+		status_t		SendSyncNextMessage();
 
-			// Device info
-			void			SendGetBattery();
-			void			SendGetStats();
-			void			SendGetDeviceTime();
-			void			SendSetDeviceTime(uint32 epoch);
-			void			SendReboot();
-			void			SendFactoryReset();
+		// Device info
+		status_t		SendGetBattery();
+		status_t		SendGetStats();
+		status_t		SendGetDeviceTime();
+		status_t		SendSetDeviceTime(uint32 epoch);
+		status_t		SendReboot();
+		status_t		SendFactoryReset();
 
-			// Radio configuration
-			void			SendRadioParams(uint32 freqHz, uint32 bwHz,
-								uint8 sf, uint8 cr);
-			void			SendSetTxPower(uint8 power);
-			void			SendGetTuningParams();
-			void			SendSetTuningParams(uint32 rxDelayBase,
-								uint32 airtimeFactor);
+		// Radio configuration
+		status_t		SendRadioParams(uint32 freqHz, uint32 bwHz,
+							uint8 sf, uint8 cr);
+		status_t		SendSetTxPower(uint8 power);
+		status_t		SendGetTuningParams();
+		status_t		SendSetTuningParams(uint32 rxDelayBase,
+							uint32 airtimeFactor);
 
-			// Node identity
-			void			SendSetName(const char* name);
-			void			SendSetLatLon(double lat, double lon);
-			void			SendOtherParams(uint8 manualAdd, uint8 telemetry,
-								uint8 locPolicy, uint8 multiAcks);
-			void			SendSetDevicePin(uint32 pin);
+		// Node identity
+		status_t		SendSetName(const char* name);
+		status_t		SendSetLatLon(double lat, double lon);
+		status_t		SendOtherParams(uint8 manualAdd, uint8 telemetry,
+							uint8 locPolicy, uint8 multiAcks);
+		status_t		SendSetDevicePin(uint32 pin);
 
-			// Contact management
-			void			SendResetPath(const uint8* pubkey);
-			void			SendRemoveContact(const uint8* pubkey);
-			void			SendAddUpdateContact(const uint8* pubkey,
-								const char* name, uint8 type);
-			void			SendShareContact(const uint8* pubkey);
+		// Contact management
+		status_t		SendResetPath(const uint8* pubkey);
+		status_t		SendRemoveContact(const uint8* pubkey);
+		status_t		SendAddUpdateContact(const uint8* pubkey,
+							const char* name, uint8 type);
+		status_t		SendShareContact(const uint8* pubkey);
 
-			// Messaging (frame-level only)
-			void			SendDM(const uint8* pubkeyPrefix,
-								uint8 txtType, uint32 timestamp,
-								const char* text, size_t textLen);
-			void			SendChannelMsg(uint8 channelIdx,
-								uint32 timestamp, const char* text,
-								size_t textLen);
+		// Messaging (frame-level only)
+		status_t		SendDM(const uint8* pubkeyPrefix,
+							uint8 txtType, uint32 timestamp,
+							const char* text, size_t textLen);
+		status_t		SendChannelMsg(uint8 channelIdx,
+							uint32 timestamp, const char* text,
+							size_t textLen);
 
-			// Login and admin
-			void			SendLogin(const uint8* pubkey,
-								const char* password);
-			void			SendStatusRequest(const uint8* pubkey);
-			void			SendTelemetryRequest(const uint8* pubkey);
-			void			SendTracePath(const uint8* pubkey);
+		// Login and admin
+		status_t		SendLogin(const uint8* pubkey,
+							const char* password);
+		status_t		SendStatusRequest(const uint8* pubkey);
+		status_t		SendTelemetryRequest(const uint8* pubkey);
+		status_t		SendTracePath(const uint8* pubkey);
 
-			// Channels
-			void			SendGetChannel(uint8 index);
-			void			SendSetChannel(uint8 index, const char* name,
-								const uint8* secret);
-			void			SendRemoveChannel(uint8 index);
+		// Channels
+		status_t		SendGetChannel(uint8 index);
+		status_t		SendSetChannel(uint8 index, const char* name,
+							const uint8* secret);
+		status_t		SendRemoveChannel(uint8 index);
 
-			// Advanced
-			void			SendRawData(const uint8* payload,
-								size_t length);
-			void			SendGetCustomVars();
-			void			SendSetCustomVar(const char* nameValue);
-			void			SendGetAdvertPath(const uint8* pubkey);
-			void			SendBinaryRequest(const uint8* pubkey,
-								const uint8* data, size_t length);
-			void			SendControlData(uint8 subType,
-								const uint8* payload, size_t length);
+		// Advanced
+		status_t		SendRawData(const uint8* payload,
+							size_t length);
+		status_t		SendGetCustomVars();
+		status_t		SendSetCustomVar(const char* nameValue);
+		status_t		SendGetAdvertPath(const uint8* pubkey);
+		status_t		SendBinaryRequest(const uint8* pubkey,
+							const uint8* data, size_t length);
+		status_t		SendControlData(uint8 subType,
+							const uint8* payload, size_t length);
 
 private:
-			SerialHandler*	fSerial;
+		SerialHandler*	fSerial;
 };
 
 

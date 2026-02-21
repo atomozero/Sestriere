@@ -423,6 +423,51 @@ TestProtocolHandlerSeparation()
 
 
 // ============================================================================
+// Test 11: ProtocolHandler methods return status_t
+// ============================================================================
+
+static void
+TestProtocolHandlerReturnTypes()
+{
+	// Verify ProtocolHandler.h declares status_t return types
+	FILE* f = fopen("ProtocolHandler.h", "r");
+	assert(f != NULL);
+
+	char buf[16384];
+	size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+	fclose(f);
+	buf[n] = '\0';
+
+	// All Send methods should use status_t
+	assert(strstr(buf, "status_t\t\tSendAppStart") != NULL);
+	assert(strstr(buf, "status_t\t\tSendRadioParams") != NULL);
+	assert(strstr(buf, "status_t\t\tSendDM") != NULL);
+	assert(strstr(buf, "status_t\t\tSendChannelMsg") != NULL);
+	assert(strstr(buf, "status_t\t\tSendReboot") != NULL);
+	assert(strstr(buf, "status_t\t\tSendLogin") != NULL);
+
+	// Should NOT have void Send methods anymore
+	assert(strstr(buf, "void\t\t\tSendAppStart") == NULL);
+	assert(strstr(buf, "void\t\t\tSendDM") == NULL);
+
+	// Verify ProtocolHandler.cpp uses return types
+	f = fopen("ProtocolHandler.cpp", "r");
+	assert(f != NULL);
+	n = fread(buf, 1, sizeof(buf) - 1, f);
+	fclose(f);
+	buf[n] = '\0';
+
+	// Check for B_NOT_INITIALIZED returns
+	assert(strstr(buf, "return B_NOT_INITIALIZED") != NULL);
+
+	// Check for return fSerial->SendFrame pattern
+	assert(strstr(buf, "return fSerial->SendFrame") != NULL);
+
+	printf("  PASS: ProtocolHandler methods return status_t\n");
+}
+
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -441,7 +486,8 @@ main()
 	TestGetStatsFrame();
 	TestOtherParamsFrame();
 	TestProtocolHandlerSeparation();
+	TestProtocolHandlerReturnTypes();
 
-	printf("\nAll 10 tests passed.\n");
+	printf("\nAll 11 tests passed.\n");
 	return 0;
 }
