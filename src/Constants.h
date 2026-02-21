@@ -313,6 +313,10 @@ const uint16 kBattGoodMv = 3900;
 const uint16 kBattFairMv = 3600;
 const uint16 kBattLowMv = 3400;
 
+// Battery percentage calculation (3.0V = 0%, 4.2V = 100%)
+const uint16 kBattMinMv = 3000;
+const uint16 kBattRangeMv = 1200;
+
 // RSSI thresholds (dBm)
 const int8 kRssiGood = -60;
 const int8 kRssiFair = -80;

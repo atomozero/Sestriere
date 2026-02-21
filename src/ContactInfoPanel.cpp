@@ -896,7 +896,7 @@ ContactInfoPanel::_DrawAdminSections(float& y)
 	// Battery — percentage with color
 	int battPct = 0;
 	if (fBattMv > 0)
-		battPct = ((int)fBattMv - 3000) * 100 / 1200;
+		battPct = ((int)fBattMv - kBattMinMv) * 100 / kBattRangeMv;
 	if (battPct < 0) battPct = 0;
 	if (battPct > 100) battPct = 100;
 

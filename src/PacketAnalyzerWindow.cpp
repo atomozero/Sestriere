@@ -1478,7 +1478,7 @@ PacketAnalyzerWindow::_FormatDecodedSection(const CapturedPacket* packet,
 
 			if (packet->payloadSize >= 3) {
 				uint16 battMv = ReadLE16(packet->payload + 1);
-				int pct = ((int)battMv - 3000) * 100 / 1200;
+				int pct = ((int)battMv - kBattMinMv) * 100 / kBattRangeMv;
 				if (pct < 0) pct = 0;
 				if (pct > 100) pct = 100;
 				char buf[48];
