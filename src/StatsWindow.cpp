@@ -21,6 +21,7 @@
 #include <cstring>
 
 #include "Constants.h"
+#include "Utils.h"
 
 
 static const uint32 MSG_REFRESH_STATS = 'rfst';
@@ -34,14 +35,6 @@ static const rgb_color kBadColor = {200, 60, 60, 255};
 static const rgb_color kLabelColor = {80, 80, 80, 255};
 static const rgb_color kValueColor = {0, 0, 0, 255};
 static const rgb_color kHeaderColor = {40, 80, 120, 255};
-
-
-// Helper to read uint32 little-endian
-static uint32
-ReadU32LE(const uint8* data)
-{
-	return data[0] | (data[1] << 8) | (data[2] << 16) | (data[3] << 24);
-}
 
 
 // Custom view for a single stat row with label and value
@@ -354,23 +347,23 @@ StatsWindow::ParseStatsResponse(const uint8* data, size_t length)
 		case 0:  // Core stats
 			// [2-3]=batt_mv(uint16 LE) [4-7]=uptime(uint32 LE)
 			if (length >= 4)
-				fCoreStats.batteryMv = data[2] | (data[3] << 8);
+				fCoreStats.batteryMv = ReadLE16(data + 2);
 			if (length >= 8)
-				fCoreStats.uptime = ReadU32LE(data + 4);
+				fCoreStats.uptime = ReadLE32(data + 4);
 			break;
 
 		case 1:  // Radio stats
 			// [2-3]=noise_floor(int16 LE) [4]=rssi(int8) [5]=snr(int8)
 			// [6-9]=tx_air_time(uint32) [10-13]=rx_air_time(uint32)
 			if (length >= 4)
-				fRadioStats.noiseFloor = (int16)(data[2] | (data[3] << 8));
+				fRadioStats.noiseFloor = ReadLE16Signed(data + 2);
 			if (length >= 6) {
 				fRadioStats.lastRssi = (int8)data[4];
 				fRadioStats.lastSnr = (int8)data[5];
 			}
 			if (length >= 14) {
-				fRadioStats.txAirTimeMs = ReadU32LE(data + 6);
-				fRadioStats.rxAirTimeMs = ReadU32LE(data + 10);
+				fRadioStats.txAirTimeMs = ReadLE32(data + 6);
+				fRadioStats.rxAirTimeMs = ReadLE32(data + 10);
 			}
 			break;
 
@@ -378,16 +371,16 @@ StatsWindow::ParseStatsResponse(const uint8* data, size_t length)
 			// [2-5]=recvPkts [6-9]=sentPkts [10-13]=sentFlood
 			// [14-17]=sentDirect [18-21]=recvFlood [22-25]=recvDirect
 			if (length >= 10) {
-				fPacketStats.recvPackets = ReadU32LE(data + 2);
-				fPacketStats.sentPackets = ReadU32LE(data + 6);
+				fPacketStats.recvPackets = ReadLE32(data + 2);
+				fPacketStats.sentPackets = ReadLE32(data + 6);
 			}
 			if (length >= 18) {
-				fPacketStats.sentFlood = ReadU32LE(data + 10);
-				fPacketStats.sentDirect = ReadU32LE(data + 14);
+				fPacketStats.sentFlood = ReadLE32(data + 10);
+				fPacketStats.sentDirect = ReadLE32(data + 14);
 			}
 			if (length >= 26) {
-				fPacketStats.recvFlood = ReadU32LE(data + 18);
-				fPacketStats.recvDirect = ReadU32LE(data + 22);
+				fPacketStats.recvFlood = ReadLE32(data + 18);
+				fPacketStats.recvDirect = ReadLE32(data + 22);
 			}
 			break;
 	}

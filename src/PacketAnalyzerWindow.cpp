@@ -37,6 +37,7 @@
 #include <ctime>
 
 #include "Constants.h"
+#include "Utils.h"
 
 
 // Private message codes
@@ -1113,7 +1114,7 @@ PacketAnalyzerWindow::_DecodePacket(CapturedPacket& packet,
 		case RSP_BATT_AND_STORAGE:
 		{
 			if (rawLength >= 3) {
-				uint16 battMv = rawData[1] | (rawData[2] << 8);
+				uint16 battMv = ReadLE16(rawData + 1);
 				snprintf(packet.summary, sizeof(packet.summary),
 					"Battery: %u mV", battMv);
 			} else {
@@ -1129,16 +1130,14 @@ PacketAnalyzerWindow::_DecodePacket(CapturedPacket& packet,
 				uint8 statType = rawData[1];
 				if (statType == 0 && rawLength >= 8) {
 					// Core stats: [0]=code,[1]=type,[2-3]=battMv,[4-7]=uptime
-					uint16 battMv = rawData[2] | (rawData[3] << 8);
-					uint32 uptime = rawData[4] | (rawData[5] << 8)
-						| (rawData[6] << 16) | (rawData[7] << 24);
+					uint16 battMv = ReadLE16(rawData + 2);
+					uint32 uptime = ReadLE32(rawData + 4);
 					snprintf(packet.summary, sizeof(packet.summary),
 						"Stats/Core: uptime=%us, batt=%umV",
 						uptime, battMv);
 				} else if (statType == 1 && rawLength >= 6) {
 					// Radio stats: [2-3]=noiseFloor,[4]=rssi,[5]=snr
-					int16 noiseFloor = (int16)(rawData[2]
-						| (rawData[3] << 8));
+					int16 noiseFloor = ReadLE16Signed(rawData + 2);
 					packet.rssi = (int8)rawData[4];
 					packet.snr = (int8)rawData[5];
 					snprintf(packet.summary, sizeof(packet.summary),
@@ -1146,10 +1145,8 @@ PacketAnalyzerWindow::_DecodePacket(CapturedPacket& packet,
 						noiseFloor, packet.rssi, packet.snr);
 				} else if (statType == 2 && rawLength >= 10) {
 					// Packet stats: [2-5]=recvPkts,[6-9]=sentPkts
-					uint32 recv = rawData[2] | (rawData[3] << 8)
-						| (rawData[4] << 16) | (rawData[5] << 24);
-					uint32 sent = rawData[6] | (rawData[7] << 8)
-						| (rawData[8] << 16) | (rawData[9] << 24);
+					uint32 recv = ReadLE32(rawData + 2);
+					uint32 sent = ReadLE32(rawData + 6);
 					snprintf(packet.summary, sizeof(packet.summary),
 						"Stats/Packets: recv=%u, sent=%u", recv, sent);
 				} else {
@@ -1480,8 +1477,7 @@ PacketAnalyzerWindow::_FormatDecodedSection(const CapturedPacket* packet,
 				"status.\n";
 
 			if (packet->payloadSize >= 3) {
-				uint16 battMv = packet->payload[1]
-					| (packet->payload[2] << 8);
+				uint16 battMv = ReadLE16(packet->payload + 1);
 				int pct = ((int)battMv - 3000) * 100 / 1200;
 				if (pct < 0) pct = 0;
 				if (pct > 100) pct = 100;
@@ -1492,14 +1488,8 @@ PacketAnalyzerWindow::_FormatDecodedSection(const CapturedPacket* packet,
 			}
 
 			if (packet->payloadSize >= 11) {
-				uint32 usedKb = packet->payload[3]
-					| (packet->payload[4] << 8)
-					| (packet->payload[5] << 16)
-					| (packet->payload[6] << 24);
-				uint32 totalKb = packet->payload[7]
-					| (packet->payload[8] << 8)
-					| (packet->payload[9] << 16)
-					| (packet->payload[10] << 24);
+				uint32 usedKb = ReadLE32(packet->payload + 3);
+				uint32 totalKb = ReadLE32(packet->payload + 7);
 				char buf[64];
 				snprintf(buf, sizeof(buf),
 					"  Storage:  %u / %u KB used\n", usedKb, totalKb);
@@ -1631,10 +1621,7 @@ PacketAnalyzerWindow::_FormatDecodedSection(const CapturedPacket* packet,
 				if (statType == 0) {
 					output << "Core statistics (uptime, battery).\n";
 					if (packet->payloadSize >= 8) {
-						uint32 uptime = packet->payload[4]
-							| (packet->payload[5] << 8)
-							| (packet->payload[6] << 16)
-							| (packet->payload[7] << 24);
+						uint32 uptime = ReadLE32(packet->payload + 4);
 						char buf[48];
 						snprintf(buf, sizeof(buf),
 							"  Uptime:   %u seconds\n", uptime);

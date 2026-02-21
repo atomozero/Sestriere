@@ -63,6 +63,7 @@
 #include "TelemetryWindow.h"
 #include "TopBarView.h"
 #include "TracePathWindow.h"
+#include "Utils.h"
 
 
 // MainWindow-private message codes
@@ -2045,8 +2046,7 @@ MainWindow::_SendTextMessage(const char* text)
 
 	{
 		char hex[13];
-		for (int i = 0; i < 6; i++)
-			snprintf(hex + i * 2, 3, "%02X", contact->publicKey[i]);
+		FormatPubKeyPrefix(hex, contact->publicKey);
 		_LogMessage("INFO", BString().SetToFormat(
 			"Sending DM to %s [%s] (idx %d, cli=%d): %s",
 			contact->name, hex, (int)fSelectedContact,
@@ -2364,8 +2364,7 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			uint32 roundTripMs = 0;
 			// PUSH_SEND_CONFIRMED payload: [0]=code [1-4]=ackCode(u32) [5-8]=roundTripMs(u32)
 			if (length >= 9) {
-				roundTripMs = (uint32)data[5] | ((uint32)data[6] << 8)
-					| ((uint32)data[7] << 16) | ((uint32)data[8] << 24);
+				roundTripMs = ReadLE32(data + 5);
 			}
 
 			BString logMsg("Message delivery confirmed");
@@ -2450,8 +2449,7 @@ MainWindow::_HandleCurrTime(const uint8* data, size_t length)
 		return;
 	}
 
-	uint32 epoch = (uint32)data[1] | ((uint32)data[2] << 8)
-		| ((uint32)data[3] << 16) | ((uint32)data[4] << 24);
+	uint32 epoch = ReadLE32(data + 1);
 
 	time_t t = (time_t)epoch;
 	struct tm tm;
@@ -2488,8 +2486,7 @@ MainWindow::_HandleAdvertPath(const uint8* data, size_t length)
 		return;
 	}
 
-	uint32 recvTs = (uint32)data[1] | ((uint32)data[2] << 8)
-		| ((uint32)data[3] << 16) | ((uint32)data[4] << 24);
+	uint32 recvTs = ReadLE32(data + 1);
 	uint8 pathLen = data[5];
 
 	BString pathHex;
@@ -2622,10 +2619,7 @@ MainWindow::_HandleExportContact(const uint8* data, size_t length)
 	// Extract public key from offset 3 (32 bytes = 64 hex chars)
 	// Format: [0]=cmd, [1-2]=type, [3-34]=pubkey(32), [35+]=signature+name
 	if (length >= 35) {
-		for (int i = 0; i < 32; i++) {
-			snprintf(fPublicKey + i * 2, 3, "%02X", data[3 + i]);
-		}
-		fPublicKey[64] = '\0';  // Ensure exactly 64 chars
+		FormatPubKeyFull(fPublicKey, data + 3);
 
 		// Derive numeric node ID from first 4 pubkey bytes
 		fSelfNodeId = ((uint32)data[3] << 24) | ((uint32)data[4] << 16)
@@ -2689,7 +2683,7 @@ MainWindow::_HandleContactsStart(const uint8* data, size_t length)
 {
 	uint32 count = 0;
 	if (length >= 5) {
-		count = data[1] | (data[2] << 8) | (data[3] << 16) | (data[4] << 24);
+		count = ReadLE32(data + 1);
 	}
 	_LogMessage("INFO", BString().SetToFormat("Receiving contacts (expected: %u)...", count));
 
@@ -2720,8 +2714,7 @@ MainWindow::_HandleContact(const uint8* data, size_t length)
 	contact->outPathLen = (int8)data[35];
 	memcpy(contact->name, data + 100, 32);
 	contact->name[31] = '\0';
-	contact->lastSeen = data[132] | (data[133] << 8) |
-		(data[134] << 16) | (data[135] << 24);
+	contact->lastSeen = ReadLE32(data + 132);
 	contact->isValid = true;
 
 	// Look for existing contact to preserve message history
@@ -2934,10 +2927,7 @@ MainWindow::_HandleSelfInfo(const uint8* data, size_t length)
 			"Self type:%d txPower:%d maxTxPower:%d", advType, fRadioTxPower, maxTxPower));
 
 		// Extract and store public key as hex string (offset 4-35)
-		for (int i = 0; i < 32; i++) {
-			snprintf(fPublicKey + i * 2, 3, "%02X", data[4 + i]);
-		}
-		fPublicKey[64] = '\0';
+		FormatPubKeyFull(fPublicKey, data + 4);
 
 		// Derive numeric node ID from first 4 pubkey bytes
 		fSelfNodeId = ((uint32)data[4] << 24) | ((uint32)data[5] << 16)
@@ -2954,8 +2944,8 @@ MainWindow::_HandleSelfInfo(const uint8* data, size_t length)
 
 	if (length >= 44) {
 		// Extract GPS coordinates
-		int32 latRaw = data[36] | (data[37] << 8) | (data[38] << 16) | (data[39] << 24);
-		int32 lonRaw = data[40] | (data[41] << 8) | (data[42] << 16) | (data[43] << 24);
+		int32 latRaw = ReadLE32Signed(data + 36);
+		int32 lonRaw = ReadLE32Signed(data + 40);
 		if (latRaw != 0 || lonRaw != 0) {
 			double lat = latRaw / 1000000.0;
 			double lon = lonRaw / 1000000.0;
@@ -2979,10 +2969,9 @@ MainWindow::_HandleSelfInfo(const uint8* data, size_t length)
 		// Extract current radio parameters
 		// RSP_SELF_INFO returns freq in kHz, BW in Hz (same as wire format)
 		// We store everything in Hz internally
-		uint32 freqKHz = data[48] | (data[49] << 8) | (data[50] << 16)
-			| (data[51] << 24);
+		uint32 freqKHz = ReadLE32(data + 48);
 		fRadioFreq = freqKHz * 1000;  // kHz → Hz
-		fRadioBw = data[52] | (data[53] << 8) | (data[54] << 16) | (data[55] << 24);
+		fRadioBw = ReadLE32(data + 52);
 		fRadioSf = data[56];
 		fRadioCr = data[57];
 		fHasRadioParams = true;
@@ -3060,7 +3049,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 		senderPrefix = data + 4;
 		pathLen = data[10];
 		txtType = data[11];  // 0=plain, 1=cli_data, 2=signed_plain
-		timestamp = data[12] | (data[13] << 8) | (data[14] << 16) | (data[15] << 24);
+		timestamp = ReadLE32(data + 12);
 		textOffset = 16;
 	} else {
 		if (length < 13) {
@@ -3071,7 +3060,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 		pathLen = data[7];
 		snr = 0;  // V2 does not include SNR
 		txtType = data[8];  // 0=plain, 1=cli_data
-		timestamp = data[9] | (data[10] << 8) | (data[11] << 16) | (data[12] << 24);
+		timestamp = ReadLE32(data + 9);
 		textOffset = 13;
 	}
 
@@ -3232,7 +3221,7 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 		channelIdx = data[4];
 		pathLen = data[5];
 		// data[6] = txt_type
-		timestamp = data[7] | (data[8] << 8) | (data[9] << 16) | (data[10] << 24);
+		timestamp = ReadLE32(data + 7);
 		textOffset = 11;
 	} else {
 		if (length < 9) {
@@ -3243,7 +3232,7 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 		pathLen = data[2];
 		snr = 0;  // V2 does not include SNR
 		// data[3] = txt_type
-		timestamp = data[4] | (data[5] << 8) | (data[6] << 16) | (data[7] << 24);
+		timestamp = ReadLE32(data + 4);
 		textOffset = 8;
 	}
 	size_t textLen = length - textOffset;
@@ -3418,15 +3407,15 @@ MainWindow::_HandleBattAndStorage(const uint8* data, size_t length)
 	// [7-10]= total_kb (uint32 LE, optional)
 
 	if (length >= 3) {
-		uint16 battMv = data[1] | (data[2] << 8);
+		uint16 battMv = ReadLE16(data + 1);
 		fBatteryMv = battMv;
 
 		uint32 usedKb = 0;
 		uint32 totalKb = 0;
 		if (length >= 7)
-			usedKb = data[3] | (data[4] << 8) | (data[5] << 16) | (data[6] << 24);
+			usedKb = ReadLE32(data + 3);
 		if (length >= 11)
-			totalKb = data[7] | (data[8] << 8) | (data[9] << 16) | (data[10] << 24);
+			totalKb = ReadLE32(data + 7);
 
 		// Calculate storage percentage for status bar
 		int8 storagePct = 0;
@@ -3491,12 +3480,11 @@ MainWindow::_HandleStats(const uint8* data, size_t length)
 		case 0:  // Core stats (11 bytes)
 			// [2-3]=batt_mv(int16) [4-7]=uptime(uint32) [8-9]=err_flags [10]=queue_len
 			if (length >= 8) {
-				fDeviceUptime = data[4] | (data[5] << 8) |
-					(data[6] << 16) | (data[7] << 24);
+				fDeviceUptime = ReadLE32(data + 4);
 				fTopBar->SetUptime(fDeviceUptime);
 			}
 			if (length >= 4) {
-				uint16 battMv = data[2] | (data[3] << 8);
+				uint16 battMv = ReadLE16(data + 2);
 				if (battMv > 0) {
 					fBatteryMv = battMv;
 				}
@@ -3507,7 +3495,7 @@ MainWindow::_HandleStats(const uint8* data, size_t length)
 			// [2-3]=noise_floor(int16) [4]=rssi(int8) [5]=snr(int8)
 			// [6-9]=tx_air_time [10-13]=rx_air_time
 			if (length >= 6) {
-				fNoiseFloor = (int8)(data[2] | (data[3] << 8));
+				fNoiseFloor = (int8)ReadLE16(data + 2);
 				fLastRssi = (int8)data[4];
 				fLastSnr = (int8)data[5];
 				fTopBar->SetRadioStats(fLastRssi, fLastSnr, fTxPackets, fRxPackets);
@@ -3532,8 +3520,8 @@ MainWindow::_HandleStats(const uint8* data, size_t length)
 			// [2-5]=recvPkts [6-9]=sentPkts [10-13]=sentFlood [14-17]=sentDirect
 			// [18-21]=recvFlood [22-25]=recvDirect
 			if (length >= 10) {
-				fRxPackets = data[2] | (data[3] << 8) | (data[4] << 16) | (data[5] << 24);
-				fTxPackets = data[6] | (data[7] << 8) | (data[8] << 16) | (data[9] << 24);
+				fRxPackets = ReadLE32(data + 2);
+				fTxPackets = ReadLE32(data + 6);
 				fTopBar->SetRadioStats(fLastRssi, fLastSnr, fTxPackets, fRxPackets);
 			}
 			break;
@@ -3863,8 +3851,7 @@ MainWindow::_HandlePushLoginResult(uint8 code)
 
 	if (success) {
 		char hex[13];
-		for (int i = 0; i < 6; i++)
-			snprintf(hex + i * 2, 3, "%02X", fLoginTargetKey[i]);
+		FormatPubKeyPrefix(hex, fLoginTargetKey);
 		_LogMessage("OK", BString().SetToFormat(
 			"Login successful! (0x%02X) target=%s", code, hex));
 	} else {
@@ -3961,16 +3948,16 @@ MainWindow::_HandlePushStatusResponse(const uint8* data, size_t length)
 	if (!fLoggedIn || memcmp(prefix, fLoggedInKey, kPubKeyPrefixSize) != 0)
 		return;
 
-	uint16 battMv = data[8] | (data[9] << 8);
-	int16 noiseFloor = (int16)(data[12] | (data[13] << 8));
-	int16 rssi = (int16)(data[14] | (data[15] << 8));
-	uint32 rxPkts = data[16] | (data[17] << 8) | (data[18] << 16) | (data[19] << 24);
-	uint32 txPkts = data[20] | (data[21] << 8) | (data[22] << 16) | (data[23] << 24);
-	uint32 uptime = data[28] | (data[29] << 8) | (data[30] << 16) | (data[31] << 24);
+	uint16 battMv = ReadLE16(data + 8);
+	int16 noiseFloor = ReadLE16Signed(data + 12);
+	int16 rssi = ReadLE16Signed(data + 14);
+	uint32 rxPkts = ReadLE32(data + 16);
+	uint32 txPkts = ReadLE32(data + 20);
+	uint32 uptime = ReadLE32(data + 28);
 
 	int16 snrRaw = 0;
 	if (length >= 52)
-		snrRaw = (int16)(data[50] | (data[51] << 8));
+		snrRaw = ReadLE16Signed(data + 50);
 	int8 snr = (int8)(snrRaw / 4);
 
 	// Forward to ContactInfoPanel
@@ -3979,8 +3966,7 @@ MainWindow::_HandlePushStatusResponse(const uint8* data, size_t length)
 		(int8)rssi, snr, (int8)noiseFloor);
 
 	char hex[13];
-	for (int i = 0; i < 6; i++)
-		snprintf(hex + i * 2, 3, "%02X", prefix[i]);
+	FormatPubKeyPrefix(hex, prefix);
 	_LogMessage("INFO", BString().SetToFormat(
 		"Remote status [%s]: %umV, up %us, rssi %d, snr %d",
 		hex, battMv, uptime, (int)rssi, snr));
