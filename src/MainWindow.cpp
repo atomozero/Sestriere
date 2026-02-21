@@ -2715,8 +2715,12 @@ MainWindow::_HandleContact(const uint8* data, size_t length)
 	contact->type = data[kContactTypeOffset];
 	contact->flags = data[kContactFlagsOffset];
 	contact->outPathLen = (int8)data[kContactPathLenOffset];
-	memcpy(contact->name, data + kContactNameOffset, kContactNameSize);
-	contact->name[kContactNameSize - 1] = '\0';
+	{
+		char nameBuf[kContactNameSize + 1];
+		memcpy(nameBuf, data + kContactNameOffset, kContactNameSize);
+		nameBuf[kContactNameSize] = '\0';
+		strlcpy(contact->name, nameBuf, sizeof(contact->name));
+	}
 	contact->lastSeen = ReadLE32(data + kContactLastSeenOffset);
 	contact->isValid = true;
 
@@ -2985,11 +2989,13 @@ MainWindow::_HandleSelfInfo(const uint8* data, size_t length)
 
 	if (length > 58) {
 		// Extract device name (null-terminated string at offset 58)
-		size_t nameLen = strnlen((const char*)(data + 58), length - 58);
-		if (nameLen > sizeof(fDeviceName) - 1)
-			nameLen = sizeof(fDeviceName) - 1;
-		memcpy(fDeviceName, data + 58, nameLen);
-		fDeviceName[nameLen] = '\0';
+		char tempName[64];
+		size_t maxLen = length - 58;
+		if (maxLen > sizeof(tempName) - 1)
+			maxLen = sizeof(tempName) - 1;
+		memcpy(tempName, data + 58, maxLen);
+		tempName[maxLen] = '\0';
+		strlcpy(fDeviceName, tempName, sizeof(fDeviceName));
 
 		_LogMessage("INFO", BString().SetToFormat("Device name: %s", fDeviceName));
 
@@ -3423,7 +3429,7 @@ MainWindow::_HandleBattAndStorage(const uint8* data, size_t length)
 		// Calculate storage percentage for status bar
 		int8 storagePct = 0;
 		if (totalKb > 0)
-			storagePct = (int8)((usedKb * 100) / totalKb);
+			storagePct = (int8)(((uint64)usedKb * 100) / totalKb);
 
 		_LogMessage("INFO", BString().SetToFormat(
 			"Battery: %u mV, Storage: %u/%u KB (%d%%)",
