@@ -115,6 +115,23 @@ ParseHexPubKey(uint8* dest, const char* hexStr)
 }
 
 
+// Relative time formatting: "Just now" / "N min ago" / "N hr ago" / "N days ago"
+// dest must be at least 24 bytes. Returns dest for convenience.
+inline char*
+FormatTimeAgo(char* dest, size_t size, uint32 ageSeconds)
+{
+	if (ageSeconds < 60)
+		snprintf(dest, size, "Just now");
+	else if (ageSeconds < 3600)
+		snprintf(dest, size, "%u min ago", (unsigned)(ageSeconds / 60));
+	else if (ageSeconds < 86400)
+		snprintf(dest, size, "%u hr ago", (unsigned)(ageSeconds / 3600));
+	else
+		snprintf(dest, size, "%u days ago", (unsigned)(ageSeconds / 86400));
+	return dest;
+}
+
+
 // Uptime formatting: "Xd Yh Zm" / "Yh Zm" / "Zm"
 // dest must be at least 16 bytes. Returns dest for convenience.
 inline char*

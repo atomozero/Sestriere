@@ -731,12 +731,8 @@ ContactInfoPanel::_FormatLastSeen(char* buffer, size_t size) const
 	time_t seen = (time_t)fContact->lastSeen;
 	uint32 age = (now > seen) ? (uint32)(now - seen) : 0;
 
-	if (age < 60) {
-		snprintf(buffer, size, "Just now");
-	} else if (age < 3600) {
-		snprintf(buffer, size, "%u min ago", age / 60);
-	} else if (age < 86400) {
-		snprintf(buffer, size, "%u hr ago", age / 3600);
+	if (age < 86400) {
+		FormatTimeAgo(buffer, size, age);
 	} else {
 		struct tm tm;
 		if (localtime_r(&seen, &tm) != NULL)

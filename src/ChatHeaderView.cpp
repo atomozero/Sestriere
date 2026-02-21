@@ -16,6 +16,7 @@
 #include <ctime>
 
 #include "Constants.h"
+#include "Utils.h"
 
 // Layout constants
 static const float kHeaderHeight = 56.0f;
@@ -190,12 +191,9 @@ ChatHeaderView::Draw(BRect updateRect)
 			uint32 now = (uint32)time(NULL);
 			uint32 age = (now > fContact->lastSeen)
 				? (now - fContact->lastSeen) : 0;
-			if (age < 60)
-				statusText << " · Just now";
-			else if (age < 3600)
-				statusText << BString().SetToFormat(" · %u min ago", age / 60);
-			else if (age < 86400)
-				statusText << BString().SetToFormat(" · %u hr ago", age / 3600);
+			char ageBuf[24];
+			FormatTimeAgo(ageBuf, sizeof(ageBuf), age);
+			statusText << " · " << ageBuf;
 		}
 	} else if (fStatus.Length() > 0) {
 		statusText = fStatus;
