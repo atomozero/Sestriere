@@ -877,8 +877,11 @@ PacketAnalyzerWindow::_DecodePacket(CapturedPacket& packet,
 		case RSP_CONTACT_MSG_RECV:
 		{
 			// DM received
+			// V2: [0]=code [1-6]=pubkey [7]=pathLen [8]=txtType [9-12]=ts [13+]=text
+			// V3: [0]=code [1]=snr [2-3]=rsv [4-9]=pubkey [10]=pathLen [11]=txtType
+			//     [12-15]=timestamp [16+]=text
 			bool isV3 = (code == RSP_CONTACT_MSG_RECV_V3);
-			size_t minLen = isV3 ? 12 : 9;
+			size_t minLen = isV3 ? 16 : 13;
 			if (rawLength >= minLen) {
 				int keyOffset = isV3 ? 4 : 1;
 
@@ -897,8 +900,8 @@ PacketAnalyzerWindow::_DecodePacket(CapturedPacket& packet,
 				}
 
 				// Extract text preview
-				size_t textOff = isV3 ? 12 : 9;
-				uint8 txtType = isV3 ? rawData[10] : rawData[8];
+				size_t textOff = isV3 ? 16 : 13;
+				uint8 txtType = isV3 ? rawData[11] : rawData[8];
 				if (textOff < rawLength) {
 					size_t textLen = rawLength - textOff;
 					if (textLen > sizeof(packet.summary) - 20)
@@ -920,6 +923,9 @@ PacketAnalyzerWindow::_DecodePacket(CapturedPacket& packet,
 		case RSP_CHANNEL_MSG_RECV:
 		{
 			// Channel message
+			// V2: [0]=code [1]=chIdx [2]=pathLen [3]=txtType [4-7]=ts [8+]=text
+			// V3: [0]=code [1]=snr [2-3]=rsv [4]=chIdx [5]=pathLen
+			//     [6]=txtType [7-10]=ts [11+]=text
 			bool isV3 = (code == RSP_CHANNEL_MSG_RECV_V3);
 			if (isV3 && rawLength > 3) {
 				packet.snr = (int8)rawData[1];
@@ -927,7 +933,7 @@ PacketAnalyzerWindow::_DecodePacket(CapturedPacket& packet,
 				packet.pathLen = rawData[3];
 			}
 
-			size_t textOff = isV3 ? 12 : 9;
+			size_t textOff = isV3 ? 11 : 8;
 			if (textOff < rawLength) {
 				size_t textLen = rawLength - textOff;
 				if (textLen > sizeof(packet.summary) - 20)

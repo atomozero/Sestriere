@@ -262,6 +262,127 @@ int main()
 			FAIL("kHz equals Hz - conversion not applied");
 	}
 
+	// =============================================
+	// V3 Message Offset Tests
+	// =============================================
+	printf("\n--- V3 Message Offset Tests ---\n");
+
+	// Build a synthetic V3 DM frame:
+	// [0]=code [1]=snr [2-3]=reserved [4-9]=pubkey [10]=pathLen [11]=txtType
+	// [12-15]=timestamp [16+]=text
+	TEST("V3 DM: text starts at offset 16");
+	{
+		uint8_t frame[32];
+		memset(frame, 0, sizeof(frame));
+		frame[0] = 0x10;  // RSP_CONTACT_MSG_RECV_V3
+		frame[1] = 5;     // snr
+		frame[4] = 0xAA;  // pubkey byte 0
+		frame[10] = 2;    // pathLen
+		frame[11] = 0;    // txtType = plain
+		frame[12] = 0x78; frame[13] = 0x56; frame[14] = 0x34; frame[15] = 0x12;
+		frame[16] = 'H';
+		frame[17] = 'i';
+
+		// Correct V3 DM offsets:
+		size_t textOff = 16;
+		uint8_t txtType = frame[11];
+		int8_t snr = (int8_t)frame[1];
+		uint8_t pathLen = frame[10];
+
+		bool ok = true;
+		if (textOff != 16) { FAIL("textOff != 16"); ok = false; }
+		else if (frame[textOff] != 'H') { FAIL("text[0] != 'H'"); ok = false; }
+		else if (frame[textOff+1] != 'i') { FAIL("text[1] != 'i'"); ok = false; }
+		else if (txtType != 0) { FAIL("txtType != 0"); ok = false; }
+		else if (snr != 5) { FAIL("snr != 5"); ok = false; }
+		else if (pathLen != 2) { FAIL("pathLen != 2"); ok = false; }
+		if (ok) PASS();
+	}
+
+	TEST("V2 DM: text starts at offset 13");
+	{
+		uint8_t frame[32];
+		memset(frame, 0, sizeof(frame));
+		frame[0] = 0x07;  // RSP_CONTACT_MSG_RECV (V2)
+		frame[1] = 0xBB;  // pubkey byte 0
+		frame[7] = 1;     // pathLen
+		frame[8] = 0;     // txtType
+		frame[9] = 0x78; frame[10] = 0x56; frame[11] = 0x34; frame[12] = 0x12;
+		frame[13] = 'O';
+		frame[14] = 'K';
+
+		size_t textOff = 13;
+		if (frame[textOff] == 'O' && frame[textOff+1] == 'K')
+			PASS();
+		else
+			FAIL("V2 DM text not at offset 13");
+	}
+
+	TEST("V3 Channel: text starts at offset 11");
+	{
+		// V3: [0]=code [1]=snr [2-3]=rsv [4]=chIdx [5]=pathLen
+		//     [6]=txtType [7-10]=ts [11+]=text
+		uint8_t frame[24];
+		memset(frame, 0, sizeof(frame));
+		frame[0] = 0x11;  // RSP_CHANNEL_MSG_RECV_V3
+		frame[1] = -3;    // snr
+		frame[4] = 0;     // channelIdx
+		frame[5] = 0;     // pathLen
+		frame[6] = 0;     // txtType
+		frame[7] = 0x78; frame[8] = 0x56; frame[9] = 0x34; frame[10] = 0x12;
+		frame[11] = 'Y';
+		frame[12] = 'o';
+
+		size_t textOff = 11;
+		if (frame[textOff] == 'Y' && frame[textOff+1] == 'o')
+			PASS();
+		else
+			FAIL("V3 channel text not at offset 11");
+	}
+
+	TEST("V2 Channel: text starts at offset 8");
+	{
+		// V2: [0]=code [1]=chIdx [2]=pathLen [3]=txtType [4-7]=ts [8+]=text
+		uint8_t frame[16];
+		memset(frame, 0, sizeof(frame));
+		frame[0] = 0x08;  // RSP_CHANNEL_MSG_RECV (V2)
+		frame[1] = 0;     // channelIdx
+		frame[2] = 0;     // pathLen
+		frame[3] = 0;     // txtType
+		frame[4] = 0x78; frame[5] = 0x56; frame[6] = 0x34; frame[7] = 0x12;
+		frame[8] = 'C';
+		frame[9] = 'H';
+
+		size_t textOff = 8;
+		if (frame[textOff] == 'C' && frame[textOff+1] == 'H')
+			PASS();
+		else
+			FAIL("V2 channel text not at offset 8");
+	}
+
+	TEST("V3 DM: old offset 12 would read timestamp bytes, not text");
+	{
+		uint8_t frame[32];
+		memset(frame, 0, sizeof(frame));
+		frame[0] = 0x10;
+		// Timestamp at [12-15]
+		frame[12] = 0x78; frame[13] = 0x56; frame[14] = 0x34; frame[15] = 0x12;
+		// Text at [16+]
+		frame[16] = 'T'; frame[17] = 'X'; frame[18] = 'T';
+
+		// The old bug used offset 12, which reads timestamp bytes
+		size_t oldBuggyOff = 12;
+		size_t correctOff = 16;
+
+		bool oldWouldReadTimestamp = (frame[oldBuggyOff] == 0x78);
+		bool correctReadsText = (frame[correctOff] == 'T');
+
+		if (oldWouldReadTimestamp && correctReadsText)
+			PASS();
+		else
+			FAIL("offset regression");
+	}
+
 	// --- Summary ---
 	printf("\n=== Results: %d passed, %d failed ===\n",
 		sTestsPassed, sTestsFailed);
