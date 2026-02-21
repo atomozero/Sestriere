@@ -280,13 +280,13 @@ public:
 			// Color segment by SNR quality
 			int8 snr = fSNRValues[i];
 			rgb_color lineColor;
-			if (snr > 5)
+			if (snr > kSnrExcellent)
 				lineColor = (rgb_color){50, 205, 50, 255};
-			else if (snr > 0)
+			else if (snr > kSnrGood)
 				lineColor = (rgb_color){100, 200, 100, 255};
-			else if (snr > -5)
+			else if (snr > kSnrFair)
 				lineColor = (rgb_color){255, 193, 37, 255};
-			else if (snr > -10)
+			else if (snr > kSnrPoor)
 				lineColor = (rgb_color){255, 140, 0, 255};
 			else
 				lineColor = (rgb_color){220, 20, 60, 255};
@@ -303,13 +303,13 @@ public:
 
 			int8 snr = fSNRValues[i];
 			rgb_color dotColor;
-			if (snr > 5)
+			if (snr > kSnrExcellent)
 				dotColor = (rgb_color){50, 205, 50, 255};
-			else if (snr > 0)
+			else if (snr > kSnrGood)
 				dotColor = (rgb_color){100, 200, 100, 255};
-			else if (snr > -5)
+			else if (snr > kSnrFair)
 				dotColor = (rgb_color){255, 193, 37, 255};
-			else if (snr > -10)
+			else if (snr > kSnrPoor)
 				dotColor = (rgb_color){255, 140, 0, 255};
 			else
 				dotColor = (rgb_color){220, 20, 60, 255};
@@ -343,13 +343,13 @@ public:
 
 		// Use same color as the dot
 		rgb_color valColor;
-		if (lastSNR > 5)
+		if (lastSNR > kSnrExcellent)
 			valColor = (rgb_color){50, 205, 50, 255};
-		else if (lastSNR > 0)
+		else if (lastSNR > kSnrGood)
 			valColor = (rgb_color){100, 200, 100, 255};
-		else if (lastSNR > -5)
+		else if (lastSNR > kSnrFair)
 			valColor = (rgb_color){255, 193, 37, 255};
-		else if (lastSNR > -10)
+		else if (lastSNR > kSnrPoor)
 			valColor = (rgb_color){255, 140, 0, 255};
 		else
 			valColor = (rgb_color){220, 20, 60, 255};
@@ -1307,13 +1307,13 @@ PacketAnalyzerWindow::_PacketCategoryColor(uint8 code)
 /* static */ const char*
 PacketAnalyzerWindow::_SignalQualityString(int8 snr)
 {
-	if (snr > 5)
+	if (snr > kSnrExcellent)
 		return "Excellent";
-	if (snr > 0)
+	if (snr > kSnrGood)
 		return "Good";
-	if (snr > -5)
+	if (snr > kSnrFair)
 		return "Fair";
-	if (snr > -10)
+	if (snr > kSnrPoor)
 		return "Poor";
 	return "Bad";
 }
@@ -2066,13 +2066,13 @@ PacketAnalyzerWindow::_UpdateContactStats()
 		if (stat->snrCount == 0)
 			avgColor = tint_color(ui_color(B_LIST_ITEM_TEXT_COLOR),
 				B_LIGHTEN_1_TINT);
-		else if (avgSNR > 5)
+		else if (avgSNR > kSnrExcellent)
 			avgColor = (rgb_color){50, 205, 50, 255};
-		else if (avgSNR > 0)
+		else if (avgSNR > kSnrGood)
 			avgColor = (rgb_color){100, 200, 100, 255};
-		else if (avgSNR > -5)
+		else if (avgSNR > kSnrFair)
 			avgColor = (rgb_color){255, 193, 37, 255};
-		else if (avgSNR > -10)
+		else if (avgSNR > kSnrPoor)
 			avgColor = (rgb_color){255, 140, 0, 255};
 		else
 			avgColor = (rgb_color){220, 20, 60, 255};

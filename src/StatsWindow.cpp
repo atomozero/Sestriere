@@ -444,7 +444,7 @@ StatsWindow::_UpdateDisplay()
 	rgb_color rssiColor;
 	if (fRadioStats.lastRssi >= -70)
 		rssiColor = kGoodColor;
-	else if (fRadioStats.lastRssi >= -90)
+	else if (fRadioStats.lastRssi >= kRssiPoor)
 		rssiColor = kWarningColor;
 	else
 		rssiColor = kBadColor;
@@ -453,9 +453,9 @@ StatsWindow::_UpdateDisplay()
 	// SNR (V3: direct int8, NOT divided by 4)
 	snprintf(buf, sizeof(buf), "%+d dB", (int)fRadioStats.lastSnr);
 	rgb_color snrColor;
-	if (fRadioStats.lastSnr >= 5)
+	if (fRadioStats.lastSnr >= kSnrExcellent)
 		snrColor = kGoodColor;
-	else if (fRadioStats.lastSnr >= 0)
+	else if (fRadioStats.lastSnr >= kSnrGood)
 		snrColor = kWarningColor;
 	else
 		snrColor = kBadColor;

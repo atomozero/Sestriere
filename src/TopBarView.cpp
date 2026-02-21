@@ -933,10 +933,10 @@ TopBarView::_ToolTipForArea(int32 area) const
 		case kAreaRssi:
 		{
 			const char* quality = "Bad";
-			if (fRssi >= -60) quality = "Excellent";
+			if (fRssi >= kRssiGood) quality = "Excellent";
 			else if (fRssi >= -70) quality = "Good";
-			else if (fRssi >= -80) quality = "Fair";
-			else if (fRssi >= -90) quality = "Poor";
+			else if (fRssi >= kRssiFair) quality = "Fair";
+			else if (fRssi >= kRssiPoor) quality = "Poor";
 			fToolTipText.SetToFormat("RSSI: %d dBm\n"
 				"SNR: %d dB\n"
 				"Signal quality: %s",

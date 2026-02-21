@@ -27,7 +27,6 @@
 #include <cstring>
 #include <ctime>
 
-#include "Constants.h"
 
 
 static const uint32 MSG_REFRESH_MAP = 'rfmp';
@@ -1773,13 +1772,13 @@ NetworkMapView::_ColorForNode(const MapNode& node) const
 rgb_color
 NetworkMapView::_ColorForSignal(int8 rssi) const
 {
-	if (rssi >= -60)
+	if (rssi >= kRssiGood)
 		return kSignalExcellent;
 	else if (rssi >= -70)
 		return kSignalGood;
-	else if (rssi >= -80)
+	else if (rssi >= kRssiFair)
 		return kSignalFair;
-	else if (rssi >= -90)
+	else if (rssi >= kRssiPoor)
 		return kSignalPoor;
 	else
 		return kSignalBad;
@@ -1789,13 +1788,13 @@ NetworkMapView::_ColorForSignal(int8 rssi) const
 rgb_color
 NetworkMapView::_ColorForSNR(int8 snr) const
 {
-	if (snr > 5)
+	if (snr > kSnrExcellent)
 		return kLinkExcellent;
-	else if (snr >= 0)
+	else if (snr >= kSnrGood)
 		return kLinkGood;
-	else if (snr >= -5)
+	else if (snr >= kSnrFair)
 		return kLinkFair;
-	else if (snr >= -10)
+	else if (snr >= kSnrPoor)
 		return kLinkPoor;
 	else
 		return kLinkBad;
@@ -1805,13 +1804,13 @@ NetworkMapView::_ColorForSNR(int8 snr) const
 LinkQuality
 NetworkMapView::_QualityForSNR(int8 snr) const
 {
-	if (snr > 5)
+	if (snr > kSnrExcellent)
 		return LINK_EXCELLENT;
-	else if (snr >= 0)
+	else if (snr >= kSnrGood)
 		return LINK_GOOD;
-	else if (snr >= -5)
+	else if (snr >= kSnrFair)
 		return LINK_FAIR;
-	else if (snr >= -10)
+	else if (snr >= kSnrPoor)
 		return LINK_POOR;
 	else
 		return LINK_BAD;
@@ -1822,13 +1821,13 @@ float
 NetworkMapView::_ThicknessForSNR(int8 snr) const
 {
 	// Map SNR to line thickness: excellent=3.5, bad=1.5
-	if (snr > 5)
+	if (snr > kSnrExcellent)
 		return 3.5f;
-	else if (snr >= 0)
+	else if (snr >= kSnrGood)
 		return 3.0f;
-	else if (snr >= -5)
+	else if (snr >= kSnrFair)
 		return 2.5f;
-	else if (snr >= -10)
+	else if (snr >= kSnrPoor)
 		return 2.0f;
 	else
 		return 1.5f;
