@@ -7,6 +7,7 @@
 
 #include "MqttClient.h"
 
+#include <Autolock.h>
 #include <Messenger.h>
 #include <MessageRunner.h>
 #include <cstdio>
@@ -29,6 +30,7 @@ MqttClient::MqttClient()
 	fMosquitto(NULL),
 	fTarget(NULL),
 	fLogTarget(NULL),
+	fStateLock("MqttState"),
 	fConnected(false),
 	fManualDisconnect(false),
 	fStatusTimer(NULL),
@@ -86,6 +88,10 @@ MqttClient::MessageReceived(BMessage* message)
 			}
 			break;
 
+		case MSG_MQTT_CONN_STATE_CHANGED:
+			_HandleConnStateChanged(message);
+			break;
+
 		default:
 			BLooper::MessageReceived(message);
 			break;
@@ -111,6 +117,14 @@ void
 MqttClient::SetLogTarget(BHandler* target)
 {
 	fLogTarget = target;
+}
+
+
+bool
+MqttClient::IsConnected() const
+{
+	BAutolock lock(fStateLock);
+	return fConnected;
 }
 
 
@@ -216,7 +230,10 @@ MqttClient::_DoDisconnect()
 
 	mosquitto_loop_stop(fMosquitto, true);
 	mosquitto_disconnect(fMosquitto);
-	fConnected = false;
+	{
+		BAutolock lock(fStateLock);
+		fConnected = false;
+	}
 }
 
 
@@ -431,52 +448,79 @@ MqttClient::_BuildPacketsTopic()
 void
 MqttClient::_OnConnectCallback(struct mosquitto* mosq, void* obj, int rc)
 {
+	// This runs in mosquitto's network thread — post to looper for safe state change
 	MqttClient* client = (MqttClient*)obj;
 	fprintf(stderr, "[MQTT] Connect callback: rc=%d (%s)\n", rc,
 		rc == 0 ? "success" : mosquitto_connack_string(rc));
 
-	if (rc == 0) {
-		client->fConnected = true;
-		client->fReconnectDelay = kReconnectInitDelay;
-		fprintf(stderr, "[MQTT] Connected successfully!\n");
-		if (client->fTarget != NULL) {
-			BMessage connected(MSG_MQTT_CONNECTED);
-			BMessenger(client->fTarget).SendMessage(&connected);
-		}
-	} else {
-		client->fConnected = false;
-		fprintf(stderr, "[MQTT] Connection failed: %s\n", mosquitto_connack_string(rc));
-		if (client->fTarget != NULL) {
-			BMessage error(MSG_MQTT_ERROR);
-			error.AddString("error", mosquitto_connack_string(rc));
-			BMessenger(client->fTarget).SendMessage(&error);
-		}
-		// Schedule reconnect on connection failure
-		if (!client->fManualDisconnect && client->fSettings.enabled)
-			client->_StartReconnectTimer();
-	}
+	BMessage stateMsg(MSG_MQTT_CONN_STATE_CHANGED);
+	stateMsg.AddBool("connected", rc == 0);
+	stateMsg.AddInt32("rc", rc);
+	client->PostMessage(&stateMsg);
 }
 
 
 void
 MqttClient::_OnDisconnectCallback(struct mosquitto* mosq, void* obj, int rc)
 {
+	// This runs in mosquitto's network thread — post to looper for safe state change
 	MqttClient* client = (MqttClient*)obj;
-	client->fConnected = false;
 	fprintf(stderr, "[MQTT] Disconnected (rc=%d)\n", rc);
 
-	// Notify target of disconnection
-	if (client->fTarget != NULL) {
-		BMessage disconnected(MSG_MQTT_DISCONNECTED);
-		BMessenger(client->fTarget).SendMessage(&disconnected);
+	BMessage stateMsg(MSG_MQTT_CONN_STATE_CHANGED);
+	stateMsg.AddBool("connected", false);
+	stateMsg.AddInt32("rc", rc);
+	stateMsg.AddBool("was_disconnect", true);
+	client->PostMessage(&stateMsg);
+}
+
+
+void
+MqttClient::_HandleConnStateChanged(BMessage* message)
+{
+	// Runs in BLooper thread — safe to modify all state
+	bool connected = false;
+	int32 rc = 0;
+	bool wasDisconnect = false;
+	message->FindBool("connected", &connected);
+	message->FindInt32("rc", &rc);
+	message->FindBool("was_disconnect", &wasDisconnect);
+
+	{
+		BAutolock lock(fStateLock);
+		fConnected = connected;
 	}
 
-	// Auto-reconnect on unexpected disconnect (rc != 0)
-	if (rc != 0 && !client->fManualDisconnect && client->fSettings.enabled) {
-		BString logEntry;
-		logEntry.SetToFormat("Unexpected disconnect (rc=%d)", rc);
-		client->_SendLogEntry(MQTT_LOG_ERR, logEntry.String());
-		client->_StartReconnectTimer();
+	if (connected) {
+		fReconnectDelay = kReconnectInitDelay;
+		fprintf(stderr, "[MQTT] Connected successfully!\n");
+		if (fTarget != NULL) {
+			BMessage msg(MSG_MQTT_CONNECTED);
+			BMessenger(fTarget).SendMessage(&msg);
+		}
+	} else if (wasDisconnect) {
+		// Disconnect event
+		if (fTarget != NULL) {
+			BMessage msg(MSG_MQTT_DISCONNECTED);
+			BMessenger(fTarget).SendMessage(&msg);
+		}
+		// Auto-reconnect on unexpected disconnect (rc != 0)
+		if (rc != 0 && !fManualDisconnect && fSettings.enabled) {
+			BString logEntry;
+			logEntry.SetToFormat("Unexpected disconnect (rc=%d)", (int)rc);
+			_SendLogEntry(MQTT_LOG_ERR, logEntry.String());
+			_StartReconnectTimer();
+		}
+	} else {
+		// Connection failure
+		fprintf(stderr, "[MQTT] Connection failed: rc=%d\n", (int)rc);
+		if (fTarget != NULL) {
+			BMessage error(MSG_MQTT_ERROR);
+			error.AddString("error", "Connection failed");
+			BMessenger(fTarget).SendMessage(&error);
+		}
+		if (!fManualDisconnect && fSettings.enabled)
+			_StartReconnectTimer();
 	}
 }
 

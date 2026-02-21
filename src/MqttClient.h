@@ -8,6 +8,7 @@
 #ifndef MQTTCLIENT_H
 #define MQTTCLIENT_H
 
+#include <Locker.h>
 #include <Looper.h>
 #include <MessageRunner.h>
 #include <String.h>
@@ -56,7 +57,8 @@ enum {
 	MSG_MQTT_DISCONNECTED = 'mqds',
 	MSG_MQTT_ERROR = 'mqer',
 	MSG_MQTT_STATUS_TIMER = 'mqtm',
-	MSG_MQTT_RECONNECT_TIMER = 'mqrt'
+	MSG_MQTT_RECONNECT_TIMER = 'mqrt',
+	MSG_MQTT_CONN_STATE_CHANGED = 'mqsc'
 };
 
 
@@ -73,7 +75,8 @@ public:
 
 			void			Connect();
 			void			Disconnect();
-			bool			IsConnected() const { return fConnected; }
+			bool			IsConnected() const;
+
 
 			// Publish device status
 			void			PublishStatus(const char* deviceName,
@@ -106,10 +109,13 @@ private:
 
 			void			_SendLogEntry(int32 type, const char* text);
 
+			void			_HandleConnStateChanged(BMessage* message);
+
 			struct mosquitto*	fMosquitto;
 			MqttSettings	fSettings;
 			BHandler*		fTarget;
 			BHandler*		fLogTarget;
+	mutable	BLocker			fStateLock;
 			bool			fConnected;
 			bool			fManualDisconnect;
 			BMessageRunner*	fStatusTimer;
