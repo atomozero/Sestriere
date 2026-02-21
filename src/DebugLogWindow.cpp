@@ -126,7 +126,8 @@ DebugLogWindow::LogMessage(const char* prefix, const char* text)
 {
 	// Get timestamp
 	time_t now = time(NULL);
-	struct tm* tm = localtime(&now);
+	struct tm tmBuf;
+	struct tm* tm = localtime_r(&now, &tmBuf);
 	char timestamp[16];
 	strftime(timestamp, sizeof(timestamp), "%H:%M:%S", tm);
 

@@ -4698,7 +4698,8 @@ MainWindow::_SaveContactAsPerson(ContactInfo* contact)
 	char note[128];
 	if (contact->lastSeen > 0) {
 		time_t lastTime = (time_t)contact->lastSeen;
-		struct tm* tm = localtime(&lastTime);
+		struct tm tmBuf;
+		struct tm* tm = localtime_r(&lastTime, &tmBuf);
 		char timeStr[32];
 		if (tm != NULL)
 			strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M", tm);
