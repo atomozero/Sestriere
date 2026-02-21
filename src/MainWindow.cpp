@@ -2536,6 +2536,11 @@ MainWindow::_HandlePushRawData(const uint8* data, size_t length)
 void
 MainWindow::_HandleDeviceInfo(const uint8* data, size_t length)
 {
+	if (length < 4) {
+		_LogMessage("WARN", "RSP_DEVICE_INFO: frame too short");
+		return;
+	}
+
 	// RSP_DEVICE_INFO format (per MeshCore Companion Protocol):
 	// [0]     = code (0x0D)
 	// [1]     = firmware_ver
@@ -2607,6 +2612,11 @@ MainWindow::_HandleDeviceInfo(const uint8* data, size_t length)
 void
 MainWindow::_HandleExportContact(const uint8* data, size_t length)
 {
+	if (length < 3) {
+		_LogMessage("WARN", "RSP_EXPORT_CONTACT: frame too short");
+		return;
+	}
+
 	// RSP_EXPORT_CONTACT (0x0B) contains "business card" data
 	// Format: meshcore://{hex(card_data)}
 	// Card data starts at offset 1, contains: public_key (32) + name + other info
@@ -2905,6 +2915,11 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 void
 MainWindow::_HandleSelfInfo(const uint8* data, size_t length)
 {
+	if (length < 2) {
+		_LogMessage("WARN", "RSP_SELF_INFO: frame too short");
+		return;
+	}
+
 	_LogMessage("INFO", BString().SetToFormat("Received self info, len=%zu", length));
 
 	// RSP_SELF_INFO format (per MeshCore Companion Protocol):
@@ -3748,6 +3763,11 @@ MainWindow::_HandlePushAdvert(const uint8* data, size_t length)
 void
 MainWindow::_HandlePushTraceData(const uint8* data, size_t length)
 {
+	if (length < 3) {
+		_LogMessage("WARN", "PUSH_TRACE_DATA: frame too short");
+		return;
+	}
+
 	_LogMessage("INFO", "Trace path data received");
 
 	// Forward to TracePathWindow if open (must lock the window first!)
