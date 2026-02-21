@@ -33,6 +33,7 @@ static const uint32 kMsgApplySettings	= 'apst';
 static const uint32 kMsgRevertSettings	= 'rvst';
 static const uint32 kMsgPresetSelected	= 'prsl';
 static const uint32 kMsgMqttEnableChanged = 'mqen';
+static const uint32 kMsgTogglePasswordVis = 'tpvs';
 
 
 SettingsWindow::SettingsWindow(BWindow* parent)
@@ -177,6 +178,13 @@ SettingsWindow::MessageReceived(BMessage* message)
 			fApplyButton->SetEnabled(true);
 			fRevertButton->SetEnabled(true);
 			break;
+
+		case kMsgTogglePasswordVis:
+		{
+			bool hidden = fMqttPasswordControl->TextView()->IsTypingHidden();
+			fMqttPasswordControl->TextView()->HideTyping(!hidden);
+			break;
+		}
 
 		default:
 			BWindow::MessageReceived(message);
@@ -373,6 +381,9 @@ SettingsWindow::_BuildMqttTab(BView* parent)
 	fMqttPasswordControl->TextView()->HideTyping(true);
 	fMqttPasswordControl->SetModificationMessage(new BMessage(kMsgSettingChanged));
 
+	BCheckBox* showPassCheck = new BCheckBox("show_pass", "Show",
+		new BMessage(kMsgTogglePasswordVis));
+
 	fMqttStatusLabel = new BStringView("mqtt_status", "Status: Not connected");
 	fMqttStatusLabel->SetHighColor(128, 128, 128);
 
@@ -396,6 +407,7 @@ SettingsWindow::_BuildMqttTab(BView* parent)
 			.Add(fMqttUsernameControl->CreateTextViewLayoutItem(), 1, 3)
 			.Add(fMqttPasswordControl->CreateLabelLayoutItem(), 0, 4)
 			.Add(fMqttPasswordControl->CreateTextViewLayoutItem(), 1, 4)
+			.Add(showPassCheck, 2, 4)
 		.End()
 		.AddStrut(B_USE_HALF_ITEM_SPACING)
 		.Add(fMqttStatusLabel)

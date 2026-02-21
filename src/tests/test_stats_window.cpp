@@ -131,16 +131,25 @@ TestMqttPasswordMasked()
 
 	char line[1024];
 	bool foundHideTyping = false;
+	bool foundIsTypingHidden = false;
+	bool foundShowToggle = false;
 
 	while (fgets(line, sizeof(line), fp)) {
 		if (strstr(line, "HideTyping(true)") != NULL)
 			foundHideTyping = true;
+		if (strstr(line, "IsTypingHidden()") != NULL)
+			foundIsTypingHidden = true;
+		if (strstr(line, "show_pass") != NULL
+			|| strstr(line, "TogglePasswordVis") != NULL)
+			foundShowToggle = true;
 	}
 	fclose(fp);
 
 	assert(foundHideTyping && "MQTT password field must use HideTyping(true)");
+	assert(foundIsTypingHidden && "Must check IsTypingHidden() for toggle");
+	assert(foundShowToggle && "Must have show/hide password toggle");
 
-	printf("  PASS: MQTT password field is masked\n");
+	printf("  PASS: MQTT password masked with show/hide toggle\n");
 }
 
 
