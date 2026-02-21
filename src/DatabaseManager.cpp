@@ -6,6 +6,7 @@
  */
 
 #include "DatabaseManager.h"
+#include "Constants.h"
 #include "Utils.h"
 
 #include <Autolock.h>
@@ -122,7 +123,7 @@ DatabaseManager::InsertMessage(const char* contactKeyHex,
 		return false;
 
 	// Format sender pubkey prefix as hex
-	char senderHex[13];
+	char senderHex[kContactHexSize];
 	FormatContactKey(senderHex, message.pubKeyPrefix);
 
 	const char* sql =
@@ -670,7 +671,7 @@ DatabaseManager::_MigrateFromTextFile(const char* directory)
 			// Channel: C|timestamp|outgoing|senderHex|text
 			uint32 timestamp;
 			int outgoing;
-			char senderHex[13];
+			char senderHex[kContactHexSize];
 			char text[256];
 
 			if (sscanf(line + 2, "%u|%d|%12[^|]|%255[^\n]",
@@ -689,7 +690,7 @@ DatabaseManager::_MigrateFromTextFile(const char* directory)
 			}
 		} else if (line[0] == 'D' && line[1] == '|') {
 			// DM: D|contactHex|timestamp|outgoing|text
-			char contactHex[13];
+			char contactHex[kContactHexSize];
 			uint32 timestamp;
 			int outgoing;
 			char text[256];

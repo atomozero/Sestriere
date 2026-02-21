@@ -505,7 +505,7 @@ ContactInfoPanel::Draw(BRect updateRect)
 	_DrawInfoRow(y, "Seen", lastSeenStr, lastSeenColor);
 
 	// Message count
-	char contactHex[13];
+	char contactHex[kContactHexSize];
 	for (int i = 0; i < 6; i++)
 		snprintf(contactHex + i * 2, 3, "%02x", fContact->publicKey[i]);
 	int32 msgCount = DatabaseManager::Instance()->GetMessageCount(contactHex);
@@ -770,7 +770,7 @@ ContactInfoPanel::_UpdateSNRChart()
 	}
 
 	// Format contact key as hex
-	char contactHex[13];
+	char contactHex[kContactHexSize];
 	for (int i = 0; i < 6; i++)
 		snprintf(contactHex + i * 2, 3, "%02x", fContact->publicKey[i]);
 

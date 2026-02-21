@@ -115,6 +115,10 @@ const uint8 TXT_TYPE_CLI_DATA = 1;
 // Protocol Frame Field Offsets
 // =============================================================================
 
+// Contact hex key buffer sizes
+const size_t kContactHexSize = 13;    // 6-byte prefix as hex (12 chars + null)
+const size_t kPubKeyHexSize = 65;     // 32-byte key as hex (64 chars + null)
+
 // RSP_CONTACT frame (148 bytes total)
 const size_t kContactFrameSize = 148;
 const size_t kContactPubKeyOffset = 1;     // [1-32] = public key (32 bytes)

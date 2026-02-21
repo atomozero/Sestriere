@@ -2009,7 +2009,7 @@ MainWindow::_SendCliCommand(const char* command)
 	target->messages.AddItem(new ChatMessage(outMsg));
 
 	// Persist to DB
-	char contactHex[13];
+	char contactHex[kContactHexSize];
 	FormatContactKey(contactHex, target->publicKey);
 	DatabaseManager::Instance()->InsertMessage(contactHex, outMsg);
 
@@ -2067,7 +2067,7 @@ MainWindow::_SendTextMessage(const char* text)
 	}
 
 	{
-		char hex[13];
+		char hex[kContactHexSize];
 		FormatPubKeyPrefix(hex, contact->publicKey);
 		_LogMessage("INFO", BString().SetToFormat(
 			"Sending DM to %s [%s] (idx %d, cli=%d): %s",
@@ -2107,7 +2107,7 @@ MainWindow::_SendTextMessage(const char* text)
 	contact->messages.AddItem(stored);
 
 	// Persist to database
-	char contactHex[13];
+	char contactHex[kContactHexSize];
 	FormatContactKey(contactHex, contact->publicKey);
 	DatabaseManager::Instance()->InsertMessage(contactHex, outMsg);
 
@@ -3165,7 +3165,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 		sender->lastSeen = (uint32)time(NULL);
 
 		// Persist to database and record SNR history
-		char contactHex[13];
+		char contactHex[kContactHexSize];
 		FormatContactKey(contactHex, senderPrefix);
 		DatabaseManager* db = DatabaseManager::Instance();
 		db->InsertMessage(contactHex, chatMsg);
@@ -3346,7 +3346,7 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 
 	// Record SNR data point for sender contact
 	if (sender != NULL && snr != 0) {
-		char senderHex[13];
+		char senderHex[kContactHexSize];
 		FormatContactKey(senderHex, sender->publicKey);
 		db->InsertSNRDataPoint(senderHex,
 			(uint32)time(NULL), snr, fLastRssi, pathLen);
@@ -3703,7 +3703,7 @@ MainWindow::_HandlePushAdvert(const uint8* data, size_t length)
 	// Record SNR data point from advert for historical charting
 	if (snr != 0) {
 		int8 actualSnr = snr / 4;  // Advert SNR is stored ×4
-		char contactHex[13];
+		char contactHex[kContactHexSize];
 		FormatContactKey(contactHex, pubKeyPrefix);
 		DatabaseManager::Instance()->InsertSNRDataPoint(contactHex,
 			now, actualSnr, rssi, 0);
@@ -3865,7 +3865,7 @@ MainWindow::_HandlePushLoginResult(uint8 code)
 	bool success = (code == PUSH_LOGIN_SUCCESS);
 
 	if (success) {
-		char hex[13];
+		char hex[kContactHexSize];
 		FormatPubKeyPrefix(hex, fLoginTargetKey);
 		_LogMessage("OK", BString().SetToFormat(
 			"Login successful! (0x%02X) target=%s", code, hex));
@@ -3981,7 +3981,7 @@ MainWindow::_HandlePushStatusResponse(const uint8* data, size_t length)
 	fInfoPanel->SetRadioStats(uptime, txPkts, rxPkts,
 		(int8)rssi, snr, (int8)noiseFloor);
 
-	char hex[13];
+	char hex[kContactHexSize];
 	FormatPubKeyPrefix(hex, prefix);
 	_LogMessage("INFO", BString().SetToFormat(
 		"Remote status [%s]: %umV, up %us, rssi %d, snr %d",
@@ -4464,7 +4464,7 @@ MainWindow::_LoadMessages()
 		if (contact == NULL)
 			continue;
 
-		char contactHex[13];
+		char contactHex[kContactHexSize];
 		FormatContactKey(contactHex, contact->publicKey);
 
 		loadedDM += db->LoadMessages(contactHex, contact->messages);
@@ -4644,7 +4644,7 @@ MainWindow::_SaveContactAsPerson(ContactInfo* contact)
 		return;
 
 	// Create filename from public key prefix (first 6 bytes as hex)
-	char hexPrefix[13];
+	char hexPrefix[kContactHexSize];
 	FormatContactKey(hexPrefix, contact->publicKey);
 
 	BString filePath = peoplePath;
