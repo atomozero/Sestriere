@@ -20,6 +20,7 @@
 
 static const uint32 kMsgDoLogin		= 'dlog';
 static const uint32 kMsgLoginTimeout	= 'ltmo';
+static const uint32 kMsgDelayedClose	= 'dlcl';
 
 // Message sent to parent to execute the login command
 static const uint32 kMsgSendLogin = 'slgn';
@@ -38,7 +39,8 @@ LoginWindow::LoginWindow(BWindow* parent, const ContactInfo* contact)
 	fCancelButton(NULL),
 	fStatusLabel(NULL),
 	fLoggingIn(false),
-	fTimeoutRunner(NULL)
+	fTimeoutRunner(NULL),
+	fCloseRunner(NULL)
 {
 	memset(fPublicKey, 0, sizeof(fPublicKey));
 	memset(fContactName, 0, sizeof(fContactName));
@@ -108,6 +110,7 @@ LoginWindow::LoginWindow(BWindow* parent, const ContactInfo* contact)
 LoginWindow::~LoginWindow()
 {
 	delete fTimeoutRunner;
+	delete fCloseRunner;
 }
 
 
@@ -133,6 +136,10 @@ LoginWindow::MessageReceived(BMessage* message)
 			}
 			break;
 
+		case kMsgDelayedClose:
+			PostMessage(B_QUIT_REQUESTED);
+			break;
+
 		default:
 			BWindow::MessageReceived(message);
 			break;
@@ -155,8 +162,10 @@ LoginWindow::SetLoginResult(bool success, const char* message)
 		fStatusLabel->SetHighColor(0, 150, 0);
 		fStatusLabel->SetText(message != NULL ? message : "Success!");
 
-		snooze(500000);
-		PostMessage(B_QUIT_REQUESTED);
+		// Close after 500ms delay (non-blocking)
+		delete fCloseRunner;
+		fCloseRunner = new BMessageRunner(this,
+			new BMessage(kMsgDelayedClose), 500000, 1);
 	} else {
 		fStatusLabel->SetHighColor(200, 0, 0);
 		fStatusLabel->SetText(message != NULL ? message : "Login failed.");

@@ -45,6 +45,7 @@ private:
 
 			bool			fLoggingIn;
 			BMessageRunner*	fTimeoutRunner;
+			BMessageRunner*	fCloseRunner;
 };
 
 #endif // LOGINWINDOW_H
