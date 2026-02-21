@@ -370,6 +370,7 @@ SettingsWindow::_BuildMqttTab(BView* parent)
 
 	fMqttPasswordControl = new BTextControl("mqtt_pass", "Password:", "",
 		new BMessage(kMsgSettingChanged));
+	fMqttPasswordControl->TextView()->HideTyping(true);
 	fMqttPasswordControl->SetModificationMessage(new BMessage(kMsgSettingChanged));
 
 	fMqttStatusLabel = new BStringView("mqtt_status", "Status: Not connected");

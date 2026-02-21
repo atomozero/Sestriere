@@ -432,7 +432,7 @@ ContactItem::_FormatTime(char* buffer, size_t size, uint32 timestamp) const
 	} else if (nowTm.tm_year == msgTm.tm_year
 		&& nowTm.tm_yday - msgTm.tm_yday == 1) {
 		// Yesterday
-		snprintf(buffer, size, "Ieri");
+		snprintf(buffer, size, "Yesterday");
 	} else if (nowTm.tm_year == msgTm.tm_year
 		&& nowTm.tm_yday - msgTm.tm_yday < 7) {
 		// This week: show day name

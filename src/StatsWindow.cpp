@@ -28,13 +28,8 @@ static const uint32 MSG_REFRESH_STATS = 'rfst';
 static const uint32 MSG_STATS_WIN_TIMER = 'swtm';
 static const bigtime_t kStatsWinRefreshInterval = 5000000;  // 5 seconds
 
-// Colors for status indicators
-static const rgb_color kGoodColor = {60, 180, 60, 255};
-static const rgb_color kWarningColor = {220, 160, 40, 255};
-static const rgb_color kBadColor = {200, 60, 60, 255};
-static const rgb_color kLabelColor = {80, 80, 80, 255};
-static const rgb_color kValueColor = {0, 0, 0, 255};
-static const rgb_color kHeaderColor = {40, 80, 120, 255};
+// Sentinel: alpha=0 means "use default panel text color"
+static const rgb_color kDefaultValueColor = {0, 0, 0, 0};
 
 
 // Custom view for a single stat row with label and value
@@ -45,12 +40,12 @@ public:
 		BView(label, B_WILL_DRAW),
 		fLabel(label),
 		fValue(initialValue),
-		fValueColor(kValueColor)
+		fValueColor(kDefaultValueColor)
 	{
 		SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	}
 
-	void SetValue(const char* value, rgb_color color = kValueColor)
+	void SetValue(const char* value, rgb_color color = kDefaultValueColor)
 	{
 		fValue = value;
 		fValueColor = color;
@@ -68,13 +63,17 @@ public:
 		font.GetHeight(&fh);
 		float baseline = fh.ascent + 2;
 
-		// Draw label (left aligned, gray)
-		SetHighColor(kLabelColor);
+		// Draw label (left aligned, dimmed text)
+		rgb_color textColor = ui_color(B_PANEL_TEXT_COLOR);
+		SetHighColor(tint_color(textColor, B_LIGHTEN_1_TINT));
 		DrawString(fLabel.String(), BPoint(0, baseline));
 
 		// Draw value (right aligned, colored)
 		float valueWidth = StringWidth(fValue.String());
-		SetHighColor(fValueColor);
+		if (fValueColor.alpha == 0)
+			SetHighColor(textColor);
+		else
+			SetHighColor(fValueColor);
 		font.SetFace(B_BOLD_FACE);
 		SetFont(&font);
 		DrawString(fValue.String(), BPoint(bounds.right - valueWidth, baseline));
@@ -127,21 +126,24 @@ public:
 		font.GetHeight(&fh);
 		float baseline = fh.ascent + 2;
 
+		// Theme-aware header color
+		rgb_color headerColor = ui_color(B_CONTROL_HIGHLIGHT_COLOR);
+
 		// Draw icon if present
 		float x = 0;
 		if (fIcon.Length() > 0) {
-			SetHighColor(kHeaderColor);
+			SetHighColor(headerColor);
 			DrawString(fIcon.String(), BPoint(x, baseline));
 			x += StringWidth(fIcon.String()) + 8;
 		}
 
 		// Draw title
-		SetHighColor(kHeaderColor);
+		SetHighColor(headerColor);
 		DrawString(fTitle.String(), BPoint(x, baseline));
 
 		// Draw underline
 		float lineY = bounds.bottom - 2;
-		SetHighColor(tint_color(kHeaderColor, B_LIGHTEN_2_TINT));
+		SetHighColor(tint_color(headerColor, B_LIGHTEN_2_TINT));
 		StrokeLine(BPoint(0, lineY), BPoint(bounds.right, lineY));
 	}
 
@@ -423,18 +425,19 @@ StatsWindow::_UpdateDisplay()
 	// Battery
 	if (fCoreStats.batteryMv > 0) {
 		int32 pct = 0;
-		if (fCoreStats.batteryMv >= 4200) pct = 100;
-		else if (fCoreStats.batteryMv >= 3300)
-			pct = (int32)((fCoreStats.batteryMv - 3300) / 9.0f);
+		if (fCoreStats.batteryMv > kBattMinMv)
+			pct = (int32)((fCoreStats.batteryMv - kBattMinMv) * 100
+				/ kBattRangeMv);
+		if (pct > 100) pct = 100;
 		snprintf(buf, sizeof(buf), "%u mV (%d%%)",
 			(unsigned)fCoreStats.batteryMv, (int)pct);
 		rgb_color battColor;
 		if (fCoreStats.batteryMv >= kBattGoodMv)
-			battColor = kGoodColor;
+			battColor = kColorGood;
 		else if (fCoreStats.batteryMv >= kBattFairMv)
-			battColor = kWarningColor;
+			battColor = kColorFair;
 		else
-			battColor = kBadColor;
+			battColor = kColorBad;
 		fBatteryView->SetValue(buf, battColor);
 	}
 
@@ -442,23 +445,23 @@ StatsWindow::_UpdateDisplay()
 	// RSSI
 	snprintf(buf, sizeof(buf), "%d dBm", (int)fRadioStats.lastRssi);
 	rgb_color rssiColor;
-	if (fRadioStats.lastRssi >= -70)
-		rssiColor = kGoodColor;
+	if (fRadioStats.lastRssi >= kRssiGood)
+		rssiColor = kColorGood;
 	else if (fRadioStats.lastRssi >= kRssiPoor)
-		rssiColor = kWarningColor;
+		rssiColor = kColorFair;
 	else
-		rssiColor = kBadColor;
+		rssiColor = kColorBad;
 	fRssiView->SetValue(buf, rssiColor);
 
 	// SNR (V3: direct int8, NOT divided by 4)
 	snprintf(buf, sizeof(buf), "%+d dB", (int)fRadioStats.lastSnr);
 	rgb_color snrColor;
 	if (fRadioStats.lastSnr >= kSnrExcellent)
-		snrColor = kGoodColor;
+		snrColor = kColorGood;
 	else if (fRadioStats.lastSnr >= kSnrGood)
-		snrColor = kWarningColor;
+		snrColor = kColorFair;
 	else
-		snrColor = kBadColor;
+		snrColor = kColorBad;
 	fSnrView->SetValue(buf, snrColor);
 
 	// Noise Floor
