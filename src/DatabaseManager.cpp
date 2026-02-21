@@ -132,8 +132,11 @@ DatabaseManager::InsertMessage(const char* contactKeyHex,
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
-	if (rc != SQLITE_OK)
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "[DatabaseManager] prepare failed: %s\n",
+			sqlite3_errmsg(fDB));
 		return false;
+	}
 
 	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
 	sqlite3_bind_int(stmt, 2, message.timestamp);
@@ -166,8 +169,11 @@ DatabaseManager::LoadMessages(const char* contactKeyHex,
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
-	if (rc != SQLITE_OK)
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "[DatabaseManager] prepare failed: %s\n",
+			sqlite3_errmsg(fDB));
 		return 0;
+	}
 
 	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
 
@@ -183,7 +189,8 @@ DatabaseManager::LoadMessages(const char* contactKeyHex,
 		if (senderHex != NULL) {
 			for (int i = 0; i < 6 && senderHex[i * 2] != '\0'; i++) {
 				unsigned int byte;
-				sscanf(senderHex + i * 2, "%2x", &byte);
+				if (sscanf(senderHex + i * 2, "%2x", &byte) != 1)
+					break;
 				msg->pubKeyPrefix[i] = (uint8)byte;
 			}
 		}
@@ -218,8 +225,11 @@ DatabaseManager::LoadChannelMessages(BObjectList<ChatMessage, true>& outMessages
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
-	if (rc != SQLITE_OK)
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "[DatabaseManager] prepare failed: %s\n",
+			sqlite3_errmsg(fDB));
 		return 0;
+	}
 
 	int32 count = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -232,7 +242,8 @@ DatabaseManager::LoadChannelMessages(BObjectList<ChatMessage, true>& outMessages
 		if (senderHex != NULL) {
 			for (int i = 0; i < 6 && senderHex[i * 2] != '\0'; i++) {
 				unsigned int byte;
-				sscanf(senderHex + i * 2, "%2x", &byte);
+				if (sscanf(senderHex + i * 2, "%2x", &byte) != 1)
+					break;
 				msg->pubKeyPrefix[i] = (uint8)byte;
 			}
 		}
@@ -267,8 +278,11 @@ DatabaseManager::InsertSNRDataPoint(const char* contactKeyHex,
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
-	if (rc != SQLITE_OK)
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "[DatabaseManager] prepare failed: %s\n",
+			sqlite3_errmsg(fDB));
 		return false;
+	}
 
 	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
 	sqlite3_bind_int(stmt, 2, timestamp);
@@ -298,8 +312,11 @@ DatabaseManager::LoadSNRHistory(const char* contactKeyHex,
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
-	if (rc != SQLITE_OK)
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "[DatabaseManager] prepare failed: %s\n",
+			sqlite3_errmsg(fDB));
 		return 0;
+	}
 
 	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
 	sqlite3_bind_int(stmt, 2, sinceTimestamp);
@@ -336,8 +353,11 @@ DatabaseManager::SearchMessages(const char* query,
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
-	if (rc != SQLITE_OK)
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "[DatabaseManager] prepare failed: %s\n",
+			sqlite3_errmsg(fDB));
 		return 0;
+	}
 
 	// Build LIKE pattern: %query%
 	BString pattern;
@@ -356,7 +376,8 @@ DatabaseManager::SearchMessages(const char* query,
 		if (senderHex != NULL) {
 			for (int i = 0; i < 6 && senderHex[i * 2] != '\0'; i++) {
 				unsigned int byte;
-				sscanf(senderHex + i * 2, "%2x", &byte);
+				if (sscanf(senderHex + i * 2, "%2x", &byte) != 1)
+					break;
 				msg->pubKeyPrefix[i] = (uint8)byte;
 			}
 		}
@@ -388,8 +409,11 @@ DatabaseManager::GetMessageCount(const char* contactKeyHex)
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
-	if (rc != SQLITE_OK)
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "[DatabaseManager] prepare failed: %s\n",
+			sqlite3_errmsg(fDB));
 		return 0;
+	}
 
 	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
 
@@ -413,8 +437,11 @@ DatabaseManager::GetTotalMessageCount()
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
-	if (rc != SQLITE_OK)
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "[DatabaseManager] prepare failed: %s\n",
+			sqlite3_errmsg(fDB));
 		return 0;
+	}
 
 	int32 count = 0;
 	if (sqlite3_step(stmt) == SQLITE_ROW)
@@ -489,8 +516,11 @@ DatabaseManager::InsertTelemetry(uint32 nodeId, const char* sensorName,
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
-	if (rc != SQLITE_OK)
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "[DatabaseManager] prepare failed: %s\n",
+			sqlite3_errmsg(fDB));
 		return false;
+	}
 
 	uint32 now = (uint32)time(NULL);
 	sqlite3_bind_int(stmt, 1, nodeId);
@@ -524,8 +554,11 @@ DatabaseManager::LoadTelemetryHistory(uint32 nodeId,
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
-	if (rc != SQLITE_OK)
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "[DatabaseManager] prepare failed: %s\n",
+			sqlite3_errmsg(fDB));
 		return 0;
+	}
 
 	sqlite3_bind_int(stmt, 1, nodeId);
 	sqlite3_bind_text(stmt, 2, sensorName, -1, SQLITE_TRANSIENT);
@@ -573,8 +606,11 @@ DatabaseManager::GetTelemetryNodeIds(BObjectList<BString, true>& outNodeNames)
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
-	if (rc != SQLITE_OK)
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "[DatabaseManager] prepare failed: %s\n",
+			sqlite3_errmsg(fDB));
 		return 0;
+	}
 
 	int32 count = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -660,7 +696,8 @@ DatabaseManager::_MigrateFromTextFile(const char* directory)
 				ChatMessage msg;
 				for (int i = 0; i < 6; i++) {
 					unsigned int byte;
-					sscanf(senderHex + i * 2, "%2x", &byte);
+					if (sscanf(senderHex + i * 2, "%2x", &byte) != 1)
+						break;
 					msg.pubKeyPrefix[i] = (uint8)byte;
 				}
 				msg.timestamp = timestamp;
@@ -685,7 +722,8 @@ DatabaseManager::_MigrateFromTextFile(const char* directory)
 				ChatMessage msg;
 				for (int i = 0; i < 6; i++) {
 					unsigned int byte;
-					sscanf(contactHex + i * 2, "%2x", &byte);
+					if (sscanf(contactHex + i * 2, "%2x", &byte) != 1)
+						break;
 					msg.pubKeyPrefix[i] = (uint8)byte;
 				}
 				msg.timestamp = timestamp;
@@ -715,8 +753,11 @@ DatabaseManager::_MigrateFromTextFile(const char* directory)
 		bakPath.Append("/messages.txt.bak");
 
 		BEntry entry(filePath.String());
-		if (entry.Exists())
-			entry.Rename(bakPath.String());
+		if (entry.Exists()) {
+			if (entry.Rename(bakPath.String()) != B_OK)
+				fprintf(stderr, "[DatabaseManager] Could not rename %s to .bak\n",
+					filePath.String());
+		}
 	}
 }
 
