@@ -68,7 +68,6 @@
 
 // MainWindow-private message codes
 enum {
-	MSG_SHOW_SETTINGS = 'shst',
 	MSG_SHOW_TRACE_PATH = 'shtp',
 	MSG_AUTO_CONNECT = 'autc',
 	MSG_STATS_TIMER = 'sttm',
