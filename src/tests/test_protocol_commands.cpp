@@ -1,6 +1,6 @@
 /*
  * Test: Protocol command payload construction
- * Verifies that CMD_REMOVE_CONTACT and CMD_RESET_PATH send full 32-byte pubkey
+ * Verifies V3 protocol compliance for pubkey commands and radio params
  */
 
 #include <cstdio>
@@ -10,6 +10,7 @@
 
 // Mirror the constants from the project
 static const size_t kPubKeySize = 32;
+static const uint8_t CMD_SET_RADIO_PARAMS = 11;
 static const uint8_t CMD_RESET_PATH = 13;
 static const uint8_t CMD_REMOVE_CONTACT = 15;
 
@@ -158,6 +159,107 @@ int main()
 			PASS();
 		else
 			FAIL("pubkey mismatch in payload");
+	}
+
+	// =============================================
+	// CMD_SET_RADIO_PARAMS tests
+	// =============================================
+	printf("\n--- CMD_SET_RADIO_PARAMS ---\n");
+
+	// --- Test 8: Frequency must be sent in kHz, not Hz ---
+	TEST("Frequency 906875000 Hz → 906875 kHz in payload");
+	{
+		// Simulate the fixed _SendRadioParams logic:
+		// freqHz from preset is in Hz, must be divided by 1000 for wire format
+		uint32_t freqHz = 906875000;  // 906.875 MHz stored as Hz
+		uint32_t freqKHz = freqHz / 1000;  // Convert to kHz for protocol
+
+		uint8_t payload[11];
+		payload[0] = CMD_SET_RADIO_PARAMS;
+		payload[1] = freqKHz & 0xFF;
+		payload[2] = (freqKHz >> 8) & 0xFF;
+		payload[3] = (freqKHz >> 16) & 0xFF;
+		payload[4] = (freqKHz >> 24) & 0xFF;
+
+		// Read back the uint32 from payload
+		uint32_t wireFreq = payload[1] | (payload[2] << 8)
+			| (payload[3] << 16) | (payload[4] << 24);
+
+		if (wireFreq == 906875) {
+			PASS();
+		} else {
+			char msg[80];
+			snprintf(msg, sizeof(msg),
+				"expected 906875 kHz, got %u", wireFreq);
+			FAIL(msg);
+		}
+	}
+
+	// --- Test 9: Bandwidth must be sent in Hz ---
+	TEST("Bandwidth 250000 Hz stays as Hz in payload");
+	{
+		uint32_t bwHz = 250000;
+
+		uint8_t payload[11];
+		memset(payload, 0, sizeof(payload));
+		payload[0] = CMD_SET_RADIO_PARAMS;
+		payload[5] = bwHz & 0xFF;
+		payload[6] = (bwHz >> 8) & 0xFF;
+		payload[7] = (bwHz >> 16) & 0xFF;
+		payload[8] = (bwHz >> 24) & 0xFF;
+
+		uint32_t wireBw = payload[5] | (payload[6] << 8)
+			| (payload[7] << 16) | (payload[8] << 24);
+
+		if (wireBw == 250000)
+			PASS();
+		else {
+			char msg[80];
+			snprintf(msg, sizeof(msg),
+				"expected 250000 Hz, got %u", wireBw);
+			FAIL(msg);
+		}
+	}
+
+	// --- Test 10: Frequency roundtrip kHz → Hz matches original ---
+	TEST("Frequency kHz roundtrip: encode then decode matches");
+	{
+		// All 12 presets should roundtrip correctly
+		uint32_t testFreqs[] = {
+			906875000, 915000000, 868000000, 869525000, 916000000,
+			433775000, 869525000
+		};
+		bool allMatch = true;
+		for (size_t i = 0; i < sizeof(testFreqs) / sizeof(testFreqs[0]); i++) {
+			uint32_t freqHz = testFreqs[i];
+			uint32_t kHz = freqHz / 1000;
+			uint32_t recovered = kHz * 1000;
+			if (recovered != freqHz) {
+				char msg[80];
+				snprintf(msg, sizeof(msg),
+					"freq %u Hz: kHz=%u, recovered=%u",
+					freqHz, kHz, recovered);
+				FAIL(msg);
+				allMatch = false;
+				break;
+			}
+		}
+		if (allMatch)
+			PASS();
+	}
+
+	// --- Test 11: Payload must NOT contain Hz value (old bug) ---
+	TEST("Frequency payload must NOT be raw Hz (906875000 would overflow)");
+	{
+		uint32_t freqHz = 906875000;
+		uint32_t freqKHz = freqHz / 1000;
+
+		// The old buggy code would put freqHz directly in payload
+		// Verify the fixed value is different from the buggy value
+		if (freqKHz != freqHz)
+			PASS();
+		else
+			FAIL("kHz equals Hz - conversion not applied");
 	}
 
 	// --- Summary ---

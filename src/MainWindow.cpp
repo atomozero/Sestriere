@@ -2010,6 +2010,8 @@ MainWindow::_SendRadioParams()
 	const RadioPresetInfo& preset = kRadioPresets[fSelectedPreset];
 	uint32 freqHz = preset.frequency;
 	uint32 bwHz = preset.bandwidth;
+	// Protocol wire format: frequency in kHz, bandwidth in Hz
+	uint32 freqKHz = freqHz / 1000;
 
 	_LogMessage("INFO", BString().SetToFormat(
 		"Setting radio: %.3f MHz, %u kHz BW, SF%u, CR%u",
@@ -2017,10 +2019,10 @@ MainWindow::_SendRadioParams()
 
 	uint8 payload[11];
 	payload[0] = CMD_SET_RADIO_PARAMS;
-	payload[1] = freqHz & 0xFF;
-	payload[2] = (freqHz >> 8) & 0xFF;
-	payload[3] = (freqHz >> 16) & 0xFF;
-	payload[4] = (freqHz >> 24) & 0xFF;
+	payload[1] = freqKHz & 0xFF;
+	payload[2] = (freqKHz >> 8) & 0xFF;
+	payload[3] = (freqKHz >> 16) & 0xFF;
+	payload[4] = (freqKHz >> 24) & 0xFF;
 	payload[5] = bwHz & 0xFF;
 	payload[6] = (bwHz >> 8) & 0xFF;
 	payload[7] = (bwHz >> 16) & 0xFF;
