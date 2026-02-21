@@ -172,10 +172,11 @@ enum {
 	MSG_PACKET_EXPORT_CSV = 'pxcv',
 	MSG_PACKET_FILTER_CHANGED = 'pfch',
 
-	// MQTT toggle and log
+	// MQTT
 	MSG_MQTT_TOGGLE = 'mqtg',
 	MSG_SHOW_MQTT_LOG = 'mqlg',
 	MSG_MQTT_LOG_ENTRY = 'mqle',
+	MSG_MQTT_SETTINGS_CHANGED = 'mqch',
 
 	// Input
 	MSG_INPUT_MODIFIED = 'inmd',

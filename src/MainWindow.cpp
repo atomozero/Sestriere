@@ -53,7 +53,6 @@
 #include "MissionControlWindow.h"
 #include "MqttClient.h"
 #include "MqttLogWindow.h"
-#include "MqttSettingsWindow.h"
 #include "NetworkMapWindow.h"
 #include "PacketAnalyzerWindow.h"
 #include "NotificationManager.h"

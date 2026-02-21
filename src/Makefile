@@ -22,7 +22,6 @@ SRCS = \
 	NetworkMapWindow.cpp \
 	MqttClient.cpp \
 	MqttLogWindow.cpp \
-	MqttSettingsWindow.cpp \
 	TelemetryWindow.cpp \
 	LoginWindow.cpp \
 	MapView.cpp \

@@ -25,7 +25,7 @@
 #include <cstring>
 
 #include "Constants.h"
-#include "MqttSettingsWindow.h"
+#include "MqttClient.h"
 
 
 static const uint32 kMsgSettingChanged	= 'stch';

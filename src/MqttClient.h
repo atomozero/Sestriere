@@ -58,7 +58,7 @@ enum {
 	MSG_MQTT_ERROR = 'mqer',
 	MSG_MQTT_STATUS_TIMER = 'mqtm',
 	MSG_MQTT_RECONNECT_TIMER = 'mqrt',
-	MSG_MQTT_CONN_STATE_CHANGED = 'mqsc'
+	MSG_MQTT_CONN_STATE_CHANGED = 'mqst'
 };
 
 
