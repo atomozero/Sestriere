@@ -8,6 +8,7 @@
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 
+#include <GraphicsDefs.h>
 #include <SupportDefs.h>
 
 // Application info
@@ -269,5 +270,38 @@ enum {
 	// Mission Control dashboard
 	MSG_SHOW_MISSION_CONTROL = 'mctr',
 };
+
+// =============================================================================
+// UI Color Constants
+// =============================================================================
+
+// Status indicator colors (contact online/recent/offline)
+const rgb_color kStatusOnline = {77, 182, 172, 255};    // Teal
+const rgb_color kStatusRecent = {220, 180, 60, 255};    // Gold
+const rgb_color kStatusOffline = {140, 140, 140, 255};  // Gray
+
+// Signal quality level colors (SNR, RSSI, battery, health)
+const rgb_color kColorGood = {80, 180, 80, 255};        // Green
+const rgb_color kColorFair = {200, 170, 50, 255};       // Yellow
+const rgb_color kColorPoor = {210, 120, 50, 255};       // Orange
+const rgb_color kColorBad = {200, 60, 60, 255};         // Red
+
+// Node type badge colors
+const rgb_color kTypeBadgeChat = {79, 195, 247, 255};       // Light Blue
+const rgb_color kTypeBadgeRepeater = {100, 160, 100, 255};  // Green
+const rgb_color kTypeBadgeRoom = {120, 120, 180, 255};      // Purple
+
+// Avatar color palette (Telegram-style, shared across ContactItem/ChatHeader/InfoPanel)
+const rgb_color kAvatarPalette[] = {
+	{229, 115, 115, 255},  // Red
+	{186, 104, 200, 255},  // Purple
+	{121, 134, 203, 255},  // Indigo
+	{79, 195, 247, 255},   // Light Blue
+	{77, 182, 172, 255},   // Teal
+	{129, 199, 132, 255},  // Green
+	{255, 183, 77, 255},   // Orange
+	{240, 98, 146, 255},   // Pink
+};
+const int kAvatarPaletteCount = 8;
 
 #endif // CONSTANTS_H

@@ -14,6 +14,8 @@
 #include <cstdio>
 #include <ctime>
 
+#include "Constants.h"
+
 
 // Theme-aware colors derived from Haiku system colors
 static inline rgb_color OutgoingBubbleColor()
@@ -282,11 +284,11 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	if (showSnr) {
 		rgb_color snrColor;
 		if (fSnr > 0)
-			snrColor = (rgb_color){77, 182, 172, 255};   // Green - good
+			snrColor = kColorGood;
 		else if (fSnr >= -10)
-			snrColor = (rgb_color){220, 180, 60, 255};    // Yellow - fair
+			snrColor = kColorFair;
 		else
-			snrColor = (rgb_color){229, 115, 115, 255};   // Red - poor
+			snrColor = kColorBad;
 
 		owner->SetHighColor(snrColor);
 		owner->DrawString(snrStr.String(),

@@ -15,19 +15,7 @@
 #include <cstring>
 #include <ctime>
 
-
-// Avatar colors (same as ContactItem)
-static const rgb_color kAvatarColors[] = {
-	{229, 115, 115, 255},  // Red
-	{186, 104, 200, 255},  // Purple
-	{121, 134, 203, 255},  // Indigo
-	{79, 195, 247, 255},   // Light Blue
-	{77, 182, 172, 255},   // Teal
-	{129, 199, 132, 255},  // Green
-	{255, 183, 77, 255},   // Orange
-	{240, 98, 146, 255},   // Pink
-};
-static const int kAvatarColorCount = sizeof(kAvatarColors) / sizeof(kAvatarColors[0]);
+#include "Constants.h"
 
 // Layout constants
 static const float kHeaderHeight = 56.0f;
@@ -55,7 +43,7 @@ static inline rgb_color BorderColor()
 {
 	return tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_2_TINT);
 }
-static const rgb_color kOnlineColor = {77, 182, 172, 255};
+static const rgb_color& kOnlineColor = kStatusOnline;
 
 
 ChatHeaderView::ChatHeaderView(const char* name)
@@ -150,7 +138,7 @@ ChatHeaderView::Draw(BRect updateRect)
 		float badgeY = bounds.top + kMargin + nameFh.ascent;
 
 		// Draw badge pill background
-		rgb_color consoleGreen = {77, 182, 172, 255};
+		rgb_color consoleGreen = kStatusOnline;
 		font_height badgeFh;
 		badgeFont.GetHeight(&badgeFh);
 		BRect pillRect(badgeX - 4, badgeY - badgeFh.ascent - 1,
@@ -373,7 +361,7 @@ rgb_color
 ChatHeaderView::_AvatarColor() const
 {
 	if (fContact == NULL)
-		return kAvatarColors[0];
+		return kAvatarPalette[0];
 
 	// Generate consistent color based on name hash
 	uint32 hash = 0;
@@ -381,5 +369,5 @@ ChatHeaderView::_AvatarColor() const
 	while (*name) {
 		hash = hash * 31 + (uint8)*name++;
 	}
-	return kAvatarColors[hash % kAvatarColorCount];
+	return kAvatarPalette[hash % kAvatarPaletteCount];
 }

@@ -53,20 +53,20 @@ enum {
 static inline rgb_color
 BatteryColor(uint16 mv)
 {
-	if (mv >= 3900) return (rgb_color){80, 180, 80, 255};
-	if (mv >= 3600) return (rgb_color){200, 170, 50, 255};
-	if (mv >= 3400) return (rgb_color){210, 120, 50, 255};
-	return (rgb_color){200, 60, 60, 255};
+	if (mv >= 3900) return kColorGood;
+	if (mv >= 3600) return kColorFair;
+	if (mv >= 3400) return kColorPoor;
+	return kColorBad;
 }
 
 // Signal color by RSSI
 static inline rgb_color
 SignalColor(int8 rssi)
 {
-	if (rssi >= -60) return (rgb_color){80, 180, 80, 255};
-	if (rssi >= -80) return (rgb_color){200, 170, 50, 255};
-	if (rssi >= -90) return (rgb_color){210, 120, 50, 255};
-	return (rgb_color){200, 60, 60, 255};
+	if (rssi >= -60) return kColorGood;
+	if (rssi >= -80) return kColorFair;
+	if (rssi >= -90) return kColorPoor;
+	return kColorBad;
 }
 
 
@@ -323,8 +323,7 @@ TopBarView::_DrawMqttToggle(BRect rect)
 
 	if (fMqttConnected) {
 		// Green filled pill
-		rgb_color green = {80, 180, 80, 255};
-		SetHighColor(green);
+		SetHighColor(kColorGood);
 		FillRoundRect(rect, 4, 4);
 		SetHighColor(255, 255, 255, 255);
 	} else if (fMqttEnabled) {

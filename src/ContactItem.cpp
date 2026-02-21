@@ -17,19 +17,7 @@
 #include <cstring>
 #include <ctime>
 
-
-// Avatar colors (Telegram-style palette)
-static const rgb_color kAvatarColors[] = {
-	{229, 115, 115, 255},  // Red
-	{186, 104, 200, 255},  // Purple
-	{121, 134, 203, 255},  // Indigo
-	{79, 195, 247, 255},   // Light Blue
-	{77, 182, 172, 255},   // Teal
-	{129, 199, 132, 255},  // Green
-	{255, 183, 77, 255},   // Orange
-	{240, 98, 146, 255},   // Pink
-};
-static const int kAvatarColorCount = sizeof(kAvatarColors) / sizeof(kAvatarColors[0]);
+#include "Constants.h"
 
 // Layout constants
 static const float kItemHeight = 52.0f;
@@ -40,10 +28,10 @@ static const float kBadgeSize = 16.0f;
 static const float kStatusDotSize = 8.0f;
 static const float kTypeBadgeWidth = 16.0f;
 
-// Status colors (fixed — semantic, not theme-derived)
-static const rgb_color kOnlineColor = {77, 182, 172, 255};   // Teal
-static const rgb_color kRecentColor = {220, 180, 60, 255};   // Gold
-static const rgb_color kOfflineColor = {140, 140, 140, 255}; // Gray
+// Status colors — use named constants from Constants.h
+static const rgb_color& kOnlineColor = kStatusOnline;
+static const rgb_color& kRecentColor = kStatusRecent;
+static const rgb_color& kOfflineColor = kStatusOffline;
 
 // Theme-aware colors
 static inline rgb_color NameColor()
@@ -66,7 +54,7 @@ static inline rgb_color ChannelColor()
 {
 	return ui_color(B_CONTROL_HIGHLIGHT_COLOR);
 }
-static const rgb_color kBadgeColor = {77, 182, 172, 255};  // Accent teal
+static const rgb_color& kBadgeColor = kStatusOnline;  // Accent teal
 static const rgb_color kBadgeTextColor = {255, 255, 255, 255};
 
 
@@ -225,8 +213,8 @@ ContactItem::DrawItem(BView* owner, BRect frame, bool complete)
 
 		// Badge background
 		rgb_color badgeBg = (fContact.type == 2)
-			? (rgb_color){100, 160, 100, 255}   // Green for Repeater
-			: (rgb_color){120, 120, 180, 255};   // Purple for Room
+			? kTypeBadgeRepeater
+			: kTypeBadgeRoom;
 		owner->SetHighColor(badgeBg);
 		BRect badgeRect(badgeX, badgeY2 - 1, badgeX + badgeW, badgeY2 + badgeH - 1);
 		owner->FillRoundRect(badgeRect, 3, 3);
@@ -402,7 +390,7 @@ ContactItem::_AvatarColor() const
 	while (*name) {
 		hash = hash * 31 + (uint8)*name++;
 	}
-	return kAvatarColors[hash % kAvatarColorCount];
+	return kAvatarPalette[hash % kAvatarPaletteCount];
 }
 
 

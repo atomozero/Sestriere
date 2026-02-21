@@ -37,18 +37,7 @@ static const uint32 kMsgSetNameClicked = 'csnm';
 static const uint32 kMsgPasswordClicked = 'cspw';
 
 
-// Avatar colors (same palette as ContactItem/ChatHeaderView)
-static const rgb_color kAvatarColors[] = {
-	{229, 115, 115, 255},  // Red
-	{186, 104, 200, 255},  // Purple
-	{121, 134, 203, 255},  // Indigo
-	{79, 195, 247, 255},   // Light Blue
-	{77, 182, 172, 255},   // Teal
-	{129, 199, 132, 255},  // Green
-	{255, 183, 77, 255},   // Orange
-	{240, 98, 146, 255},   // Pink
-};
-static const int kAvatarColorCount = sizeof(kAvatarColors) / sizeof(kAvatarColors[0]);
+// Avatar colors — use kAvatarPalette from Constants.h
 
 // Layout constants
 static const float kPanelMinWidth = 200.0f;
@@ -82,17 +71,17 @@ static inline rgb_color BorderColor()
 static inline rgb_color TypeBadgeColor(uint8 type)
 {
 	switch (type) {
-		case 1: return (rgb_color){79, 195, 247, 255};   // Blue for Chat
-		case 2: return (rgb_color){100, 160, 100, 255};   // Green for Repeater
-		case 3: return (rgb_color){120, 120, 180, 255};   // Purple for Room
+		case 1: return kTypeBadgeChat;
+		case 2: return kTypeBadgeRepeater;
+		case 3: return kTypeBadgeRoom;
 		default: return LabelColor();
 	}
 }
 
-// Status colors
-static const rgb_color kOnlineColor = {77, 182, 172, 255};
-static const rgb_color kRecentColor = {220, 180, 60, 255};
-static const rgb_color kOfflineColor = {140, 140, 140, 255};
+// Status colors — use named constants from Constants.h
+static const rgb_color& kOnlineColor = kStatusOnline;
+static const rgb_color& kRecentColor = kStatusRecent;
+static const rgb_color& kOfflineColor = kStatusOffline;
 
 
 ContactInfoPanel::ContactInfoPanel(const char* name)
@@ -429,8 +418,7 @@ ContactInfoPanel::Draw(BRect updateRect)
 			char onlineStr[32];
 			snprintf(onlineStr, sizeof(onlineStr), "%d",
 				(int)fChannelOnlineCount);
-			_DrawInfoRow(y, "Online", onlineStr,
-				(rgb_color){77, 182, 172, 255});
+			_DrawInfoRow(y, "Online", onlineStr, kStatusOnline);
 		}
 
 		// Separator
@@ -704,13 +692,13 @@ rgb_color
 ContactInfoPanel::_AvatarColor() const
 {
 	if (fContact == NULL)
-		return kAvatarColors[0];
+		return kAvatarPalette[0];
 
 	uint32 hash = 0;
 	const char* name = fContact->name;
 	while (*name)
 		hash = hash * 31 + (uint8)*name++;
-	return kAvatarColors[hash % kAvatarColorCount];
+	return kAvatarPalette[hash % kAvatarPaletteCount];
 }
 
 
@@ -913,11 +901,11 @@ ContactInfoPanel::_DrawAdminSections(float& y)
 
 	rgb_color battColor;
 	if (battPct > 50)
-		battColor = (rgb_color){77, 182, 77, 255};   // Green
+		battColor = kColorGood;
 	else if (battPct > 20)
-		battColor = (rgb_color){220, 180, 60, 255};   // Yellow
+		battColor = kColorFair;
 	else
-		battColor = (rgb_color){220, 80, 80, 255};    // Red
+		battColor = kColorBad;
 
 	char battStr[32];
 	snprintf(battStr, sizeof(battStr), "%d%% (%u mV)", battPct, fBattMv);
@@ -983,11 +971,11 @@ ContactInfoPanel::_DrawAdminSections(float& y)
 	snprintf(snrStr, sizeof(snrStr), "%d dB", fAdminSnr);
 	rgb_color snrColor;
 	if (fAdminSnr > 0)
-		snrColor = (rgb_color){77, 182, 77, 255};
+		snrColor = kColorGood;
 	else if (fAdminSnr > -10)
-		snrColor = (rgb_color){220, 180, 60, 255};
+		snrColor = kColorFair;
 	else
-		snrColor = (rgb_color){220, 80, 80, 255};
+		snrColor = kColorBad;
 	_DrawInfoRow(y, "SNR", snrStr, snrColor);
 
 	// Noise floor

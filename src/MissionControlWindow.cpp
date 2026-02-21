@@ -22,6 +22,8 @@
 
 #include <cmath>
 #include <cstdio>
+
+#include "Constants.h"
 #include <cstring>
 #include <ctime>
 
@@ -54,38 +56,38 @@ static const bigtime_t kStaleThreshold = 30000000;  // 30 seconds
 static rgb_color
 SnrColor(int8 snr)
 {
-	if (snr > 5) return (rgb_color){80, 180, 80, 255};
+	if (snr > 5) return kColorGood;
 	if (snr > 0) return (rgb_color){140, 200, 80, 255};
-	if (snr > -5) return (rgb_color){200, 170, 50, 255};
-	if (snr > -10) return (rgb_color){210, 120, 50, 255};
-	return (rgb_color){200, 60, 60, 255};
+	if (snr > -5) return kColorFair;
+	if (snr > -10) return kColorPoor;
+	return kColorBad;
 }
 
 static rgb_color
 RssiColor(int8 rssi)
 {
-	if (rssi >= -60) return (rgb_color){80, 180, 80, 255};
-	if (rssi >= -80) return (rgb_color){200, 170, 50, 255};
-	if (rssi >= -90) return (rgb_color){210, 120, 50, 255};
-	return (rgb_color){200, 60, 60, 255};
+	if (rssi >= -60) return kColorGood;
+	if (rssi >= -80) return kColorFair;
+	if (rssi >= -90) return kColorPoor;
+	return kColorBad;
 }
 
 static rgb_color
 BattColor(uint16 mv)
 {
-	if (mv >= 3900) return (rgb_color){80, 180, 80, 255};
-	if (mv >= 3600) return (rgb_color){200, 170, 50, 255};
-	if (mv >= 3400) return (rgb_color){210, 120, 50, 255};
-	return (rgb_color){200, 60, 60, 255};
+	if (mv >= 3900) return kColorGood;
+	if (mv >= 3600) return kColorFair;
+	if (mv >= 3400) return kColorPoor;
+	return kColorBad;
 }
 
 static rgb_color
 ScoreColor(int32 score)
 {
-	if (score >= 75) return (rgb_color){80, 180, 80, 255};
-	if (score >= 50) return (rgb_color){200, 170, 50, 255};
-	if (score >= 25) return (rgb_color){210, 120, 50, 255};
-	return (rgb_color){200, 60, 60, 255};
+	if (score >= 75) return kColorGood;
+	if (score >= 50) return kColorFair;
+	if (score >= 25) return kColorPoor;
+	return kColorBad;
 }
 
 
@@ -326,10 +328,10 @@ public:
 			// Fill
 			float fillWidth = (fStoragePct / 100.0f) * gaugeWidth;
 			rgb_color fillColor;
-			if (fStoragePct < 60) fillColor = (rgb_color){80, 180, 80, 255};
+			if (fStoragePct < 60) fillColor = kColorGood;
 			else if (fStoragePct < 80)
-				fillColor = (rgb_color){200, 170, 50, 255};
-			else fillColor = (rgb_color){200, 60, 60, 255};
+				fillColor = kColorFair;
+			else fillColor = kColorBad;
 			SetHighColor(fillColor);
 			if (fillWidth > 1)
 				FillRoundRect(BRect(gaugeLeft, gaugeY,
@@ -546,9 +548,9 @@ public:
 			} else {
 				// Fallback: status-only coloring
 				if (i < fOnline)
-					dotColor = (rgb_color){80, 180, 80, 255};
+					dotColor = kColorGood;
 				else if (i < fOnline + fRecent)
-					dotColor = (rgb_color){200, 170, 50, 255};
+					dotColor = kColorFair;
 				else
 					dotColor = tint_color(bg, B_DARKEN_2_TINT);
 			}
@@ -654,7 +656,7 @@ public:
 		titleFont.SetSize(8);
 		SetFont(&titleFont);
 		float lx = bounds.right - 100;
-		SetHighColor((rgb_color){80, 180, 80, 255});
+		SetHighColor(kColorGood);
 		StrokeLine(BPoint(lx, 9), BPoint(lx + 12, 9));
 		SetHighColor(dimColor);
 		DrawString("SNR", BPoint(lx + 14, 12));
@@ -1052,15 +1054,15 @@ public:
 					markerH = 8;
 					break;
 				case 2:  // Advert
-					evColor = (rgb_color){80, 180, 80, 255};
+					evColor = kColorGood;
 					markerH = 6;
 					break;
 				case 3:  // Error
-					evColor = (rgb_color){200, 60, 60, 255};
+					evColor = kColorBad;
 					markerH = 10;
 					break;
 				default: // System
-					evColor = (rgb_color){200, 170, 50, 255};
+					evColor = kColorFair;
 					markerH = 5;
 					break;
 			}
@@ -1172,11 +1174,11 @@ public:
 			float penW;
 			switch (fNodes[i].status) {
 				case 2:  // Online
-					lineColor = (rgb_color){80, 180, 80, 255};
+					lineColor = kColorGood;
 					penW = 2.0f;
 					break;
 				case 1:  // Recent
-					lineColor = (rgb_color){200, 170, 50, 255};
+					lineColor = kColorFair;
 					penW = 1.5f;
 					break;
 				default: // Offline
@@ -1195,10 +1197,10 @@ public:
 			rgb_color nodeColor;
 			switch (fNodes[i].status) {
 				case 2:
-					nodeColor = (rgb_color){80, 180, 80, 255};
+					nodeColor = kColorGood;
 					break;
 				case 1:
-					nodeColor = (rgb_color){200, 170, 50, 255};
+					nodeColor = kColorFair;
 					break;
 				default:
 					nodeColor = tint_color(bg, B_DARKEN_3_TINT);
@@ -1406,7 +1408,7 @@ MissionControlWindow::_BuildLayout()
 	// === Top row cards ===
 	fDeviceCard = new MetricCardView("Device Status");
 	fDeviceCard->SetRow(0, "Connection", "Disconnected",
-		(rgb_color){200, 60, 60, 255});
+		kColorBad);
 	fDeviceCard->SetRow(1, "Battery", "--");
 	fDeviceCard->SetRow(2, "Uptime", "--");
 	fDeviceCard->SetRow(3, "Firmware", "--");
@@ -1539,7 +1541,7 @@ MissionControlWindow::SetConnectionState(bool connected,
 		connStr.SetToFormat("Connected: %s",
 			deviceName != NULL ? deviceName : "");
 		fDeviceCard->SetRow(0, "Connection", connStr.String(),
-			(rgb_color){80, 180, 80, 255});
+			kColorGood);
 		fDeviceCard->SetPulse(true);
 		fTimeline->SetSessionStart(system_time());
 		fAdvertButton->SetEnabled(true);
@@ -1547,7 +1549,7 @@ MissionControlWindow::SetConnectionState(bool connected,
 		fStatsButton->SetEnabled(true);
 	} else {
 		fDeviceCard->SetRow(0, "Connection", "Disconnected",
-			(rgb_color){200, 60, 60, 255});
+			kColorBad);
 		fDeviceCard->SetPulse(false);
 		fDeviceCard->SetRow(1, "Battery", "--");
 		fDeviceCard->SetRow(2, "Uptime", "--");
@@ -1848,7 +1850,7 @@ MissionControlWindow::_UpdateLastUpdate()
 
 	// Go red when stale
 	if (elapsed > kStaleThreshold && fConnected)
-		fLastUpdateLabel->SetHighColor((rgb_color){200, 60, 60, 255});
+		fLastUpdateLabel->SetHighColor(kColorBad);
 	else
 		fLastUpdateLabel->SetHighUIColor(B_PANEL_TEXT_COLOR,
 			B_LIGHTEN_1_TINT);
@@ -1890,13 +1892,13 @@ MissionControlWindow::_AddTimestampedEvent(const char* category,
 	if (strcmp(category, "MSG") == 0)
 		catColor = (rgb_color){100, 180, 255, 255};
 	else if (strcmp(category, "ADV") == 0)
-		catColor = (rgb_color){80, 180, 80, 255};
+		catColor = kColorGood;
 	else if (strcmp(category, "SYS") == 0)
-		catColor = (rgb_color){200, 170, 50, 255};
+		catColor = kColorFair;
 	else if (strcmp(category, "ERR") == 0)
-		catColor = (rgb_color){200, 60, 60, 255};
+		catColor = kColorBad;
 	else if (strcmp(category, "ALT") == 0)
-		catColor = (rgb_color){220, 80, 80, 255};
+		catColor = kColorBad;
 
 	int32 bracketStart = insertPos + 9;
 	int32 bracketLen = strlen(category) + 2;
