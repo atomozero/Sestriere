@@ -8,6 +8,7 @@
 #ifndef MISSIONCONTROLWINDOW_H
 #define MISSIONCONTROLWINDOW_H
 
+#include <MessageRunner.h>
 #include <Window.h>
 #include <SupportDefs.h>
 
@@ -132,6 +133,11 @@ private:
 	uint32					fUptime;
 	uint32					fTxPackets;
 	uint32					fRxPackets;
+
+	// Timers
+	BMessageRunner*			fRefreshTimer;
+	BMessageRunner*			fPulseTimer;
+	BMessageRunner*			fAlertFlashTimer;
 };
 
 #endif // MISSIONCONTROLWINDOW_H

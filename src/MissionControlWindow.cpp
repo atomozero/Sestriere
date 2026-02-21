@@ -1314,26 +1314,35 @@ MissionControlWindow::MissionControlWindow(BWindow* parent)
 	fTotalKb(0),
 	fUptime(0),
 	fTxPackets(0),
-	fRxPackets(0)
+	fRxPackets(0),
+	fRefreshTimer(NULL),
+	fPulseTimer(NULL),
+	fAlertFlashTimer(NULL)
 {
 	_BuildLayout();
 
 	// Refresh timer (10 seconds) — requests stats
 	BMessage tickMsg(MSG_REFRESH_TICK);
-	new BMessageRunner(BMessenger(this), &tickMsg, 10000000, -1);
+	fRefreshTimer = new BMessageRunner(BMessenger(this), &tickMsg,
+		10000000, -1);
 
 	// Pulse timer (200ms) — pulsing dot + last-update
 	BMessage pulseMsg(MSG_PULSE_TICK);
-	new BMessageRunner(BMessenger(this), &pulseMsg, 200000, -1);
+	fPulseTimer = new BMessageRunner(BMessenger(this), &pulseMsg,
+		200000, -1);
 
 	// Alert flash timer (800ms)
 	BMessage flashMsg(MSG_ALERT_FLASH);
-	new BMessageRunner(BMessenger(this), &flashMsg, 800000, -1);
+	fAlertFlashTimer = new BMessageRunner(BMessenger(this), &flashMsg,
+		800000, -1);
 }
 
 
 MissionControlWindow::~MissionControlWindow()
 {
+	delete fRefreshTimer;
+	delete fPulseTimer;
+	delete fAlertFlashTimer;
 }
 
 
