@@ -82,4 +82,22 @@ FormatContactKey(char* dest, const uint8* prefix)
 }
 
 
+// Uptime formatting: "Xd Yh Zm" / "Yh Zm" / "Zm"
+// dest must be at least 16 bytes. Returns dest for convenience.
+inline char*
+FormatUptime(char* dest, size_t size, uint32 totalSeconds)
+{
+	uint32 d = totalSeconds / 86400;
+	uint32 h = (totalSeconds % 86400) / 3600;
+	uint32 m = (totalSeconds % 3600) / 60;
+	if (d > 0)
+		snprintf(dest, size, "%ud %uh %um", (unsigned)d, (unsigned)h, (unsigned)m);
+	else if (h > 0)
+		snprintf(dest, size, "%uh %um", (unsigned)h, (unsigned)m);
+	else
+		snprintf(dest, size, "%um", (unsigned)m);
+	return dest;
+}
+
+
 #endif // UTILS_H

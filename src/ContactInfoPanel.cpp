@@ -23,6 +23,7 @@
 
 #include "Constants.h"
 #include "DatabaseManager.h"
+#include "Utils.h"
 #include "SNRChartView.h"
 
 
@@ -940,15 +941,7 @@ ContactInfoPanel::_DrawAdminSections(float& y)
 	// Uptime
 	if (fAdminUptime > 0) {
 		char uptStr[32];
-		uint32 d = fAdminUptime / 86400;
-		uint32 h = (fAdminUptime % 86400) / 3600;
-		uint32 m = (fAdminUptime % 3600) / 60;
-		if (d > 0)
-			snprintf(uptStr, sizeof(uptStr), "%ud%uh%um", d, h, m);
-		else if (h > 0)
-			snprintf(uptStr, sizeof(uptStr), "%uh%um", h, m);
-		else
-			snprintf(uptStr, sizeof(uptStr), "%um", m);
+		FormatUptime(uptStr, sizeof(uptStr), fAdminUptime);
 		_DrawInfoRow(y, "Up", uptStr, TextColor());
 	}
 

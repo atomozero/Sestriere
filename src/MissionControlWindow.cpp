@@ -23,11 +23,11 @@
 #include <cmath>
 #include <cstdio>
 
-#include "Constants.h"
 #include <cstring>
 #include <ctime>
 
 #include "Constants.h"
+#include "Utils.h"
 
 
 // ============================================================================
@@ -1622,15 +1622,7 @@ MissionControlWindow::SetDeviceStats(uint32 uptime, uint32 txPackets,
 	fRxPackets = rxPackets;
 
 	char uptimeStr[32];
-	uint32 d = uptime / 86400;
-	uint32 h = (uptime % 86400) / 3600;
-	uint32 m = (uptime % 3600) / 60;
-	if (d > 0)
-		snprintf(uptimeStr, sizeof(uptimeStr), "%ud %uh %um",
-			(unsigned)d, (unsigned)h, (unsigned)m);
-	else
-		snprintf(uptimeStr, sizeof(uptimeStr), "%uh %um",
-			(unsigned)h, (unsigned)m);
+	FormatUptime(uptimeStr, sizeof(uptimeStr), uptime);
 	fDeviceCard->SetRow(2, "Uptime", uptimeStr);
 
 	fPacketRateChart->RecordSample(txPackets, rxPackets);
