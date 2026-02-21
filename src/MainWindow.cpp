@@ -1076,6 +1076,7 @@ MainWindow::MessageReceived(BMessage* message)
 
 				// Start periodic stats refresh timer
 				delete fStatsRefreshTimer;
+				fStatsRefreshTimer = NULL;
 				BMessage timerMsg(MSG_STATS_TIMER);
 				fStatsRefreshTimer = new BMessageRunner(this,
 					&timerMsg, kStatsRefreshInterval);
@@ -1192,6 +1193,7 @@ MainWindow::MessageReceived(BMessage* message)
 				fProtocol->SendRemoveContact((const uint8*)keyData);
 				// Schedule auto-sync after 3s
 				delete fAutoSyncRunner;
+				fAutoSyncRunner = NULL;
 				BMessage syncMsg(MSG_AUTO_SYNC_CONTACTS);
 				fAutoSyncRunner = new BMessageRunner(this,
 					&syncMsg, kAutoSyncDelay, 1);
@@ -1519,6 +1521,7 @@ MainWindow::MessageReceived(BMessage* message)
 			// Start polling all contacts at 2s intervals
 			fTelemetryPollIndex = 0;
 			delete fTelemetryPollTimer;
+			fTelemetryPollTimer = NULL;
 			BMessage pollMsg(MSG_TELEMETRY_POLL_TICK);
 			fTelemetryPollTimer = new BMessageRunner(BMessenger(this),
 				&pollMsg, 2000000, -1);
@@ -3913,6 +3916,7 @@ MainWindow::_HandlePushLoginResult(uint8 code)
 
 			// Start admin auto-refresh timer (15s)
 			delete fAdminRefreshTimer;
+			fAdminRefreshTimer = NULL;
 			fAdminRefreshTimer = new BMessageRunner(this,
 				new BMessage(MSG_ADMIN_REFRESH_TICK),
 				kAdminRefreshInterval);
