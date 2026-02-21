@@ -847,14 +847,22 @@ MainWindow::MessageReceived(BMessage* message)
 			fMqttSettings.longitude = message->GetDouble("longitude", 0.0);
 			strlcpy(fMqttSettings.iataCode, message->GetString("iata", "XXX"),
 				sizeof(fMqttSettings.iataCode));
-			strlcpy(fMqttSettings.broker, message->GetString("broker", "nodi.meshcoreitalia.it"),
+			strlcpy(fMqttSettings.broker, message->GetString("broker", ""),
 				sizeof(fMqttSettings.broker));
 			fMqttSettings.port = message->GetInt32("port", 1883);
-			strlcpy(fMqttSettings.username, message->GetString("username", "meshcore"),
+			strlcpy(fMqttSettings.username, message->GetString("username", ""),
 				sizeof(fMqttSettings.username));
-			strlcpy(fMqttSettings.password, message->GetString("password", "meshcore25"),
+			strlcpy(fMqttSettings.password, message->GetString("password", ""),
 				sizeof(fMqttSettings.password));
 			strlcpy(fMqttSettings.publicKey, fPublicKey, sizeof(fMqttSettings.publicKey));
+
+			// Validate settings
+			if (fMqttSettings.port < 1 || fMqttSettings.port > 65535)
+				fMqttSettings.port = 1883;
+			if (fMqttSettings.latitude < -90.0 || fMqttSettings.latitude > 90.0)
+				fMqttSettings.latitude = 0.0;
+			if (fMqttSettings.longitude < -180.0 || fMqttSettings.longitude > 180.0)
+				fMqttSettings.longitude = 0.0;
 
 			// Save settings
 			_SaveMqttSettings();
@@ -5231,6 +5239,14 @@ MainWindow::_LoadMqttSettings()
 	}
 
 	delete[] buffer;
+
+	// Validate loaded settings
+	if (fMqttSettings.port < 1 || fMqttSettings.port > 65535)
+		fMqttSettings.port = 1883;
+	if (fMqttSettings.latitude < -90.0 || fMqttSettings.latitude > 90.0)
+		fMqttSettings.latitude = 0.0;
+	if (fMqttSettings.longitude < -180.0 || fMqttSettings.longitude > 180.0)
+		fMqttSettings.longitude = 0.0;
 
 	// Apply to MQTT client if it exists
 	if (fMqttClient != NULL) {

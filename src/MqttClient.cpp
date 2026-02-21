@@ -182,8 +182,8 @@ MqttClient::_DoConnect()
 	}
 
 	// Set credentials
-	fprintf(stderr, "[MQTT] Connecting to %s:%d as %s\n",
-		fSettings.broker, fSettings.port, fSettings.username);
+	fprintf(stderr, "[MQTT] Connecting to %s:%d\n",
+		fSettings.broker, fSettings.port);
 	mosquitto_username_pw_set(fMosquitto, fSettings.username, fSettings.password);
 
 	{

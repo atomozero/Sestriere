@@ -432,16 +432,23 @@ DatabaseManager::PruneOldData(uint32 maxAgeDays)
 	if (fDB == NULL)
 		return;
 
-	uint32 cutoff = (uint32)time(NULL) - (maxAgeDays * 86400);
+	int32 cutoff = (int32)((uint32)time(NULL) - (maxAgeDays * 86400));
 
-	char sql[128];
-	snprintf(sql, sizeof(sql),
-		"DELETE FROM snr_history WHERE timestamp < %u", cutoff);
-	_Execute(sql);
+	const char* sqlSnr = "DELETE FROM snr_history WHERE timestamp < ?";
+	sqlite3_stmt* stmt = NULL;
+	if (sqlite3_prepare_v2(fDB, sqlSnr, -1, &stmt, NULL) == SQLITE_OK) {
+		sqlite3_bind_int(stmt, 1, cutoff);
+		sqlite3_step(stmt);
+		sqlite3_finalize(stmt);
+	}
 
-	snprintf(sql, sizeof(sql),
-		"DELETE FROM telemetry_history WHERE timestamp < %u", cutoff);
-	_Execute(sql);
+	const char* sqlTelem = "DELETE FROM telemetry_history WHERE timestamp < ?";
+	stmt = NULL;
+	if (sqlite3_prepare_v2(fDB, sqlTelem, -1, &stmt, NULL) == SQLITE_OK) {
+		sqlite3_bind_int(stmt, 1, cutoff);
+		sqlite3_step(stmt);
+		sqlite3_finalize(stmt);
+	}
 }
 
 
@@ -452,15 +459,18 @@ DatabaseManager::PruneOldMessages(uint32 maxAgeDays)
 	if (fDB == NULL)
 		return;
 
-	uint32 cutoff = (uint32)time(NULL) - (maxAgeDays * 86400);
+	int32 cutoff = (int32)((uint32)time(NULL) - (maxAgeDays * 86400));
 
-	char sql[128];
-	snprintf(sql, sizeof(sql),
-		"DELETE FROM messages WHERE timestamp < %u", cutoff);
-	_Execute(sql);
+	const char* sql = "DELETE FROM messages WHERE timestamp < ?";
+	sqlite3_stmt* stmt = NULL;
+	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) == SQLITE_OK) {
+		sqlite3_bind_int(stmt, 1, cutoff);
+		sqlite3_step(stmt);
+		sqlite3_finalize(stmt);
+	}
 
-	fprintf(stderr, "[DatabaseManager] Pruned messages older than %u days\n",
-		maxAgeDays);
+	fprintf(stderr, "[DatabaseManager] Pruned messages older than %" B_PRIu32
+		" days\n", maxAgeDays);
 }
 
 

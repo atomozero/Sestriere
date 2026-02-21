@@ -38,9 +38,9 @@ struct MqttSettings {
 	char		deviceName[64];		// Device name for origin field
 
 	MqttSettings() : enabled(false), port(1883), latitude(0), longitude(0) {
-		strlcpy(broker, "nodi.meshcoreitalia.it", sizeof(broker));
-		strlcpy(username, "meshcore", sizeof(username));
-		strlcpy(password, "meshcore25", sizeof(password));
+		memset(broker, 0, sizeof(broker));
+		memset(username, 0, sizeof(username));
+		memset(password, 0, sizeof(password));
 		strlcpy(iataCode, "XXX", sizeof(iataCode));
 		memset(publicKey, 0, sizeof(publicKey));
 		memset(deviceName, 0, sizeof(deviceName));
