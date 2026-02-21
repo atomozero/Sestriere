@@ -148,6 +148,22 @@ _ShowWindow(BWindow* window)
 }
 
 
+// Thread-safe: lock window looper, then check visibility.
+// Returns true if window is visible and locked (caller must UnlockLooper).
+static bool
+_LockIfVisible(BWindow* window)
+{
+	if (window == NULL)
+		return false;
+	if (!window->LockLooper())
+		return false;
+	if (window->IsHidden()) {
+		window->UnlockLooper();
+		return false;
+	}
+	return true;
+}
+
 MainWindow::MainWindow()
 	:
 	BWindow(BRect(100, 100, 900, 650), APP_NAME,
@@ -3015,25 +3031,20 @@ MainWindow::_HandleSelfInfo(const uint8* data, size_t length)
 		_LogMessage("INFO", BString().SetToFormat("Device name: %s", fDeviceName));
 
 		// Update Network Map with self name
-		if (fNetworkMapWindow != NULL && !fNetworkMapWindow->IsHidden()) {
-			if (fNetworkMapWindow->LockLooper()) {
-				fNetworkMapWindow->SetSelfInfo(fDeviceName);
-				fNetworkMapWindow->UnlockLooper();
-			}
+		if (_LockIfVisible(fNetworkMapWindow)) {
+			fNetworkMapWindow->SetSelfInfo(fDeviceName);
+			fNetworkMapWindow->UnlockLooper();
 		}
 	}
 
 	// Forward radio config + connection to Mission Control
-	if (fMissionControlWindow != NULL
-		&& !fMissionControlWindow->IsHidden()) {
-		if (fMissionControlWindow->LockLooper()) {
-			fMissionControlWindow->SetConnectionState(fConnected,
-				fDeviceName, fDeviceFirmware);
-			if (fHasRadioParams)
-				fMissionControlWindow->SetRadioConfig(fRadioFreq,
-					fRadioBw, fRadioSf, fRadioCr, fRadioTxPower);
-			fMissionControlWindow->UnlockLooper();
-		}
+	if (_LockIfVisible(fMissionControlWindow)) {
+		fMissionControlWindow->SetConnectionState(fConnected,
+			fDeviceName, fDeviceFirmware);
+		if (fHasRadioParams)
+			fMissionControlWindow->SetRadioConfig(fRadioFreq,
+				fRadioBw, fRadioSf, fRadioCr, fRadioTxPower);
+		fMissionControlWindow->UnlockLooper();
 	}
 
 	// Mark that we have device info and publish MQTT status if connected
@@ -3180,31 +3191,26 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 	}
 
 	// Trigger pulse and update link quality on network map
-	if (fNetworkMapWindow != NULL && !fNetworkMapWindow->IsHidden()) {
-		if (fNetworkMapWindow->LockLooper()) {
-			fNetworkMapWindow->TriggerNodePulse(senderPrefix);
-			if (snr != 0)
-				fNetworkMapWindow->UpdateLinkQuality(senderPrefix, snr, fLastRssi);
-			fNetworkMapWindow->UnlockLooper();
-		}
+	if (_LockIfVisible(fNetworkMapWindow)) {
+		fNetworkMapWindow->TriggerNodePulse(senderPrefix);
+		if (snr != 0)
+			fNetworkMapWindow->UpdateLinkQuality(senderPrefix, snr, fLastRssi);
+		fNetworkMapWindow->UnlockLooper();
 	}
 
 	// Forward to Mission Control activity feed
-	if (fMissionControlWindow != NULL
-		&& !fMissionControlWindow->IsHidden()) {
-		if (fMissionControlWindow->LockLooper()) {
-			BString eventText;
-			eventText.SetToFormat("DM from %s — SNR: %ddB, %s",
-				senderName.String(), (int)snr,
-				(pathLen == kPathLenDirect || pathLen == 0)
-					? "direct" : BString().SetToFormat("%d hops",
-						(int)pathLen).String());
-			fMissionControlWindow->AddActivityEvent("MSG",
-				eventText.String());
-			if (snr != 0)
-				fMissionControlWindow->AddSNRDataPoint(snr);
-			fMissionControlWindow->UnlockLooper();
-		}
+	if (_LockIfVisible(fMissionControlWindow)) {
+		BString eventText;
+		eventText.SetToFormat("DM from %s — SNR: %ddB, %s",
+			senderName.String(), (int)snr,
+			(pathLen == kPathLenDirect || pathLen == 0)
+				? "direct" : BString().SetToFormat("%d hops",
+					(int)pathLen).String());
+		fMissionControlWindow->AddActivityEvent("MSG",
+			eventText.String());
+		if (snr != 0)
+			fMissionControlWindow->AddSNRDataPoint(snr);
+		fMissionControlWindow->UnlockLooper();
 	}
 
 	// Publish to MQTT /packets topic
@@ -3393,18 +3399,15 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 	}
 
 	// Forward to Mission Control activity feed
-	if (fMissionControlWindow != NULL
-		&& !fMissionControlWindow->IsHidden()) {
-		if (fMissionControlWindow->LockLooper()) {
-			BString eventText;
-			eventText.SetToFormat("CH from %s: %s",
-				senderName.String(), messageText);
-			fMissionControlWindow->AddActivityEvent("MSG",
-				eventText.String());
-			if (snr != 0)
-				fMissionControlWindow->AddSNRDataPoint(snr);
-			fMissionControlWindow->UnlockLooper();
-		}
+	if (_LockIfVisible(fMissionControlWindow)) {
+		BString eventText;
+		eventText.SetToFormat("CH from %s: %s",
+			senderName.String(), messageText);
+		fMissionControlWindow->AddActivityEvent("MSG",
+			eventText.String());
+		if (snr != 0)
+			fMissionControlWindow->AddSNRDataPoint(snr);
+		fMissionControlWindow->UnlockLooper();
 	}
 
 	// Publish to MQTT /packets topic
@@ -3469,22 +3472,19 @@ MainWindow::_HandleBattAndStorage(const uint8* data, size_t length)
 		}
 
 		// Forward to Mission Control
-		if (fMissionControlWindow != NULL
-			&& !fMissionControlWindow->IsHidden()) {
-			if (fMissionControlWindow->LockLooper()) {
-				fMissionControlWindow->SetBatteryInfo(battMv, usedKb,
-					totalKb);
-				int32 pct = 0;
-				if (battMv >= 4200) pct = 100;
-				else if (battMv >= 3300)
-					pct = (int32)((battMv - 3300) / 9.0f);
-				BString battEvent;
-				battEvent.SetToFormat("Battery: %d%% (%u mV)",
-					(int)pct, (unsigned)battMv);
-				fMissionControlWindow->AddActivityEvent("SYS",
-					battEvent.String());
-				fMissionControlWindow->UnlockLooper();
-			}
+		if (_LockIfVisible(fMissionControlWindow)) {
+			fMissionControlWindow->SetBatteryInfo(battMv, usedKb,
+				totalKb);
+			int32 pct = 0;
+			if (battMv >= 4200) pct = 100;
+			else if (battMv >= 3300)
+				pct = (int32)((battMv - 3300) / 9.0f);
+			BString battEvent;
+			battEvent.SetToFormat("Battery: %d%% (%u mV)",
+				(int)pct, (unsigned)battMv);
+			fMissionControlWindow->AddActivityEvent("SYS",
+				battEvent.String());
+			fMissionControlWindow->UnlockLooper();
 		}
 
 	}
@@ -3552,49 +3552,45 @@ MainWindow::_HandleStats(const uint8* data, size_t length)
 	}
 
 	// Forward to StatsWindow if open (must lock the window first!)
-	if (fStatsWindow != NULL && !fStatsWindow->IsHidden()) {
-		if (fStatsWindow->LockLooper()) {
-			fStatsWindow->ParseStatsResponse(data, length);
-			fStatsWindow->UnlockLooper();
-		}
+	if (_LockIfVisible(fStatsWindow)) {
+		fStatsWindow->ParseStatsResponse(data, length);
+		fStatsWindow->UnlockLooper();
 	}
 
 	// Forward to Mission Control dashboard
-	if (fMissionControlWindow != NULL && !fMissionControlWindow->IsHidden()) {
-		if (fMissionControlWindow->LockLooper()) {
-			switch (subType) {
-				case 0:  // Core stats
-					fMissionControlWindow->SetDeviceStats(fDeviceUptime,
-						fTxPackets, fRxPackets);
-					break;
-				case 1:  // Radio stats
-				{
-					fMissionControlWindow->SetRadioStats(fLastRssi,
-						fLastSnr, fNoiseFloor);
-					fMissionControlWindow->AddRSSIDataPoint(fLastRssi);
-					BString radioEvent;
-					radioEvent.SetToFormat(
-						"Radio update: RSSI %ddBm, SNR %+ddB, NF %ddBm",
-						(int)fLastRssi, (int)fLastSnr, (int)fNoiseFloor);
-					fMissionControlWindow->AddActivityEvent("SYS",
-						radioEvent.String());
-					break;
-				}
-				case 2:  // Packet stats
-				{
-					fMissionControlWindow->SetPacketStats(fTxPackets,
-						fRxPackets);
-					BString pktEvent;
-					pktEvent.SetToFormat(
-						"Packets: TX %u, RX %u",
-						(unsigned)fTxPackets, (unsigned)fRxPackets);
-					fMissionControlWindow->AddActivityEvent("SYS",
-						pktEvent.String());
-					break;
-				}
+	if (_LockIfVisible(fMissionControlWindow)) {
+		switch (subType) {
+			case 0:  // Core stats
+				fMissionControlWindow->SetDeviceStats(fDeviceUptime,
+					fTxPackets, fRxPackets);
+				break;
+			case 1:  // Radio stats
+			{
+				fMissionControlWindow->SetRadioStats(fLastRssi,
+					fLastSnr, fNoiseFloor);
+				fMissionControlWindow->AddRSSIDataPoint(fLastRssi);
+				BString radioEvent;
+				radioEvent.SetToFormat(
+					"Radio update: RSSI %ddBm, SNR %+ddB, NF %ddBm",
+					(int)fLastRssi, (int)fLastSnr, (int)fNoiseFloor);
+				fMissionControlWindow->AddActivityEvent("SYS",
+					radioEvent.String());
+				break;
 			}
-			fMissionControlWindow->UnlockLooper();
+			case 2:  // Packet stats
+			{
+				fMissionControlWindow->SetPacketStats(fTxPackets,
+					fRxPackets);
+				BString pktEvent;
+				pktEvent.SetToFormat(
+					"Packets: TX %u, RX %u",
+					(unsigned)fTxPackets, (unsigned)fRxPackets);
+				fMissionControlWindow->AddActivityEvent("SYS",
+					pktEvent.String());
+				break;
+			}
 		}
+		fMissionControlWindow->UnlockLooper();
 	}
 
 }
@@ -3723,33 +3719,28 @@ MainWindow::_HandlePushAdvert(const uint8* data, size_t length)
 	}
 
 	// Trigger pulse and update link quality on network map
-	if (fNetworkMapWindow != NULL && !fNetworkMapWindow->IsHidden()) {
-		if (fNetworkMapWindow->LockLooper()) {
-			fNetworkMapWindow->TriggerNodePulse(pubKeyPrefix);
-			if (snr != 0)
-				fNetworkMapWindow->UpdateLinkQuality(pubKeyPrefix, snr / 4, rssi);
-			fNetworkMapWindow->UnlockLooper();
-		}
+	if (_LockIfVisible(fNetworkMapWindow)) {
+		fNetworkMapWindow->TriggerNodePulse(pubKeyPrefix);
+		if (snr != 0)
+			fNetworkMapWindow->UpdateLinkQuality(pubKeyPrefix, snr / 4, rssi);
+		fNetworkMapWindow->UnlockLooper();
 	}
 
 	// Forward to Mission Control activity feed
-	if (fMissionControlWindow != NULL
-		&& !fMissionControlWindow->IsHidden()) {
-		if (fMissionControlWindow->LockLooper()) {
-			ContactInfo* advertContact = _FindContactByPrefix(
-				pubKeyPrefix, kPubKeyPrefixSize);
-			BString advName;
-			if (advertContact != NULL && advertContact->name[0] != '\0')
-				advName = advertContact->name;
-			else
-				advName.SetToFormat("%02X%02X%02X",
-					pubKeyPrefix[0], pubKeyPrefix[1], pubKeyPrefix[2]);
-			BString eventText;
-			eventText.SetToFormat("New advert: %s", advName.String());
-			fMissionControlWindow->AddActivityEvent("ADV",
-				eventText.String());
-			fMissionControlWindow->UnlockLooper();
-		}
+	if (_LockIfVisible(fMissionControlWindow)) {
+		ContactInfo* advertContact = _FindContactByPrefix(
+			pubKeyPrefix, kPubKeyPrefixSize);
+		BString advName;
+		if (advertContact != NULL && advertContact->name[0] != '\0')
+			advName = advertContact->name;
+		else
+			advName.SetToFormat("%02X%02X%02X",
+				pubKeyPrefix[0], pubKeyPrefix[1], pubKeyPrefix[2]);
+		BString eventText;
+		eventText.SetToFormat("New advert: %s", advName.String());
+		fMissionControlWindow->AddActivityEvent("ADV",
+			eventText.String());
+		fMissionControlWindow->UnlockLooper();
 	}
 
 	// Publish to MQTT if connected
@@ -3771,19 +3762,15 @@ MainWindow::_HandlePushTraceData(const uint8* data, size_t length)
 	_LogMessage("INFO", "Trace path data received");
 
 	// Forward to TracePathWindow if open (must lock the window first!)
-	if (fTracePathWindow != NULL && !fTracePathWindow->IsHidden()) {
-		if (fTracePathWindow->LockLooper()) {
-			fTracePathWindow->ParseTraceData(data, length);
-			fTracePathWindow->UnlockLooper();
-		}
+	if (_LockIfVisible(fTracePathWindow)) {
+		fTracePathWindow->ParseTraceData(data, length);
+		fTracePathWindow->UnlockLooper();
 	}
 
 	// Forward to NetworkMapWindow for trace route visualization
-	if (fNetworkMapWindow != NULL && !fNetworkMapWindow->IsHidden()) {
-		if (fNetworkMapWindow->LockLooper()) {
-			fNetworkMapWindow->HandleTraceData(data, length);
-			fNetworkMapWindow->UnlockLooper();
-		}
+	if (_LockIfVisible(fNetworkMapWindow)) {
+		fNetworkMapWindow->HandleTraceData(data, length);
+		fNetworkMapWindow->UnlockLooper();
 	}
 
 	// Log trace path summary
@@ -4070,18 +4057,15 @@ MainWindow::_OnConnected(BMessage* message)
 	}
 
 	// Forward to Mission Control
-	if (fMissionControlWindow != NULL
-		&& !fMissionControlWindow->IsHidden()) {
-		if (fMissionControlWindow->LockLooper()) {
-			fMissionControlWindow->SetConnectionState(true,
-				fDeviceName, fDeviceFirmware);
-			BString connMsg;
-			connMsg.SetToFormat("Connected to %s",
-				(port != NULL) ? port : "device");
-			fMissionControlWindow->AddActivityEvent("SYS",
-				connMsg.String());
-			fMissionControlWindow->UnlockLooper();
-		}
+	if (_LockIfVisible(fMissionControlWindow)) {
+		fMissionControlWindow->SetConnectionState(true,
+			fDeviceName, fDeviceFirmware);
+		BString connMsg;
+		connMsg.SetToFormat("Connected to %s",
+			(port != NULL) ? port : "device");
+		fMissionControlWindow->AddActivityEvent("SYS",
+			connMsg.String());
+		fMissionControlWindow->UnlockLooper();
 	}
 
 	// Send APP_START first, then schedule init commands after a short delay
@@ -4119,13 +4103,10 @@ MainWindow::_OnDisconnected()
 	fTelemetryPollTimer = NULL;
 
 	// Forward to Mission Control
-	if (fMissionControlWindow != NULL
-		&& !fMissionControlWindow->IsHidden()) {
-		if (fMissionControlWindow->LockLooper()) {
-			fMissionControlWindow->SetConnectionState(false, NULL, NULL);
-			fMissionControlWindow->AddActivityEvent("SYS", "Disconnected");
-			fMissionControlWindow->UnlockLooper();
-		}
+	if (_LockIfVisible(fMissionControlWindow)) {
+		fMissionControlWindow->SetConnectionState(false, NULL, NULL);
+		fMissionControlWindow->AddActivityEvent("SYS", "Disconnected");
+		fMissionControlWindow->UnlockLooper();
 	}
 
 	_UpdateConnectionUI();
@@ -4200,11 +4181,9 @@ MainWindow::_UpdateContactList()
 	}
 
 	// Update network map if open
-	if (fNetworkMapWindow != NULL && !fNetworkMapWindow->IsHidden()) {
-		if (fNetworkMapWindow->LockLooper()) {
-			fNetworkMapWindow->UpdateFromContacts(&fContacts);
-			fNetworkMapWindow->UnlockLooper();
-		}
+	if (_LockIfVisible(fNetworkMapWindow)) {
+		fNetworkMapWindow->UpdateFromContacts(&fContacts);
+		fNetworkMapWindow->UnlockLooper();
 	}
 }
 
