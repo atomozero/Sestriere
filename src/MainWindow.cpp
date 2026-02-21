@@ -56,6 +56,7 @@
 #include "NetworkMapWindow.h"
 #include "PacketAnalyzerWindow.h"
 #include "NotificationManager.h"
+#include "ProtocolHandler.h"
 #include "SerialHandler.h"
 #include "SettingsWindow.h"
 #include "StatsWindow.h"
@@ -246,9 +247,10 @@ MainWindow::MainWindow()
 		DatabaseManager::Instance()->Open(settingsDir.String());
 	}
 
-	// Create serial handler
+	// Create serial handler and protocol handler
 	fSerialHandler = new SerialHandler(this);
 	fSerialHandler->Run();
+	fProtocol = new ProtocolHandler(fSerialHandler);
 
 	// MQTT client is created lazily when needed
 	fprintf(stderr, "[MainWindow] MQTT will be initialized on demand\n");
@@ -281,6 +283,10 @@ MainWindow::~MainWindow()
 	delete fAutoConnectTimer;
 	delete fStatsRefreshTimer;
 	delete fAutoSyncRunner;
+
+	// Protocol handler cleanup
+	delete fProtocol;
+	fProtocol = NULL;
 
 	// Serial handler cleanup (if not already done in QuitRequested)
 	if (fSerialHandler != NULL) {
@@ -631,19 +637,20 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 
 		case MSG_SYNC_CONTACTS:
-			_SendGetContacts();
+			fSyncingContacts = true;
+			fProtocol->SendGetContacts();
 			break;
 
 		case MSG_SEND_ADVERT:
-			_SendSelfAdvert();
+			fProtocol->SendSelfAdvert();
 			break;
 
 		case MSG_DEVICE_QUERY:
-			_SendDeviceQuery();
+			fProtocol->SendDeviceQuery();
 			break;
 
 		case MSG_GET_BATTERY:
-			_SendGetBattery();
+			fProtocol->SendGetBattery();
 			break;
 
 		case MSG_GET_STATS:
@@ -654,12 +661,12 @@ MainWindow::MessageReceived(BMessage* message)
 			} else {
 				_ShowWindow(fStatsWindow);
 			}
-			_SendGetStats();
+			fProtocol->SendGetStats();
 			break;
 
 		case MSG_REQUEST_STATS_DATA:
 			// Just request stats data without opening/showing window
-			_SendGetStats();
+			fProtocol->SendGetStats();
 			break;
 
 		case MSG_CONTACT_SELECTED:
@@ -747,7 +754,7 @@ MainWindow::MessageReceived(BMessage* message)
 				_ShowWindow(fStatsWindow);
 			}
 			// Request fresh stats
-			_SendGetStats();
+			fProtocol->SendGetStats();
 			break;
 		}
 
@@ -1058,12 +1065,13 @@ MainWindow::MessageReceived(BMessage* message)
 		{
 			// Deferred init commands after APP_START completes
 			if (fConnected) {
-				_SendDeviceQuery();
-				_SendExportSelf();
-				_SendSelfAdvert();
-				_SendGetContacts();
-				_SendGetBattery();
-				_SendGetStats();
+				fProtocol->SendDeviceQuery();
+				fProtocol->SendExportSelf();
+				fProtocol->SendSelfAdvert();
+				fSyncingContacts = true;
+				fProtocol->SendGetContacts();
+				fProtocol->SendGetBattery();
+				fProtocol->SendGetStats();
 
 				// Start periodic stats refresh timer
 				delete fStatsRefreshTimer;
@@ -1078,8 +1086,8 @@ MainWindow::MessageReceived(BMessage* message)
 		{
 			// Periodic stats refresh for status bar
 			if (fConnected) {
-				_SendGetBattery();
-				_SendGetStats();
+				fProtocol->SendGetBattery();
+				fProtocol->SendGetStats();
 			}
 			break;
 		}
@@ -1090,7 +1098,8 @@ MainWindow::MessageReceived(BMessage* message)
 			fAutoSyncRunner = NULL;
 			if (fConnected) {
 				_LogMessage("INFO", "Auto-syncing contacts after new node discovery");
-				_SendGetContacts();
+				fSyncingContacts = true;
+				fProtocol->SendGetContacts();
 			}
 			break;
 		}
@@ -1149,7 +1158,7 @@ MainWindow::MessageReceived(BMessage* message)
 			ssize_t keySize;
 			if (message->FindData("pubkey", B_RAW_TYPE, &keyData, &keySize) == B_OK
 				&& keySize >= (ssize_t)kPubKeySize) {
-				_SendResetPath((const uint8*)keyData);
+				fProtocol->SendResetPath((const uint8*)keyData);
 			}
 			break;
 		}
@@ -1179,7 +1188,7 @@ MainWindow::MessageReceived(BMessage* message)
 				"Cancel", "Remove", NULL,
 				B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 			if (confirm->Go() == 1) {
-				_SendRemoveContact((const uint8*)keyData);
+				fProtocol->SendRemoveContact((const uint8*)keyData);
 				// Schedule auto-sync after 3s
 				delete fAutoSyncRunner;
 				BMessage syncMsg(MSG_AUTO_SYNC_CONTACTS);
@@ -1217,7 +1226,7 @@ MainWindow::MessageReceived(BMessage* message)
 				"Cancel", "Remove", NULL,
 				B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 			if (confirm->Go() == 1) {
-				_SendRemoveChannel((uint8)chIdx);
+				fProtocol->SendRemoveChannel((uint8)chIdx);
 				// Remove from local list and update UI
 				for (int32 i = 0; i < fChannels.CountItems(); i++) {
 					if (fChannels.ItemAt(i)->index == (uint8)chIdx) {
@@ -1292,7 +1301,7 @@ MainWindow::MessageReceived(BMessage* message)
 			for (size_t i = 0; i < 16 && i < nameLen; i++)
 				secret[i] = (uint8)name[i];
 
-			_SendSetChannel((uint8)emptySlot, name, secret);
+			fProtocol->SendSetChannel((uint8)emptySlot, name, secret);
 
 			// Add to local list immediately
 			ChannelInfo* ch = new ChannelInfo();
@@ -1311,7 +1320,7 @@ MainWindow::MessageReceived(BMessage* message)
 		{
 			const char* name;
 			if (message->FindString("name", &name) == B_OK)
-				_SendSetName(name);
+				fProtocol->SendSetName(name);
 			break;
 		}
 
@@ -1330,42 +1339,15 @@ MainWindow::MessageReceived(BMessage* message)
 				if (message->FindUInt32("bandwidth", &bw) == B_OK &&
 					message->FindUInt8("sf", &sf) == B_OK &&
 					message->FindUInt8("cr", &cr) == B_OK) {
-					// freq and bw arrive in Hz from SettingsWindow
-					// Protocol wire format: freq in kHz, bw in Hz
-					uint32 freqKHz = freq / 1000;
 					_LogMessage("INFO", BString().SetToFormat(
 						"Setting radio: %.3f MHz, %.1f kHz BW, SF%u, CR%u",
 						freq / 1000000.0, bw / 1000.0, sf, cr));
-
-					uint8 payload[11];
-					payload[0] = CMD_SET_RADIO_PARAMS;
-					payload[1] = freqKHz & 0xFF;
-					payload[2] = (freqKHz >> 8) & 0xFF;
-					payload[3] = (freqKHz >> 16) & 0xFF;
-					payload[4] = (freqKHz >> 24) & 0xFF;
-					payload[5] = bw & 0xFF;
-					payload[6] = (bw >> 8) & 0xFF;
-					payload[7] = (bw >> 16) & 0xFF;
-					payload[8] = (bw >> 24) & 0xFF;
-					payload[9] = sf;
-					payload[10] = cr;
-					status_t err = fSerialHandler->SendFrame(payload,
-						sizeof(payload));
-					if (err == B_OK) {
-						// Update local state so settings window shows new values
-						fRadioFreq = freq;
-						fRadioBw = bw;
-						fRadioSf = sf;
-						fRadioCr = cr;
-						fHasRadioParams = true;
-						_LogMessage("OK", BString().SetToFormat(
-							"Radio params applied: %.3f MHz, %.1f kHz BW, SF%u, CR%u",
-							freq / 1000000.0, bw / 1000.0, sf, cr));
-					} else {
-						_LogMessage("ERROR", BString().SetToFormat(
-							"Failed to send radio params: %s",
-							strerror(err)));
-					}
+					fProtocol->SendRadioParams(freq, bw, sf, cr);
+					fRadioFreq = freq;
+					fRadioBw = bw;
+					fRadioSf = sf;
+					fRadioCr = cr;
+					fHasRadioParams = true;
 				}
 			}
 
@@ -1373,13 +1355,19 @@ MainWindow::MessageReceived(BMessage* message)
 			double lat, lon;
 			if (message->FindDouble("latitude", &lat) == B_OK &&
 				message->FindDouble("longitude", &lon) == B_OK) {
-				_SendSetLatLon(lat, lon);
+				fProtocol->SendSetLatLon(lat, lon);
+				// Enable location sharing if setting non-zero coordinates
+				if (fAdvertLocPolicy == 0 && (lat != 0.0 || lon != 0.0)) {
+					fAdvertLocPolicy = 1;
+					fProtocol->SendOtherParams(fManualAddContacts,
+						fTelemetryModes, fAdvertLocPolicy, fMultiAcks);
+				}
 			}
 
 			// Handle TX power
 			uint8 txpower;
 			if (message->FindUInt8("txpower", &txpower) == B_OK) {
-				_SendSetTxPower(txpower);
+				fProtocol->SendSetTxPower(txpower);
 			}
 			break;
 		}
@@ -1478,11 +1466,11 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 
 		case MSG_ADMIN_REBOOT:
-			_SendReboot();
+			fProtocol->SendReboot();
 			break;
 
 		case MSG_ADMIN_FACTORY_RESET:
-			_SendFactoryReset();
+			fProtocol->SendFactoryReset();
 			break;
 
 		case MSG_ADMIN_REFRESH_TICK:
@@ -1490,7 +1478,7 @@ MainWindow::MessageReceived(BMessage* message)
 				ContactInfo* target = _FindContactByPrefix(
 					fLoggedInKey, kPubKeyPrefixSize);
 				if (target != NULL)
-					_SendStatusRequest(target->publicKey);
+					fProtocol->SendStatusRequest(target->publicKey);
 			}
 			break;
 
@@ -1508,7 +1496,7 @@ MainWindow::MessageReceived(BMessage* message)
 			ContactItem* item = dynamic_cast<ContactItem*>(
 				fContactList->ItemAt(fSelectedContact));
 			if (item != NULL && !item->IsChannel()) {
-				_SendTelemetryRequest(item->GetContact().publicKey);
+				fProtocol->SendTelemetryRequest(item->GetContact().publicKey);
 				_LogMessage("INFO", "Requesting telemetry data...");
 
 				// Open telemetry window
@@ -1552,7 +1540,7 @@ MainWindow::MessageReceived(BMessage* message)
 				fTelemetryPollIndex++;
 				if (contact != NULL && contact->type != 0) {
 					// Skip channel-only contacts (type 0)
-					_SendTelemetryRequest(contact->publicKey);
+					fProtocol->SendTelemetryRequest(contact->publicKey);
 					BString logMsg;
 					logMsg.SetToFormat("Requesting telemetry from %s (%d/%d)",
 						contact->name, (int)fTelemetryPollIndex,
@@ -1627,7 +1615,7 @@ MainWindow::MessageReceived(BMessage* message)
 				fLoginPending = true;
 				memcpy(fLoginTargetKey, pubkey,
 					sizeof(fLoginTargetKey));
-				_SendLogin((const uint8*)pubkey, password);
+				fProtocol->SendLogin((const uint8*)pubkey, password);
 			}
 			break;
 		}
@@ -1960,351 +1948,6 @@ MainWindow::_Disconnect()
 	_LogMessage("INFO", "Disconnecting...");
 	fSerialHandler->PostMessage(MSG_SERIAL_DISCONNECT);
 }
-
-
-void
-MainWindow::_SendAppStart()
-{
-	_LogMessage("INFO", "Sending APP_START command...");
-	// CMD_APP_START format: [0]=code [1]=app_ver [2-7]=reserved(zeros) [8+]=app_name
-	uint8 payload[32];
-	memset(payload, 0, sizeof(payload));
-	payload[0] = CMD_APP_START;
-	payload[1] = 3;  // app_target_ver (request V3 protocol)
-	// [2-7] reserved zeros already set by memset
-	const char* appName = APP_NAME;
-	size_t nameLen = strlen(appName);
-	if (nameLen > sizeof(payload) - 9)
-		nameLen = sizeof(payload) - 9;
-	memcpy(payload + 8, appName, nameLen);
-	fSerialHandler->SendFrame(payload, 8 + nameLen);
-}
-
-
-void
-MainWindow::_SendDeviceQuery()
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-	_LogMessage("INFO", "Querying device info...");
-	uint8 payload[2];
-	payload[0] = CMD_DEVICE_QUERY;
-	payload[1] = 3;  // Request V3 protocol (SNR, RSSI, pathLen in messages)
-	fSerialHandler->SendFrame(payload, 2);
-}
-
-
-void
-MainWindow::_SendExportSelf()
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-	_LogMessage("INFO", "Requesting self export (for public key)...");
-	// CMD_EXPORT_CONTACT without public key = export SELF
-	uint8 payload[1];
-	payload[0] = CMD_EXPORT_CONTACT;
-	fSerialHandler->SendFrame(payload, 1);
-}
-
-
-void
-MainWindow::_SendRadioParams()
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	const RadioPresetInfo& preset = kRadioPresets[fSelectedPreset];
-	uint32 freqHz = preset.frequency;
-	uint32 bwHz = preset.bandwidth;
-	// Protocol wire format: frequency in kHz, bandwidth in Hz
-	uint32 freqKHz = freqHz / 1000;
-
-	_LogMessage("INFO", BString().SetToFormat(
-		"Setting radio: %.3f MHz, %u kHz BW, SF%u, CR%u",
-		freqHz / 1000000.0, bwHz / 1000, preset.spreadingFactor, preset.codingRate));
-
-	uint8 payload[11];
-	payload[0] = CMD_SET_RADIO_PARAMS;
-	payload[1] = freqKHz & 0xFF;
-	payload[2] = (freqKHz >> 8) & 0xFF;
-	payload[3] = (freqKHz >> 16) & 0xFF;
-	payload[4] = (freqKHz >> 24) & 0xFF;
-	payload[5] = bwHz & 0xFF;
-	payload[6] = (bwHz >> 8) & 0xFF;
-	payload[7] = (bwHz >> 16) & 0xFF;
-	payload[8] = (bwHz >> 24) & 0xFF;
-	payload[9] = preset.spreadingFactor;
-	payload[10] = preset.codingRate;
-
-	fSerialHandler->SendFrame(payload, sizeof(payload));
-}
-
-
-void
-MainWindow::_SendGetContacts()
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-	_LogMessage("INFO", "Requesting contact list...");
-	fSyncingContacts = true;
-	// Note: Don't clear contacts here - wait for RSP_CONTACTS_START
-	// which will preserve message history
-
-	uint8 payload[1];
-	payload[0] = CMD_GET_CONTACTS;
-	fSerialHandler->SendFrame(payload, 1);
-}
-
-
-void
-MainWindow::_SendSelfAdvert()
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-	_LogMessage("INFO", "Sending self advertisement...");
-	uint8 payload[1];
-	payload[0] = CMD_SEND_SELF_ADVERT;
-	fSerialHandler->SendFrame(payload, 1);
-}
-
-
-void
-MainWindow::_SendGetBattery()
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-	_LogMessage("INFO", "Requesting battery status...");
-	uint8 payload[1];
-	payload[0] = CMD_GET_BATT_AND_STORAGE;
-	fSerialHandler->SendFrame(payload, 1);
-}
-
-
-void
-MainWindow::_SendGetStats()
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-	_LogMessage("INFO", "Requesting statistics...");
-
-	uint8 payload[2];
-	payload[0] = CMD_GET_STATS;
-
-	// Request all three stat subtypes
-	payload[1] = 0;  // Core stats
-	fSerialHandler->SendFrame(payload, 2);
-
-	payload[1] = 1;  // Radio stats
-	fSerialHandler->SendFrame(payload, 2);
-
-	payload[1] = 2;  // Packet stats
-	fSerialHandler->SendFrame(payload, 2);
-}
-
-
-void
-MainWindow::_SendSetName(const char* name)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	size_t nameLen = strlen(name);
-	if (nameLen > 31) {
-		_LogMessage("ERROR", "Name too long (max 31 chars)");
-		return;
-	}
-
-	_LogMessage("INFO", BString("Setting node name to: ") << name);
-
-	uint8 payload[33];
-	payload[0] = CMD_SET_ADVERT_NAME;
-	memcpy(payload + 1, name, nameLen);
-	payload[1 + nameLen] = '\0';
-
-	fSerialHandler->SendFrame(payload, 2 + nameLen);
-}
-
-
-void
-MainWindow::_SendSetLatLon(double lat, double lon)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	int32 latInt = (int32)(lat * 1000000.0);
-	int32 lonInt = (int32)(lon * 1000000.0);
-
-	_LogMessage("INFO", BString().SetToFormat(
-		"Setting lat/lon: %.6f, %.6f", lat, lon));
-
-	uint8 payload[9];
-	payload[0] = CMD_SET_ADVERT_LATLON;
-	payload[1] = latInt & 0xFF;
-	payload[2] = (latInt >> 8) & 0xFF;
-	payload[3] = (latInt >> 16) & 0xFF;
-	payload[4] = (latInt >> 24) & 0xFF;
-	payload[5] = lonInt & 0xFF;
-	payload[6] = (lonInt >> 8) & 0xFF;
-	payload[7] = (lonInt >> 16) & 0xFF;
-	payload[8] = (lonInt >> 24) & 0xFF;
-
-	fSerialHandler->SendFrame(payload, sizeof(payload));
-
-	// Also enable location sharing in adverts if not already on
-	if (fAdvertLocPolicy == 0 && (lat != 0.0 || lon != 0.0)) {
-		_LogMessage("INFO", "Enabling advert_loc_policy to share GPS in adverts");
-		fAdvertLocPolicy = 1;
-		_SendOtherParams();
-	}
-}
-
-
-void
-MainWindow::_SendOtherParams()
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	_LogMessage("INFO", BString().SetToFormat(
-		"Sending other params: manualAdd=%d telemetry=%d locPolicy=%d multiAcks=%d",
-		fManualAddContacts, fTelemetryModes, fAdvertLocPolicy, fMultiAcks));
-
-	uint8 payload[5];
-	payload[0] = CMD_SET_OTHER_PARAMS;
-	payload[1] = fManualAddContacts;
-	payload[2] = fTelemetryModes;
-	payload[3] = fAdvertLocPolicy;
-	payload[4] = fMultiAcks;
-	fSerialHandler->SendFrame(payload, sizeof(payload));
-}
-
-
-void
-MainWindow::_SendSetTxPower(uint8 power)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	_LogMessage("INFO", BString().SetToFormat("Setting TX power to %d dBm", power));
-
-	uint8 payload[2];
-	payload[0] = CMD_SET_RADIO_TX_POWER;
-	payload[1] = power;
-	fSerialHandler->SendFrame(payload, 2);
-}
-
-
-void
-MainWindow::_SendLogin(const uint8* pubkey, const char* password)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	size_t passLen = strlen(password);
-	if (passLen > 15)
-		passLen = 15;  // Protocol max password length
-
-	uint8 payload[128];
-	payload[0] = CMD_SEND_LOGIN;
-	memcpy(payload + 1, pubkey, kPubKeySize);  // Full 32-byte public key
-	memcpy(payload + 33, password, passLen);
-	payload[33 + passLen] = '\0';
-
-	fSerialHandler->SendFrame(payload, 34 + passLen);
-
-	char hexKey[13];
-	for (int i = 0; i < 6; i++)
-		snprintf(hexKey + i * 2, 3, "%02X", pubkey[i]);
-	_LogMessage("INFO", BString().SetToFormat(
-		"Login sent to %s, frame size=%zu, waiting for 0x85/0x86...",
-		hexKey, 34 + passLen));
-}
-
-
-void
-MainWindow::_SendReboot()
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	uint8 payload[1];
-	payload[0] = CMD_REBOOT;
-	fSerialHandler->SendFrame(payload, 1);
-	_LogMessage("INFO", "Sending reboot command...");
-}
-
-
-void
-MainWindow::_SendFactoryReset()
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	uint8 payload[1];
-	payload[0] = CMD_FACTORY_RESET;
-	fSerialHandler->SendFrame(payload, 1);
-	_LogMessage("INFO", "Sending factory reset command...");
-}
-
-
-void
-MainWindow::_SendStatusRequest(const uint8* pubkey)
-{
-	if (!fSerialHandler->IsConnected())
-		return;
-
-	uint8 payload[33];
-	payload[0] = CMD_SEND_STATUS_REQ;
-	memcpy(&payload[1], pubkey, 32);
-	fSerialHandler->SendFrame(payload, 33);
-}
-
-
-void
-MainWindow::_SendTelemetryRequest(const uint8* pubkey)
-{
-	if (!fSerialHandler->IsConnected())
-		return;
-
-	// V3 format: [CMD][reserved×3][pubkey×32] = 36 bytes
-	uint8 payload[36];
-	payload[0] = CMD_SEND_TELEMETRY_REQ;
-	payload[1] = 0;
-	payload[2] = 0;
-	payload[3] = 0;
-	memcpy(&payload[4], pubkey, 32);
-	fSerialHandler->SendFrame(payload, 36);
-}
-
-
 void
 MainWindow::_SendCliCommand(const char* command)
 {
@@ -2323,27 +1966,9 @@ MainWindow::_SendCliCommand(const char* command)
 	if (cmdLen == 0 || cmdLen > 160)
 		return;
 
-	// Build CMD_SEND_TXT_MSG frame with TXT_TYPE_CLI_DATA
-	uint8 payload[256];
-	size_t pos = 0;
-
-	payload[pos++] = CMD_SEND_TXT_MSG;
-	payload[pos++] = TXT_TYPE_CLI_DATA;
-	payload[pos++] = 0;  // attempt
-
 	uint32 timestamp = (uint32)time(NULL);
-	payload[pos++] = timestamp & 0xFF;
-	payload[pos++] = (timestamp >> 8) & 0xFF;
-	payload[pos++] = (timestamp >> 16) & 0xFF;
-	payload[pos++] = (timestamp >> 24) & 0xFF;
-
-	memcpy(payload + pos, target->publicKey, kPubKeyPrefixSize);
-	pos += kPubKeyPrefixSize;
-
-	memcpy(payload + pos, command, cmdLen);
-	pos += cmdLen;
-
-	fSerialHandler->SendFrame(payload, pos);
+	fProtocol->SendDM(target->publicKey, TXT_TYPE_CLI_DATA, timestamp,
+		command, cmdLen);
 	fTopBar->FlashTx();
 
 	// Add to chat history
@@ -2379,40 +2004,6 @@ MainWindow::_SendCliCommand(const char* command)
 
 	_LogMessage("CLI", BString().SetToFormat("> %s", command));
 }
-
-
-void
-MainWindow::_SendResetPath(const uint8* pubkey)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	uint8 payload[1 + kPubKeySize];
-	payload[0] = CMD_RESET_PATH;
-	memcpy(payload + 1, pubkey, kPubKeySize);
-	fSerialHandler->SendFrame(payload, sizeof(payload));
-	_LogMessage("INFO", "Sending reset path command...");
-}
-
-
-void
-MainWindow::_SendRemoveContact(const uint8* pubkey)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	uint8 payload[1 + kPubKeySize];
-	payload[0] = CMD_REMOVE_CONTACT;
-	memcpy(payload + 1, pubkey, kPubKeySize);
-	fSerialHandler->SendFrame(payload, sizeof(payload));
-	_LogMessage("INFO", "Sending remove contact command...");
-}
-
-
 void
 MainWindow::_SendTextMessage(const char* text)
 {
@@ -2464,30 +2055,13 @@ MainWindow::_SendTextMessage(const char* text)
 			text));
 	}
 
-	uint8 payload[256];
-	size_t pos = 0;
-
 	// Use CLI txt_type when logged into this contact
 	bool isCli = (fLoggedIn &&
 		memcmp(contact->publicKey, fLoggedInKey, kPubKeyPrefixSize) == 0);
-
-	payload[pos++] = CMD_SEND_TXT_MSG;
-	payload[pos++] = isCli ? TXT_TYPE_CLI_DATA : TXT_TYPE_PLAIN;
-	payload[pos++] = 0;  // attempt
+	uint8 txtType = isCli ? TXT_TYPE_CLI_DATA : TXT_TYPE_PLAIN;
 
 	uint32 timestamp = (uint32)time(NULL);
-	payload[pos++] = timestamp & 0xFF;
-	payload[pos++] = (timestamp >> 8) & 0xFF;
-	payload[pos++] = (timestamp >> 16) & 0xFF;
-	payload[pos++] = (timestamp >> 24) & 0xFF;
-
-	memcpy(payload + pos, contact->publicKey, 6);
-	pos += 6;
-
-	memcpy(payload + pos, text, textLen);
-	pos += textLen;
-
-	fSerialHandler->SendFrame(payload, pos);
+	fProtocol->SendDM(contact->publicKey, txtType, timestamp, text, textLen);
 	fTopBar->FlashTx();
 
 	// Add to chat view as outgoing message (pending delivery)
@@ -2499,7 +2073,7 @@ MainWindow::_SendTextMessage(const char* text)
 	outMsg.isChannel = false;
 	outMsg.pathLen = 0;
 	outMsg.snr = 0;
-	outMsg.txtType = isCli ? TXT_TYPE_CLI_DATA : TXT_TYPE_PLAIN;
+	outMsg.txtType = txtType;
 	outMsg.deliveryStatus = DELIVERY_PENDING;
 	fChatView->AddMessage(outMsg, "Me");
 
@@ -2541,29 +2115,10 @@ MainWindow::_SendChannelMessage(const char* text)
 
 	_LogMessage("INFO", BString("Sending to channel: ") << text);
 
-	uint8 payload[256];
-	size_t pos = 0;
-
-	payload[pos++] = CMD_SEND_CHANNEL_TXT_MSG;
-	// Use selected channel index (0 = public, N = private channel slot)
 	uint8 wireChannelIdx = (fSelectedChannelIdx >= 0)
 		? (uint8)fSelectedChannelIdx : 0;
-
-	payload[pos++] = 0;  // txt_type: plain
-	payload[pos++] = wireChannelIdx;
-
-	// Timestamp (4 bytes, little-endian)
 	uint32 timestamp = (uint32)time(NULL);
-	payload[pos++] = timestamp & 0xFF;
-	payload[pos++] = (timestamp >> 8) & 0xFF;
-	payload[pos++] = (timestamp >> 16) & 0xFF;
-	payload[pos++] = (timestamp >> 24) & 0xFF;
-
-	// Text content
-	memcpy(payload + pos, text, textLen);
-	pos += textLen;
-
-	fSerialHandler->SendFrame(payload, pos);
+	fProtocol->SendChannelMsg(wireChannelIdx, timestamp, text, textLen);
 	fTopBar->FlashTx();
 
 	// Add to chat view as outgoing message (sent immediately for channel)
@@ -2621,317 +2176,6 @@ MainWindow::_SendChannelMessage(const char* text)
 		}
 	}
 }
-
-
-void
-MainWindow::_SendGetDeviceTime()
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-	_LogMessage("INFO", "Requesting device time...");
-	uint8 payload[1];
-	payload[0] = CMD_GET_DEVICE_TIME;
-	fSerialHandler->SendFrame(payload, 1);
-}
-
-
-void
-MainWindow::_SendSetDeviceTime(uint32 epoch)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	uint8 payload[5];
-	payload[0] = CMD_SET_DEVICE_TIME;
-	payload[1] = epoch & 0xFF;
-	payload[2] = (epoch >> 8) & 0xFF;
-	payload[3] = (epoch >> 16) & 0xFF;
-	payload[4] = (epoch >> 24) & 0xFF;
-	fSerialHandler->SendFrame(payload, 5);
-	_LogMessage("INFO", BString().SetToFormat(
-		"Setting device time to epoch %u", (unsigned)epoch));
-}
-
-
-void
-MainWindow::_SendAddUpdateContact(const uint8* pubkey, const char* name,
-	uint8 type)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	// Frame: [CMD][pubkey×32][type][flags][outPathLen][outPath×64][name×32]
-	// [lastAdvert×4][lat×4][lon×4] = 144 bytes total
-	uint8 payload[144];
-	memset(payload, 0, sizeof(payload));
-	payload[0] = CMD_ADD_UPDATE_CONTACT;
-	memcpy(payload + 1, pubkey, kPubKeySize);
-	payload[33] = type;
-	payload[34] = 0;    // flags
-	payload[35] = 0xFF; // outPathLen (unknown)
-	// outPath[36-99] = zeros (no path)
-	size_t nameLen = strlen(name);
-	if (nameLen > 31)
-		nameLen = 31;
-	memcpy(payload + 100, name, nameLen);
-	// lastAdvert[132-135], lat[136-139], lon[140-143] = zeros
-
-	fSerialHandler->SendFrame(payload, sizeof(payload));
-	_LogMessage("INFO", BString().SetToFormat(
-		"Adding/updating contact: %s (type=%d)", name, type));
-}
-
-
-void
-MainWindow::_SendShareContact(const uint8* pubkey)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	uint8 payload[33];
-	payload[0] = CMD_SHARE_CONTACT;
-	memcpy(payload + 1, pubkey, kPubKeySize);
-	fSerialHandler->SendFrame(payload, 33);
-
-	char hexKey[13];
-	for (int i = 0; i < 6; i++)
-		snprintf(hexKey + i * 2, 3, "%02X", pubkey[i]);
-	_LogMessage("INFO", BString().SetToFormat(
-		"Sharing contact %s...", hexKey));
-}
-
-
-void
-MainWindow::_SendGetTuningParams()
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-	_LogMessage("INFO", "Requesting tuning parameters...");
-	uint8 payload[1];
-	payload[0] = CMD_GET_TUNING_PARAMS;
-	fSerialHandler->SendFrame(payload, 1);
-}
-
-
-void
-MainWindow::_SendSetTuningParams(uint32 rxDelayBase, uint32 airtimeFactor)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	uint8 payload[17];
-	memset(payload, 0, sizeof(payload));
-	payload[0] = CMD_SET_TUNING_PARAMS;
-	payload[1] = rxDelayBase & 0xFF;
-	payload[2] = (rxDelayBase >> 8) & 0xFF;
-	payload[3] = (rxDelayBase >> 16) & 0xFF;
-	payload[4] = (rxDelayBase >> 24) & 0xFF;
-	payload[5] = airtimeFactor & 0xFF;
-	payload[6] = (airtimeFactor >> 8) & 0xFF;
-	payload[7] = (airtimeFactor >> 16) & 0xFF;
-	payload[8] = (airtimeFactor >> 24) & 0xFF;
-	// [9-16] reserved = zeros
-	fSerialHandler->SendFrame(payload, sizeof(payload));
-	_LogMessage("INFO", BString().SetToFormat(
-		"Setting tuning params: rxDelay=%u airtime=%u",
-		(unsigned)rxDelayBase, (unsigned)airtimeFactor));
-}
-
-
-void
-MainWindow::_SendRawData(const uint8* rawPayload, size_t rawLength)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	if (rawLength > kMaxFramePayload - 1) {
-		_LogMessage("ERROR", "Raw data too large");
-		return;
-	}
-
-	uint8 payload[kMaxFramePayload];
-	payload[0] = CMD_SEND_RAW_DATA;
-	memcpy(payload + 1, rawPayload, rawLength);
-	fSerialHandler->SendFrame(payload, 1 + rawLength);
-	_LogMessage("INFO", BString().SetToFormat(
-		"Sending raw data (%zu bytes)", rawLength));
-}
-
-
-void
-MainWindow::_SendTracePath(const uint8* pubkey)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	// Frame: [CMD][tag×4][authCode×4][flags][path...]
-	// We send with tag=0, authCode=0, flags=0, path = 6-byte pubkey prefix
-	uint8 payload[16];
-	memset(payload, 0, sizeof(payload));
-	payload[0] = CMD_SEND_TRACE_PATH;
-	// [1-4] tag = 0
-	// [5-8] authCode = 0
-	// [9]   flags = 0
-	memcpy(payload + 10, pubkey, kPubKeyPrefixSize);
-	fSerialHandler->SendFrame(payload, 10 + kPubKeyPrefixSize);
-
-	char hexKey[13];
-	for (int i = 0; i < 6; i++)
-		snprintf(hexKey + i * 2, 3, "%02X", pubkey[i]);
-	_LogMessage("INFO", BString().SetToFormat(
-		"Requesting trace path to %s...", hexKey));
-}
-
-
-void
-MainWindow::_SendSetDevicePin(uint32 pin)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	uint8 payload[5];
-	payload[0] = CMD_SET_DEVICE_PIN;
-	payload[1] = pin & 0xFF;
-	payload[2] = (pin >> 8) & 0xFF;
-	payload[3] = (pin >> 16) & 0xFF;
-	payload[4] = (pin >> 24) & 0xFF;
-	fSerialHandler->SendFrame(payload, 5);
-	_LogMessage("INFO", BString().SetToFormat(
-		"Setting device PIN to %u", (unsigned)pin));
-}
-
-
-void
-MainWindow::_SendGetCustomVars()
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-	_LogMessage("INFO", "Requesting custom variables...");
-	uint8 payload[1];
-	payload[0] = CMD_GET_CUSTOM_VARS;
-	fSerialHandler->SendFrame(payload, 1);
-}
-
-
-void
-MainWindow::_SendSetCustomVar(const char* nameValue)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	size_t len = strlen(nameValue);
-	if (len > kMaxFramePayload - 2) {
-		_LogMessage("ERROR", "Custom variable string too long");
-		return;
-	}
-
-	uint8 payload[kMaxFramePayload];
-	payload[0] = CMD_SET_CUSTOM_VAR;
-	memcpy(payload + 1, nameValue, len);
-	payload[1 + len] = '\0';
-	fSerialHandler->SendFrame(payload, 2 + len);
-	_LogMessage("INFO", BString().SetToFormat(
-		"Setting custom variable: %s", nameValue));
-}
-
-
-void
-MainWindow::_SendGetAdvertPath(const uint8* pubkey)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	// Frame: [CMD][reserved=0][pubkey×32] = 34 bytes
-	uint8 payload[34];
-	payload[0] = CMD_GET_ADVERT_PATH;
-	payload[1] = 0; // reserved
-	memcpy(payload + 2, pubkey, kPubKeySize);
-	fSerialHandler->SendFrame(payload, 34);
-
-	char hexKey[13];
-	for (int i = 0; i < 6; i++)
-		snprintf(hexKey + i * 2, 3, "%02X", pubkey[i]);
-	_LogMessage("INFO", BString().SetToFormat(
-		"Requesting advert path for %s...", hexKey));
-}
-
-
-void
-MainWindow::_SendBinaryRequest(const uint8* pubkey, const uint8* reqData,
-	size_t reqLength)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	if (reqLength > kMaxFramePayload - 33) {
-		_LogMessage("ERROR", "Binary request data too large");
-		return;
-	}
-
-	// Frame: [CMD][pubkey×32][request_code_and_params...]
-	uint8 payload[kMaxFramePayload];
-	payload[0] = CMD_SEND_BINARY_REQ;
-	memcpy(payload + 1, pubkey, kPubKeySize);
-	if (reqLength > 0)
-		memcpy(payload + 33, reqData, reqLength);
-	fSerialHandler->SendFrame(payload, 33 + reqLength);
-	_LogMessage("INFO", BString().SetToFormat(
-		"Sending binary request (%zu bytes)", reqLength));
-}
-
-
-void
-MainWindow::_SendControlData(uint8 subType, const uint8* ctrlPayload,
-	size_t ctrlLength)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	if (ctrlLength > kMaxFramePayload - 3) {
-		_LogMessage("ERROR", "Control data too large");
-		return;
-	}
-
-	// Frame: [CMD][flags=0][subType][payload...]
-	uint8 payload[kMaxFramePayload];
-	payload[0] = CMD_SEND_CONTROL_DATA;
-	payload[1] = 0; // flags
-	payload[2] = subType;
-	if (ctrlLength > 0)
-		memcpy(payload + 3, ctrlPayload, ctrlLength);
-	fSerialHandler->SendFrame(payload, 3 + ctrlLength);
-	_LogMessage("INFO", BString().SetToFormat(
-		"Sending control data (subType=%d, %zu bytes)", subType, ctrlLength));
-}
-
 
 void
 MainWindow::_OnFrameReceived(BMessage* message)
@@ -3355,7 +2599,7 @@ MainWindow::_HandleDeviceInfo(const uint8* data, size_t length)
 		fChannels.MakeEmpty();
 		fChannelEnumIndex = 0;
 		fEnumeratingChannels = true;
-		_SendGetChannel(0);
+		fProtocol->SendGetChannel(0);
 	}
 }
 
@@ -3541,7 +2785,7 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 	}
 
 	// Start offline message sync to drain any queued messages
-	_SendSyncNextMessage();
+	fProtocol->SendSyncNextMessage();
 
 	// Forward contact counts to Mission Control
 	if (fMissionControlWindow != NULL
@@ -3959,7 +3203,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 
 	// Continue offline message sync loop
 	if (fSyncingMessages)
-		_SendSyncNextMessage();
+		fProtocol->SendSyncNextMessage();
 }
 
 
@@ -4160,7 +3404,7 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 
 	// Continue offline message sync loop
 	if (fSyncingMessages)
-		_SendSyncNextMessage();
+		fProtocol->SendSyncNextMessage();
 }
 
 
@@ -4348,76 +3592,8 @@ void
 MainWindow::_HandlePushMsgWaiting(const uint8* data, size_t length)
 {
 	_LogMessage("INFO", "Messages waiting - fetching...");
-	_SendSyncNextMessage();
+	fProtocol->SendSyncNextMessage();
 }
-
-
-void
-MainWindow::_SendSyncNextMessage()
-{
-	if (!fSerialHandler->IsConnected())
-		return;
-
-	fSyncingMessages = true;
-	uint8 payload[1];
-	payload[0] = CMD_SYNC_NEXT_MESSAGE;
-	fSerialHandler->SendFrame(payload, 1);
-}
-
-
-void
-MainWindow::_SendGetChannel(uint8 index)
-{
-	if (!fSerialHandler->IsConnected())
-		return;
-
-	uint8 payload[2];
-	payload[0] = CMD_GET_CHANNEL;
-	payload[1] = index;
-	fSerialHandler->SendFrame(payload, 2);
-}
-
-
-void
-MainWindow::_SendSetChannel(uint8 index, const char* name, const uint8* secret)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	uint8 payload[50];
-	payload[0] = CMD_SET_CHANNEL;
-	payload[1] = index;
-	memset(payload + 2, 0, 32);
-	strlcpy((char*)(payload + 2), name, 32);
-	memcpy(payload + 34, secret, 16);
-	fSerialHandler->SendFrame(payload, sizeof(payload));
-
-	_LogMessage("INFO", BString().SetToFormat(
-		"Setting channel %d: %s", index, name));
-}
-
-
-void
-MainWindow::_SendRemoveChannel(uint8 index)
-{
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
-	// Remove = set with empty name and zero secret
-	uint8 payload[50];
-	memset(payload, 0, sizeof(payload));
-	payload[0] = CMD_SET_CHANNEL;
-	payload[1] = index;
-	fSerialHandler->SendFrame(payload, sizeof(payload));
-
-	_LogMessage("INFO", BString().SetToFormat("Removing channel %d", index));
-}
-
-
 void
 MainWindow::_HandleChannelInfo(const uint8* data, size_t length)
 {
@@ -4451,7 +3627,7 @@ MainWindow::_HandleChannelInfo(const uint8* data, size_t length)
 	if (fEnumeratingChannels) {
 		fChannelEnumIndex = idx + 1;
 		if (fChannelEnumIndex < fMaxChannels) {
-			_SendGetChannel(fChannelEnumIndex);
+			fProtocol->SendGetChannel(fChannelEnumIndex);
 		} else {
 			fEnumeratingChannels = false;
 			_LogMessage("OK", BString().SetToFormat(
@@ -4728,9 +3904,10 @@ MainWindow::_HandlePushLoginResult(uint8 code)
 			}
 		}
 
-		_SendGetContacts();
-		_SendGetBattery();
-		_SendGetStats();
+		fSyncingContacts = true;
+		fProtocol->SendGetContacts();
+		fProtocol->SendGetBattery();
+		fProtocol->SendGetStats();
 
 		// Show admin sections in ContactInfoPanel for repeater/room
 		ContactInfo* targetContact = _FindContactByPrefix(
@@ -4740,7 +3917,7 @@ MainWindow::_HandlePushLoginResult(uint8 code)
 			fInfoPanel->SetAdminSession(true);
 
 			// Request remote repeater status
-			_SendStatusRequest(targetContact->publicKey);
+			fProtocol->SendStatusRequest(targetContact->publicKey);
 
 			// Uncollapse info panel if collapsed
 			float infoW = fMainSplit->ItemWeight(2);
@@ -4892,7 +4069,7 @@ MainWindow::_OnConnected(BMessage* message)
 	}
 
 	// Send APP_START first, then schedule init commands after a short delay
-	_SendAppStart();
+	fProtocol->SendAppStart();
 
 	// Use a one-shot delayed message instead of blocking snooze()
 	BMessage initMsg(MSG_POST_CONNECT_INIT);

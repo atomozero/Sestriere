@@ -11,6 +11,8 @@
 #include <ObjectList.h>
 #include <SupportDefs.h>
 
+#include <cstring>
+
 // Radio preset information
 struct RadioPresetInfo {
 	const char* name;

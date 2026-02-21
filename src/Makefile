@@ -32,6 +32,7 @@ SRCS = \
 	DatabaseManager.cpp \
 	SNRChartView.cpp \
 	PacketAnalyzerWindow.cpp \
+	ProtocolHandler.cpp \
 	MissionControlWindow.cpp
 
 RDEFS = Sestriere.rdef

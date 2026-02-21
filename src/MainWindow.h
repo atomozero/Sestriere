@@ -15,6 +15,7 @@
 #include "Types.h"
 
 class BButton;
+class ProtocolHandler;
 class BListView;
 class BMenuBar;
 class BMenuItem;
@@ -59,52 +60,10 @@ private:
 			void			_Disconnect();
 			void			_UpdateConnectionUI();
 
-			// Protocol commands
-			void			_SendAppStart();
-			void			_SendDeviceQuery();
-			void			_SendExportSelf();
-			void			_SendRadioParams();
-			void			_SendGetContacts();
-			void			_SendSelfAdvert();
-			void			_SendGetBattery();
-			void			_SendGetStats();
-			void			_SendSetName(const char* name);
+			// UI-level messaging (uses ProtocolHandler for frame building)
 			void			_SendTextMessage(const char* text);
 			void			_SendChannelMessage(const char* text);
-			void			_SendSetLatLon(double lat, double lon);
-			void			_SendSetTxPower(uint8 power);
-			void			_SendLogin(const uint8* pubkey, const char* password);
-			void			_SendReboot();
-			void			_SendFactoryReset();
-			void			_SendResetPath(const uint8* pubkey);
-			void			_SendRemoveContact(const uint8* pubkey);
-			void			_SendOtherParams();
-			void			_SendSyncNextMessage();
-			void			_SendGetChannel(uint8 index);
-			void			_SendSetChannel(uint8 index, const char* name,
-								const uint8* secret);
-			void			_SendRemoveChannel(uint8 index);
-			void			_SendStatusRequest(const uint8* pubkey);
-			void			_SendTelemetryRequest(const uint8* pubkey);
 			void			_SendCliCommand(const char* command);
-			void			_SendGetDeviceTime();
-			void			_SendSetDeviceTime(uint32 epoch);
-			void			_SendAddUpdateContact(const uint8* pubkey,
-								const char* name, uint8 type);
-			void			_SendShareContact(const uint8* pubkey);
-			void			_SendGetTuningParams();
-			void			_SendSetTuningParams(uint32 rxDelayBase,
-								uint32 airtimeFactor);
-			void			_SendRawData(const uint8* payload, size_t length);
-			void			_SendTracePath(const uint8* pubkey);
-			void			_SendSetDevicePin(uint32 pin);
-			void			_SendGetCustomVars();
-			void			_SendSetCustomVar(const char* nameValue);
-			void			_SendGetAdvertPath(const uint8* pubkey);
-			void			_SendBinaryRequest(const uint8* pubkey,
-								const uint8* data, size_t length);
-			void			_SendControlData(uint8 subType,
-								const uint8* payload, size_t length);
 
 			// Frame handling
 			void			_OnFrameReceived(BMessage* message);
@@ -186,6 +145,7 @@ private:
 			BString			_GetPeoplePath();
 
 			SerialHandler*	fSerialHandler;
+			ProtocolHandler* fProtocol;
 
 			// Menu bar and status bar
 			BMenuBar*		fMenuBar;
