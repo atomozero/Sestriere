@@ -110,6 +110,79 @@ const uint8 PUSH_CONTROL_DATA = 0x8E;
 const uint8 TXT_TYPE_PLAIN = 0;
 const uint8 TXT_TYPE_CLI_DATA = 1;
 
+// =============================================================================
+// Protocol Frame Field Offsets
+// =============================================================================
+
+// RSP_CONTACT frame (148 bytes total)
+const size_t kContactFrameSize = 148;
+const size_t kContactPubKeyOffset = 1;     // [1-32] = public key (32 bytes)
+const size_t kContactTypeOffset = 33;      // [33] = ADV_TYPE
+const size_t kContactFlagsOffset = 34;     // [34] = flags
+const size_t kContactPathLenOffset = 35;   // [35] = outbound path length
+const size_t kContactNameOffset = 100;     // [100-131] = name (32 bytes)
+const size_t kContactNameSize = 32;
+const size_t kContactLastSeenOffset = 132; // [132-135] = last seen (uint32 LE)
+const size_t kContactLatOffset = 136;      // [136-139] = latitude (int32 LE)
+const size_t kContactLonOffset = 140;      // [140-143] = longitude (int32 LE)
+
+// RSP_CONTACT_MSG_RECV_V3 (V3 direct message)
+const size_t kV3DmSnrOffset = 1;           // [1] = SNR (int8)
+const size_t kV3DmRssiOffset = 2;          // [2] = RSSI (int8)
+const size_t kV3DmPathLenOffsetB = 3;      // [3] = path_len
+const size_t kV3DmSenderOffset = 4;        // [4-9] = sender pubkey prefix
+const size_t kV3DmPathLenOffset = 10;      // [10] = path_len (duplicate)
+const size_t kV3DmTxtTypeOffset = 11;      // [11] = txt_type
+const size_t kV3DmTimestampOffset = 12;    // [12-15] = timestamp (uint32 LE)
+const size_t kV3DmTextOffset = 16;         // [16+] = text content
+const size_t kV3DmMinLength = 16;
+
+// RSP_CONTACT_MSG_RECV (V2 direct message)
+const size_t kV2DmSenderOffset = 1;        // [1-6] = sender pubkey prefix
+const size_t kV2DmPathLenOffset = 7;       // [7] = path_len
+const size_t kV2DmTxtTypeOffset = 8;       // [8] = txt_type
+const size_t kV2DmTimestampOffset = 9;     // [9-12] = timestamp (uint32 LE)
+const size_t kV2DmTextOffset = 13;         // [13+] = text content
+const size_t kV2DmMinLength = 13;
+
+// RSP_CHANNEL_MSG_RECV_V3 (V3 channel message)
+const size_t kV3ChSnrOffset = 1;           // [1] = SNR (int8)
+const size_t kV3ChChannelOffset = 4;       // [4] = channel index
+const size_t kV3ChPathLenOffset = 5;       // [5] = path_len
+const size_t kV3ChTxtTypeOffset = 6;       // [6] = txt_type
+const size_t kV3ChTimestampOffset = 7;     // [7-10] = timestamp (uint32 LE)
+const size_t kV3ChTextOffset = 11;         // [11+] = text content
+const size_t kV3ChMinLength = 11;
+
+// RSP_CHANNEL_MSG_RECV (V2 channel message)
+const size_t kV2ChChannelOffset = 1;       // [1] = channel index
+const size_t kV2ChPathLenOffset = 2;       // [2] = path_len
+const size_t kV2ChTxtTypeOffset = 3;       // [3] = txt_type
+const size_t kV2ChTimestampOffset = 4;     // [4-7] = timestamp (uint32 LE)
+const size_t kV2ChTextOffset = 8;          // [8+] = text content
+const size_t kV2ChMinLength = 9;
+
+// RSP_BATT_AND_STORAGE
+const size_t kBattMvOffset = 1;            // [1-2] = battery mV (uint16 LE)
+const size_t kStorageUsedOffset = 3;       // [3-6] = used KB (uint32 LE)
+const size_t kStorageTotalOffset = 7;      // [7-10] = total KB (uint32 LE)
+
+// RSP_STATS subtypes
+const uint8 kStatsSubtypeCore = 0;
+const uint8 kStatsSubtypeRadio = 1;
+const uint8 kStatsSubtypePackets = 2;
+// Core stats offsets (subtype 0)
+const size_t kStatsCoreSubtypeOffset = 1;  // [1] = subtype
+const size_t kStatsCoreBattOffset = 2;     // [2-3] = battery mV (uint16 LE)
+const size_t kStatsCoreUptimeOffset = 4;   // [4-7] = uptime (uint32 LE)
+// Radio stats offsets (subtype 1)
+const size_t kStatsRadioNoiseOffset = 2;   // [2-3] = noise floor (int16 LE)
+const size_t kStatsRadioRssiOffset = 4;    // [4] = RSSI (int8)
+const size_t kStatsRadioSnrOffset = 5;     // [5] = SNR (int8)
+// Packet stats offsets (subtype 2)
+const size_t kStatsPacketsRxOffset = 2;    // [2-5] = recv packets (uint32 LE)
+const size_t kStatsPacketsTxOffset = 6;    // [6-9] = sent packets (uint32 LE)
+
 // Message field names
 const char* const kFieldPort = "port";
 const char* const kFieldData = "data";

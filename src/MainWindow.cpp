@@ -2701,20 +2701,20 @@ MainWindow::_HandleContactsStart(const uint8* data, size_t length)
 void
 MainWindow::_HandleContact(const uint8* data, size_t length)
 {
-	if (length < 148) {
+	if (length < kContactFrameSize) {
 		_LogMessage("WARN", BString().SetToFormat(
 			"Contact frame too short: %zu bytes", length));
 		return;
 	}
 
 	ContactInfo* contact = new ContactInfo();
-	memcpy(contact->publicKey, data + 1, 32);
-	contact->type = data[33];
-	contact->flags = data[34];
-	contact->outPathLen = (int8)data[35];
-	memcpy(contact->name, data + 100, 32);
-	contact->name[31] = '\0';
-	contact->lastSeen = ReadLE32(data + 132);
+	memcpy(contact->publicKey, data + kContactPubKeyOffset, kPubKeySize);
+	contact->type = data[kContactTypeOffset];
+	contact->flags = data[kContactFlagsOffset];
+	contact->outPathLen = (int8)data[kContactPathLenOffset];
+	memcpy(contact->name, data + kContactNameOffset, kContactNameSize);
+	contact->name[kContactNameSize - 1] = '\0';
+	contact->lastSeen = ReadLE32(data + kContactLastSeenOffset);
 	contact->isValid = true;
 
 	// Look for existing contact to preserve message history
@@ -3045,23 +3045,23 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 			_LogMessage("WARN", "V3 contact message frame too short");
 			return;
 		}
-		snr = (int8)data[1];
-		senderPrefix = data + 4;
-		pathLen = data[10];
-		txtType = data[11];  // 0=plain, 1=cli_data, 2=signed_plain
-		timestamp = ReadLE32(data + 12);
-		textOffset = 16;
+		snr = (int8)data[kV3DmSnrOffset];
+		senderPrefix = data + kV3DmSenderOffset;
+		pathLen = data[kV3DmPathLenOffset];
+		txtType = data[kV3DmTxtTypeOffset];
+		timestamp = ReadLE32(data + kV3DmTimestampOffset);
+		textOffset = kV3DmTextOffset;
 	} else {
-		if (length < 13) {
+		if (length < kV2DmMinLength) {
 			_LogMessage("WARN", "Contact message frame too short");
 			return;
 		}
-		senderPrefix = data + 1;
-		pathLen = data[7];
+		senderPrefix = data + kV2DmSenderOffset;
+		pathLen = data[kV2DmPathLenOffset];
 		snr = 0;  // V2 does not include SNR
-		txtType = data[8];  // 0=plain, 1=cli_data
-		timestamp = ReadLE32(data + 9);
-		textOffset = 13;
+		txtType = data[kV2DmTxtTypeOffset];
+		timestamp = ReadLE32(data + kV2DmTimestampOffset);
+		textOffset = kV2DmTextOffset;
 	}
 
 	size_t textLen = length - textOffset;
@@ -3217,23 +3217,23 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 			_LogMessage("WARN", "V3 channel message frame too short");
 			return;
 		}
-		snr = (int8)data[1];
-		channelIdx = data[4];
-		pathLen = data[5];
-		// data[6] = txt_type
-		timestamp = ReadLE32(data + 7);
-		textOffset = 11;
+		snr = (int8)data[kV3ChSnrOffset];
+		channelIdx = data[kV3ChChannelOffset];
+		pathLen = data[kV3ChPathLenOffset];
+		// data[kV3ChTxtTypeOffset] = txt_type
+		timestamp = ReadLE32(data + kV3ChTimestampOffset);
+		textOffset = kV3ChTextOffset;
 	} else {
-		if (length < 9) {
+		if (length < kV2ChMinLength) {
 			_LogMessage("WARN", "Channel message frame too short");
 			return;
 		}
-		channelIdx = data[1];
-		pathLen = data[2];
+		channelIdx = data[kV2ChChannelOffset];
+		pathLen = data[kV2ChPathLenOffset];
 		snr = 0;  // V2 does not include SNR
-		// data[3] = txt_type
-		timestamp = ReadLE32(data + 4);
-		textOffset = 8;
+		// data[kV2ChTxtTypeOffset] = txt_type
+		timestamp = ReadLE32(data + kV2ChTimestampOffset);
+		textOffset = kV2ChTextOffset;
 	}
 	size_t textLen = length - textOffset;
 	char fullText[256];
@@ -3407,15 +3407,15 @@ MainWindow::_HandleBattAndStorage(const uint8* data, size_t length)
 	// [7-10]= total_kb (uint32 LE, optional)
 
 	if (length >= 3) {
-		uint16 battMv = ReadLE16(data + 1);
+		uint16 battMv = ReadLE16(data + kBattMvOffset);
 		fBatteryMv = battMv;
 
 		uint32 usedKb = 0;
 		uint32 totalKb = 0;
 		if (length >= 7)
-			usedKb = ReadLE32(data + 3);
+			usedKb = ReadLE32(data + kStorageUsedOffset);
 		if (length >= 11)
-			totalKb = ReadLE32(data + 7);
+			totalKb = ReadLE32(data + kStorageTotalOffset);
 
 		// Calculate storage percentage for status bar
 		int8 storagePct = 0;
@@ -3473,31 +3473,31 @@ MainWindow::_HandleStats(const uint8* data, size_t length)
 	if (length < 2)
 		return;
 
-	uint8 subType = data[1];
+	uint8 subType = data[kStatsCoreSubtypeOffset];
 
 	// Parse stats for status bar (per MeshCore Companion Protocol)
 	switch (subType) {
-		case 0:  // Core stats (11 bytes)
+		case kStatsSubtypeCore:
 			// [2-3]=batt_mv(int16) [4-7]=uptime(uint32) [8-9]=err_flags [10]=queue_len
 			if (length >= 8) {
-				fDeviceUptime = ReadLE32(data + 4);
+				fDeviceUptime = ReadLE32(data + kStatsCoreUptimeOffset);
 				fTopBar->SetUptime(fDeviceUptime);
 			}
 			if (length >= 4) {
-				uint16 battMv = ReadLE16(data + 2);
+				uint16 battMv = ReadLE16(data + kStatsCoreBattOffset);
 				if (battMv > 0) {
 					fBatteryMv = battMv;
 				}
 			}
 			break;
 
-		case 1:  // Radio stats (14 bytes)
+		case kStatsSubtypeRadio:
 			// [2-3]=noise_floor(int16) [4]=rssi(int8) [5]=snr(int8)
 			// [6-9]=tx_air_time [10-13]=rx_air_time
 			if (length >= 6) {
-				fNoiseFloor = (int8)ReadLE16(data + 2);
-				fLastRssi = (int8)data[4];
-				fLastSnr = (int8)data[5];
+				fNoiseFloor = (int8)ReadLE16(data + kStatsRadioNoiseOffset);
+				fLastRssi = (int8)data[kStatsRadioRssiOffset];
+				fLastSnr = (int8)data[kStatsRadioSnrOffset];
 				fTopBar->SetRadioStats(fLastRssi, fLastSnr, fTxPackets, fRxPackets);
 
 				// Forward radio stats to TelemetryWindow as sensor data
@@ -3516,12 +3516,12 @@ MainWindow::_HandleStats(const uint8* data, size_t length)
 			}
 			break;
 
-		case 2:  // Packet stats (26 bytes)
+		case kStatsSubtypePackets:
 			// [2-5]=recvPkts [6-9]=sentPkts [10-13]=sentFlood [14-17]=sentDirect
 			// [18-21]=recvFlood [22-25]=recvDirect
 			if (length >= 10) {
-				fRxPackets = ReadLE32(data + 2);
-				fTxPackets = ReadLE32(data + 6);
+				fRxPackets = ReadLE32(data + kStatsPacketsRxOffset);
+				fTxPackets = ReadLE32(data + kStatsPacketsTxOffset);
 				fTopBar->SetRadioStats(fLastRssi, fLastSnr, fTxPackets, fRxPackets);
 			}
 			break;
