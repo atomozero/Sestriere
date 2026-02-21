@@ -53,9 +53,9 @@ enum {
 static inline rgb_color
 BatteryColor(uint16 mv)
 {
-	if (mv >= 3900) return kColorGood;
-	if (mv >= 3600) return kColorFair;
-	if (mv >= 3400) return kColorPoor;
+	if (mv >= kBattGoodMv) return kColorGood;
+	if (mv >= kBattFairMv) return kColorFair;
+	if (mv >= kBattLowMv) return kColorPoor;
 	return kColorBad;
 }
 
@@ -63,9 +63,9 @@ BatteryColor(uint16 mv)
 static inline rgb_color
 SignalColor(int8 rssi)
 {
-	if (rssi >= -60) return kColorGood;
-	if (rssi >= -80) return kColorFair;
-	if (rssi >= -90) return kColorPoor;
+	if (rssi >= kRssiGood) return kColorGood;
+	if (rssi >= kRssiFair) return kColorFair;
+	if (rssi >= kRssiPoor) return kColorPoor;
 	return kColorBad;
 }
 
@@ -921,9 +921,9 @@ TopBarView::_ToolTipForArea(int32 area) const
 			else if (fBatteryMv >= 3300)
 				pct = (int32)((fBatteryMv - 3300) / 9.0f);
 			const char* state = "Critical";
-			if (fBatteryMv >= 3900) state = "Good";
-			else if (fBatteryMv >= 3600) state = "OK";
-			else if (fBatteryMv >= 3400) state = "Low";
+			if (fBatteryMv >= kBattGoodMv) state = "Good";
+			else if (fBatteryMv >= kBattFairMv) state = "OK";
+			else if (fBatteryMv >= kBattLowMv) state = "Low";
 			fToolTipText.SetToFormat("Battery: %u mV (~%d%%)\n"
 				"State: %s\n"
 				"Range: 3300 mV (empty) \xe2\x80\x93 4200 mV (full)",

@@ -9,6 +9,19 @@
 #include <cassert>
 
 
+static FILE*
+OpenSource(const char* filename)
+{
+	FILE* f = fopen(filename, "r");
+	if (f == NULL) {
+		char path[256];
+		snprintf(path, sizeof(path), "../%s", filename);
+		f = fopen(path, "r");
+	}
+	return f;
+}
+
+
 // Mirror key constants from the project
 static const size_t kPubKeySize = 32;
 static const size_t kPubKeyPrefixSize = 6;
@@ -379,7 +392,7 @@ static void
 TestProtocolHandlerSeparation()
 {
 	// Verify ProtocolHandler.h exists and declares the class
-	FILE* f = fopen("ProtocolHandler.h", "r");
+	FILE* f = OpenSource("ProtocolHandler.h");
 	assert(f != NULL);
 
 	char buf[16384];
@@ -396,7 +409,7 @@ TestProtocolHandlerSeparation()
 	assert(strstr(buf, "SerialHandler*") != NULL);
 
 	// Verify MainWindow.h no longer declares extracted methods
-	f = fopen("MainWindow.h", "r");
+	f = OpenSource("MainWindow.h");
 	assert(f != NULL);
 	n = fread(buf, 1, sizeof(buf) - 1, f);
 	fclose(f);
@@ -430,7 +443,7 @@ static void
 TestProtocolHandlerReturnTypes()
 {
 	// Verify ProtocolHandler.h declares status_t return types
-	FILE* f = fopen("ProtocolHandler.h", "r");
+	FILE* f = OpenSource("ProtocolHandler.h");
 	assert(f != NULL);
 
 	char buf[16384];
@@ -451,7 +464,7 @@ TestProtocolHandlerReturnTypes()
 	assert(strstr(buf, "void\t\t\tSendDM") == NULL);
 
 	// Verify ProtocolHandler.cpp uses return types
-	f = fopen("ProtocolHandler.cpp", "r");
+	f = OpenSource("ProtocolHandler.cpp");
 	assert(f != NULL);
 	n = fread(buf, 1, sizeof(buf) - 1, f);
 	fclose(f);

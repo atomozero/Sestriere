@@ -56,28 +56,28 @@ static const bigtime_t kStaleThreshold = 30000000;  // 30 seconds
 static rgb_color
 SnrColor(int8 snr)
 {
-	if (snr > 5) return kColorGood;
-	if (snr > 0) return (rgb_color){140, 200, 80, 255};
-	if (snr > -5) return kColorFair;
-	if (snr > -10) return kColorPoor;
+	if (snr > kSnrExcellent) return kColorGood;
+	if (snr > kSnrGood) return (rgb_color){140, 200, 80, 255};
+	if (snr > kSnrFair) return kColorFair;
+	if (snr > kSnrPoor) return kColorPoor;
 	return kColorBad;
 }
 
 static rgb_color
 RssiColor(int8 rssi)
 {
-	if (rssi >= -60) return kColorGood;
-	if (rssi >= -80) return kColorFair;
-	if (rssi >= -90) return kColorPoor;
+	if (rssi >= kRssiGood) return kColorGood;
+	if (rssi >= kRssiFair) return kColorFair;
+	if (rssi >= kRssiPoor) return kColorPoor;
 	return kColorBad;
 }
 
 static rgb_color
 BattColor(uint16 mv)
 {
-	if (mv >= 3900) return kColorGood;
-	if (mv >= 3600) return kColorFair;
-	if (mv >= 3400) return kColorPoor;
+	if (mv >= kBattGoodMv) return kColorGood;
+	if (mv >= kBattFairMv) return kColorFair;
+	if (mv >= kBattLowMv) return kColorPoor;
 	return kColorBad;
 }
 
@@ -1803,7 +1803,7 @@ MissionControlWindow::_CheckAlerts()
 		return;
 	}
 
-	if (fBatteryMv > 0 && fBatteryMv < 3400) {
+	if (fBatteryMv > 0 && fBatteryMv < kBattLowMv) {
 		char msg[64];
 		snprintf(msg, sizeof(msg), "Low battery: %u mV — charge soon!",
 			(unsigned)fBatteryMv);

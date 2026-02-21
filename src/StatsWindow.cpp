@@ -429,9 +429,9 @@ StatsWindow::_UpdateDisplay()
 		snprintf(buf, sizeof(buf), "%u mV (%d%%)",
 			(unsigned)fCoreStats.batteryMv, (int)pct);
 		rgb_color battColor;
-		if (fCoreStats.batteryMv >= 3900)
+		if (fCoreStats.batteryMv >= kBattGoodMv)
 			battColor = kGoodColor;
-		else if (fCoreStats.batteryMv >= 3600)
+		else if (fCoreStats.batteryMv >= kBattFairMv)
 			battColor = kWarningColor;
 		else
 			battColor = kBadColor;

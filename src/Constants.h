@@ -304,4 +304,24 @@ const rgb_color kAvatarPalette[] = {
 };
 const int kAvatarPaletteCount = 8;
 
+// =============================================================================
+// Signal & Battery Thresholds
+// =============================================================================
+
+// Battery voltage thresholds (millivolts)
+const uint16 kBattGoodMv = 3900;
+const uint16 kBattFairMv = 3600;
+const uint16 kBattLowMv = 3400;
+
+// RSSI thresholds (dBm)
+const int8 kRssiGood = -60;
+const int8 kRssiFair = -80;
+const int8 kRssiPoor = -90;
+
+// SNR thresholds (dB)
+const int8 kSnrExcellent = 5;
+const int8 kSnrGood = 0;
+const int8 kSnrFair = -5;
+const int8 kSnrPoor = -10;
+
 #endif // CONSTANTS_H
