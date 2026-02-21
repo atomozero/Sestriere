@@ -8,6 +8,7 @@
 #ifndef DATABASEMANAGER_H
 #define DATABASEMANAGER_H
 
+#include <Locker.h>
 #include <ObjectList.h>
 #include <String.h>
 
@@ -94,7 +95,9 @@ private:
 			bool			_IsEmpty();
 
 	static	DatabaseManager*	sInstance;
+	static	BLocker				sInstanceLock;
 			sqlite3*		fDB;
+			BLocker			fLock;
 			BString			fDirectory;
 };
 

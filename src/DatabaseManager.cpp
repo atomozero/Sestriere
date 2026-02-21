@@ -7,6 +7,7 @@
 
 #include "DatabaseManager.h"
 
+#include <Autolock.h>
 #include <Entry.h>
 #include <File.h>
 #include <Path.h>
@@ -17,13 +18,17 @@
 
 
 DatabaseManager* DatabaseManager::sInstance = NULL;
+BLocker DatabaseManager::sInstanceLock("DatabaseManager singleton");
 
 
 DatabaseManager*
 DatabaseManager::Instance()
 {
-	if (sInstance == NULL)
-		sInstance = new DatabaseManager();
+	if (sInstance == NULL) {
+		BAutolock lock(sInstanceLock);
+		if (sInstance == NULL)
+			sInstance = new DatabaseManager();
+	}
 	return sInstance;
 }
 
@@ -31,6 +36,7 @@ DatabaseManager::Instance()
 void
 DatabaseManager::Destroy()
 {
+	BAutolock lock(sInstanceLock);
 	delete sInstance;
 	sInstance = NULL;
 }
@@ -39,6 +45,7 @@ DatabaseManager::Destroy()
 DatabaseManager::DatabaseManager()
 	:
 	fDB(NULL),
+	fLock("DatabaseManager"),
 	fDirectory("")
 {
 }
@@ -53,6 +60,7 @@ DatabaseManager::~DatabaseManager()
 bool
 DatabaseManager::Open(const char* directory)
 {
+	BAutolock lock(fLock);
 	if (fDB != NULL)
 		return true;
 
@@ -96,6 +104,7 @@ DatabaseManager::Open(const char* directory)
 void
 DatabaseManager::Close()
 {
+	BAutolock lock(fLock);
 	if (fDB != NULL) {
 		sqlite3_close(fDB);
 		fDB = NULL;
@@ -107,6 +116,7 @@ bool
 DatabaseManager::InsertMessage(const char* contactKeyHex,
 	const ChatMessage& message)
 {
+	BAutolock lock(fLock);
 	if (fDB == NULL)
 		return false;
 
@@ -145,6 +155,7 @@ int32
 DatabaseManager::LoadMessages(const char* contactKeyHex,
 	BObjectList<ChatMessage, true>& outMessages)
 {
+	BAutolock lock(fLock);
 	if (fDB == NULL)
 		return 0;
 
@@ -196,6 +207,7 @@ DatabaseManager::LoadMessages(const char* contactKeyHex,
 int32
 DatabaseManager::LoadChannelMessages(BObjectList<ChatMessage, true>& outMessages)
 {
+	BAutolock lock(fLock);
 	if (fDB == NULL)
 		return 0;
 
@@ -245,6 +257,7 @@ bool
 DatabaseManager::InsertSNRDataPoint(const char* contactKeyHex,
 	uint32 timestamp, int8 snr, int8 rssi, uint8 pathLen)
 {
+	BAutolock lock(fLock);
 	if (fDB == NULL)
 		return false;
 
@@ -274,6 +287,7 @@ int32
 DatabaseManager::LoadSNRHistory(const char* contactKeyHex,
 	uint32 sinceTimestamp, BObjectList<SNRDataPoint, true>& outPoints)
 {
+	BAutolock lock(fLock);
 	if (fDB == NULL)
 		return 0;
 
@@ -311,6 +325,7 @@ int32
 DatabaseManager::SearchMessages(const char* query,
 	BObjectList<ChatMessage, true>& outMessages, int32 maxResults)
 {
+	BAutolock lock(fLock);
 	if (fDB == NULL || query == NULL || query[0] == '\0')
 		return 0;
 
@@ -365,6 +380,7 @@ DatabaseManager::SearchMessages(const char* query,
 int32
 DatabaseManager::GetMessageCount(const char* contactKeyHex)
 {
+	BAutolock lock(fLock);
 	if (fDB == NULL)
 		return 0;
 
@@ -389,6 +405,7 @@ DatabaseManager::GetMessageCount(const char* contactKeyHex)
 int32
 DatabaseManager::GetTotalMessageCount()
 {
+	BAutolock lock(fLock);
 	if (fDB == NULL)
 		return 0;
 
@@ -411,6 +428,7 @@ DatabaseManager::GetTotalMessageCount()
 void
 DatabaseManager::PruneOldData(uint32 maxAgeDays)
 {
+	BAutolock lock(fLock);
 	if (fDB == NULL)
 		return;
 
@@ -430,6 +448,7 @@ DatabaseManager::PruneOldData(uint32 maxAgeDays)
 void
 DatabaseManager::PruneOldMessages(uint32 maxAgeDays)
 {
+	BAutolock lock(fLock);
 	if (fDB == NULL)
 		return;
 
@@ -449,6 +468,7 @@ bool
 DatabaseManager::InsertTelemetry(uint32 nodeId, const char* sensorName,
 	uint8 sensorType, float value, const char* unit)
 {
+	BAutolock lock(fLock);
 	if (fDB == NULL)
 		return false;
 
@@ -482,6 +502,7 @@ DatabaseManager::LoadTelemetryHistory(uint32 nodeId,
 	const char* sensorName, uint32 sinceTimestamp,
 	BObjectList<TelemetryRecord, true>& outRecords)
 {
+	BAutolock lock(fLock);
 	if (fDB == NULL)
 		return 0;
 
@@ -532,6 +553,7 @@ DatabaseManager::LoadTelemetryHistory(uint32 nodeId,
 int32
 DatabaseManager::GetTelemetryNodeIds(BObjectList<BString, true>& outNodeNames)
 {
+	BAutolock lock(fLock);
 	if (fDB == NULL)
 		return 0;
 
