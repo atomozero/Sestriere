@@ -1755,6 +1755,11 @@ MainWindow::QuitRequested()
 		fContactExportWindow->Quit();
 		fContactExportWindow = NULL;
 	}
+	if (fPacketAnalyzerWindow != NULL) {
+		fPacketAnalyzerWindow->Lock();
+		fPacketAnalyzerWindow->Quit();
+		fPacketAnalyzerWindow = NULL;
+	}
 	if (fMqttLogWindow != NULL) {
 		fMqttLogWindow->Lock();
 		fMqttLogWindow->Quit();
