@@ -72,4 +72,14 @@ FormatPubKeyFull(char* dest, const uint8* pubkey)
 }
 
 
+// Lowercase hex for database contact keys (12-char hex string from 6-byte prefix)
+inline void
+FormatContactKey(char* dest, const uint8* prefix)
+{
+	for (size_t i = 0; i < 6; i++)
+		snprintf(dest + i * 2, 3, "%02x", prefix[i]);
+	dest[12] = '\0';
+}
+
+
 #endif // UTILS_H

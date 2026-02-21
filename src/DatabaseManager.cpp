@@ -6,6 +6,7 @@
  */
 
 #include "DatabaseManager.h"
+#include "Utils.h"
 
 #include <Autolock.h>
 #include <Entry.h>
@@ -122,8 +123,7 @@ DatabaseManager::InsertMessage(const char* contactKeyHex,
 
 	// Format sender pubkey prefix as hex
 	char senderHex[13];
-	for (int i = 0; i < 6; i++)
-		snprintf(senderHex + i * 2, 3, "%02x", message.pubKeyPrefix[i]);
+	FormatContactKey(senderHex, message.pubKeyPrefix);
 
 	const char* sql =
 		"INSERT OR IGNORE INTO messages (contact_key, timestamp, outgoing, "

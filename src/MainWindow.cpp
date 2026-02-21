@@ -689,7 +689,8 @@ MainWindow::MessageReceived(BMessage* message)
 		case MSG_CONTACT_SELECTED:
 		{
 			int32 index = fContactList->CurrentSelection();
-			_SelectContact(index);
+			if (index >= 0)
+				_SelectContact(index);
 			break;
 		}
 
@@ -1798,6 +1799,9 @@ MainWindow::QuitRequested()
 void
 MainWindow::_SelectContact(int32 index)
 {
+	if (index < 0 || index >= fContactList->CountItems())
+		return;
+
 	fSelectedContact = index;
 	fSelectedChannelIdx = -1;
 
@@ -2006,8 +2010,7 @@ MainWindow::_SendCliCommand(const char* command)
 
 	// Persist to DB
 	char contactHex[13];
-	for (int i = 0; i < 6; i++)
-		snprintf(contactHex + i * 2, 3, "%02x", target->publicKey[i]);
+	FormatContactKey(contactHex, target->publicKey);
 	DatabaseManager::Instance()->InsertMessage(contactHex, outMsg);
 
 	// Update chat view if this contact is selected
@@ -2105,8 +2108,7 @@ MainWindow::_SendTextMessage(const char* text)
 
 	// Persist to database
 	char contactHex[13];
-	for (int i = 0; i < 6; i++)
-		snprintf(contactHex + i * 2, 3, "%02x", contact->publicKey[i]);
+	FormatContactKey(contactHex, contact->publicKey);
 	DatabaseManager::Instance()->InsertMessage(contactHex, outMsg);
 
 	// Update contact item preview
@@ -3164,8 +3166,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 
 		// Persist to database and record SNR history
 		char contactHex[13];
-		for (int i = 0; i < 6; i++)
-			snprintf(contactHex + i * 2, 3, "%02x", senderPrefix[i]);
+		FormatContactKey(contactHex, senderPrefix);
 		DatabaseManager* db = DatabaseManager::Instance();
 		db->InsertMessage(contactHex, chatMsg);
 
@@ -3346,8 +3347,7 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 	// Record SNR data point for sender contact
 	if (sender != NULL && snr != 0) {
 		char senderHex[13];
-		for (int i = 0; i < 6; i++)
-			snprintf(senderHex + i * 2, 3, "%02x", sender->publicKey[i]);
+		FormatContactKey(senderHex, sender->publicKey);
 		db->InsertSNRDataPoint(senderHex,
 			(uint32)time(NULL), snr, fLastRssi, pathLen);
 
@@ -3704,8 +3704,7 @@ MainWindow::_HandlePushAdvert(const uint8* data, size_t length)
 	if (snr != 0) {
 		int8 actualSnr = snr / 4;  // Advert SNR is stored ×4
 		char contactHex[13];
-		for (int i = 0; i < 6; i++)
-			snprintf(contactHex + i * 2, 3, "%02x", pubKeyPrefix[i]);
+		FormatContactKey(contactHex, pubKeyPrefix);
 		DatabaseManager::Instance()->InsertSNRDataPoint(contactHex,
 			now, actualSnr, rssi, 0);
 
@@ -4466,8 +4465,7 @@ MainWindow::_LoadMessages()
 			continue;
 
 		char contactHex[13];
-		for (int j = 0; j < 6; j++)
-			snprintf(contactHex + j * 2, 3, "%02x", contact->publicKey[j]);
+		FormatContactKey(contactHex, contact->publicKey);
 
 		loadedDM += db->LoadMessages(contactHex, contact->messages);
 	}
@@ -4647,9 +4645,7 @@ MainWindow::_SaveContactAsPerson(ContactInfo* contact)
 
 	// Create filename from public key prefix (first 6 bytes as hex)
 	char hexPrefix[13];
-	for (int i = 0; i < 6; i++) {
-		snprintf(hexPrefix + i * 2, 3, "%02x", contact->publicKey[i]);
-	}
+	FormatContactKey(hexPrefix, contact->publicKey);
 
 	BString filePath = peoplePath;
 	filePath << "/" << contact->name;
