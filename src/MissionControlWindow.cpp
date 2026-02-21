@@ -1343,8 +1343,11 @@ MissionControlWindow::MissionControlWindow(BWindow* parent)
 MissionControlWindow::~MissionControlWindow()
 {
 	delete fRefreshTimer;
+	fRefreshTimer = NULL;
 	delete fPulseTimer;
+	fPulseTimer = NULL;
 	delete fAlertFlashTimer;
+	fAlertFlashTimer = NULL;
 }
 
 

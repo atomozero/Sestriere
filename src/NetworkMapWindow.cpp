@@ -2030,8 +2030,11 @@ NetworkMapWindow::NetworkMapWindow(BWindow* parent)
 NetworkMapWindow::~NetworkMapWindow()
 {
 	delete fRefreshTimer;
+	fRefreshTimer = NULL;
 	delete fAutoTraceTimer;
+	fAutoTraceTimer = NULL;
 	delete fDiscoveryTimer;
+	fDiscoveryTimer = NULL;
 }
 
 

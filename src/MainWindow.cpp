@@ -4381,7 +4381,8 @@ MainWindow::_LoadMqttSettings()
 	buffer[bytesRead] = '\0';
 
 	// Parse key=value pairs
-	char* line = strtok(buffer, "\n");
+	char* saveptr = NULL;
+	char* line = strtok_r(buffer, "\n", &saveptr);
 	while (line != NULL) {
 		char* eq = strchr(line, '=');
 		if (eq != NULL) {
@@ -4406,7 +4407,7 @@ MainWindow::_LoadMqttSettings()
 			else if (strcmp(key, "password") == 0)
 				strlcpy(fMqttSettings.password, value, sizeof(fMqttSettings.password));
 		}
-		line = strtok(NULL, "\n");
+		line = strtok_r(NULL, "\n", &saveptr);
 	}
 
 	delete[] buffer;

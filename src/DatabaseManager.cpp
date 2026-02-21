@@ -660,10 +660,11 @@ DatabaseManager::_MigrateFromTextFile(const char* directory)
 	_Execute("BEGIN TRANSACTION");
 
 	int migrated = 0;
-	char* line = strtok(buffer, "\n");
+	char* saveptr = NULL;
+	char* line = strtok_r(buffer, "\n", &saveptr);
 	while (line != NULL) {
 		if (strlen(line) < 5) {
-			line = strtok(NULL, "\n");
+			line = strtok_r(NULL, "\n", &saveptr);
 			continue;
 		}
 
@@ -711,7 +712,7 @@ DatabaseManager::_MigrateFromTextFile(const char* directory)
 			}
 		}
 
-		line = strtok(NULL, "\n");
+		line = strtok_r(NULL, "\n", &saveptr);
 	}
 
 	_Execute("COMMIT");

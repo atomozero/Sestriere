@@ -9,6 +9,19 @@
 #include <cassert>
 
 
+static FILE*
+OpenSource(const char* filename)
+{
+	FILE* f = fopen(filename, "r");
+	if (f == NULL) {
+		char alt[256];
+		snprintf(alt, sizeof(alt), "../%s", filename);
+		f = fopen(alt, "r");
+	}
+	return f;
+}
+
+
 static int
 CountPattern(const char* content, const char* pattern)
 {
@@ -26,7 +39,7 @@ CountPattern(const char* content, const char* pattern)
 static void
 TestRunnerDeleteNullPattern()
 {
-	FILE* f = fopen("MainWindow.cpp", "r");
+	FILE* f = OpenSource("MainWindow.cpp");
 	assert(f != NULL);
 
 	// Read file content
@@ -83,7 +96,7 @@ static void
 TestNoDeleteWithoutNull()
 {
 	// Verify specific patterns that were buggy before the fix
-	FILE* f = fopen("MainWindow.cpp", "r");
+	FILE* f = OpenSource("MainWindow.cpp");
 	assert(f != NULL);
 
 	fseek(f, 0, SEEK_END);

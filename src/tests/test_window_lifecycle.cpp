@@ -24,19 +24,44 @@ static int sTestsFailed = 0;
 	do { printf("FAIL: %s\n", msg); sTestsFailed++; } while(0)
 
 
+// Resolve source file path (handles running from tests/ subdir)
+static const char*
+ResolvePath(const char* filename, char* buf, size_t bufSize)
+{
+	// Try direct first
+	FILE* f = fopen(filename, "r");
+	if (f != NULL) {
+		fclose(f);
+		snprintf(buf, bufSize, "%s", filename);
+		return buf;
+	}
+	// Try parent directory
+	snprintf(buf, bufSize, "../%s", filename);
+	f = fopen(buf, "r");
+	if (f != NULL) {
+		fclose(f);
+		return buf;
+	}
+	return filename;
+}
+
 // Check if a string pattern exists in a file
 static bool FileContains(const char* filepath, const char* pattern)
 {
+	char resolved[256];
+	const char* path = ResolvePath(filepath, resolved, sizeof(resolved));
 	char cmd[512];
-	snprintf(cmd, sizeof(cmd), "grep -q '%s' '%s' 2>/dev/null", pattern, filepath);
+	snprintf(cmd, sizeof(cmd), "grep -q '%s' '%s' 2>/dev/null", pattern, path);
 	return system(cmd) == 0;
 }
 
 // Count occurrences of pattern in file
 static int CountOccurrences(const char* filepath, const char* pattern)
 {
+	char resolved[256];
+	const char* path = ResolvePath(filepath, resolved, sizeof(resolved));
 	char cmd[512];
-	snprintf(cmd, sizeof(cmd), "grep -c '%s' '%s' 2>/dev/null", pattern, filepath);
+	snprintf(cmd, sizeof(cmd), "grep -c '%s' '%s' 2>/dev/null", pattern, path);
 	FILE* fp = popen(cmd, "r");
 	if (fp == NULL) return -1;
 	int count = 0;
