@@ -157,7 +157,7 @@ DatabaseManager::InsertMessage(const char* contactKeyHex,
 
 int32
 DatabaseManager::LoadMessages(const char* contactKeyHex,
-	BObjectList<ChatMessage, true>& outMessages)
+	OwningObjectList<ChatMessage>& outMessages)
 {
 	BAutolock lock(fLock);
 	if (fDB == NULL)
@@ -207,7 +207,7 @@ DatabaseManager::LoadMessages(const char* contactKeyHex,
 
 
 int32
-DatabaseManager::LoadChannelMessages(BObjectList<ChatMessage, true>& outMessages)
+DatabaseManager::LoadChannelMessages(OwningObjectList<ChatMessage>& outMessages)
 {
 	BAutolock lock(fLock);
 	if (fDB == NULL)
@@ -288,7 +288,7 @@ DatabaseManager::InsertSNRDataPoint(const char* contactKeyHex,
 
 int32
 DatabaseManager::LoadSNRHistory(const char* contactKeyHex,
-	uint32 sinceTimestamp, BObjectList<SNRDataPoint, true>& outPoints)
+	uint32 sinceTimestamp, OwningObjectList<SNRDataPoint>& outPoints)
 {
 	BAutolock lock(fLock);
 	if (fDB == NULL)
@@ -329,7 +329,7 @@ DatabaseManager::LoadSNRHistory(const char* contactKeyHex,
 
 int32
 DatabaseManager::SearchMessages(const char* query,
-	BObjectList<ChatMessage, true>& outMessages, int32 maxResults)
+	OwningObjectList<ChatMessage>& outMessages, int32 maxResults)
 {
 	BAutolock lock(fLock);
 	if (fDB == NULL || query == NULL || query[0] == '\0')
@@ -523,7 +523,7 @@ DatabaseManager::InsertTelemetry(uint32 nodeId, const char* sensorName,
 int32
 DatabaseManager::LoadTelemetryHistory(uint32 nodeId,
 	const char* sensorName, uint32 sinceTimestamp,
-	BObjectList<TelemetryRecord, true>& outRecords)
+	OwningObjectList<TelemetryRecord>& outRecords)
 {
 	BAutolock lock(fLock);
 	if (fDB == NULL)
@@ -577,7 +577,7 @@ DatabaseManager::LoadTelemetryHistory(uint32 nodeId,
 
 
 int32
-DatabaseManager::GetTelemetryNodeIds(BObjectList<BString, true>& outNodeNames)
+DatabaseManager::GetTelemetryNodeIds(OwningObjectList<BString>& outNodeNames)
 {
 	BAutolock lock(fLock);
 	if (fDB == NULL)

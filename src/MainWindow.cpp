@@ -4606,7 +4606,7 @@ MainWindow::_PerformSearch(const char* query)
 	if (!db->IsOpen())
 		return;
 
-	BObjectList<ChatMessage, true> results(50);
+	OwningObjectList<ChatMessage> results(50);
 	int32 found = db->SearchMessages(query, results, 50);
 
 	// Display results in chat view

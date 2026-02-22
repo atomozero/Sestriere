@@ -100,7 +100,7 @@ struct ContactInfo {
 	bool	isValid;
 
 	// Message history for this contact (owning = true)
-	BObjectList<ChatMessage, true>	messages;
+	OwningObjectList<ChatMessage>	messages;
 
 	ContactInfo() : type(0), flags(0), outPathLen(0), lastSeen(0),
 					latitude(0), longitude(0), isValid(false) {
@@ -118,7 +118,7 @@ struct ChannelInfo {
 	uint8	secret[16];			// PSK encryption key
 
 	// Message history for this channel (owning = true)
-	BObjectList<ChatMessage, true>	messages;
+	OwningObjectList<ChatMessage>	messages;
 
 	ChannelInfo() : index(0) {
 		memset(name, 0, sizeof(name));

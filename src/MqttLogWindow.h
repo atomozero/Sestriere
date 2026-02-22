@@ -67,7 +67,7 @@ private:
 			BStringView*	fUptimeView;
 			BButton*		fClearButton;
 
-			BObjectList<MqttLogEntry, true>	fEntries;
+			OwningObjectList<MqttLogEntry>	fEntries;
 			int32			fCurrentFilter;
 			int32			fMsgCount;
 			int32			fErrCount;

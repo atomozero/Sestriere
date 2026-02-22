@@ -696,7 +696,7 @@ MapWindow::SetSelfPosition(float lat, float lon, const char* name)
 
 
 void
-MapWindow::UpdateFromContacts(BObjectList<ContactInfo, true>* contacts,
+MapWindow::UpdateFromContacts(OwningObjectList<ContactInfo>* contacts,
 	double defaultLat, double defaultLon)
 {
 	fMapView->ClearNodes();

@@ -77,7 +77,7 @@ private:
 			GeoMapNode*		_FindNodeAt(BPoint where);
 			rgb_color		_ColorForType(uint8 type) const;
 
-			BObjectList<GeoMapNode, true>	fNodes;
+			OwningObjectList<GeoMapNode>	fNodes;
 			GeoMapNode		fSelfNode;
 			bool			fHasSelfPosition;
 
@@ -107,7 +107,7 @@ public:
 	void				SetSelfPosition(float lat, float lon,
 							const char* name);
 	void				UpdateFromContacts(
-							BObjectList<ContactInfo, true>* contacts,
+							OwningObjectList<ContactInfo>* contacts,
 							double defaultLat, double defaultLon);
 
 private:

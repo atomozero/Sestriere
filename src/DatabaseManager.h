@@ -48,9 +48,9 @@ public:
 			bool			InsertMessage(const char* contactKeyHex,
 								const ChatMessage& message);
 			int32			LoadMessages(const char* contactKeyHex,
-								BObjectList<ChatMessage, true>& outMessages);
+								OwningObjectList<ChatMessage>& outMessages);
 			int32			LoadChannelMessages(
-								BObjectList<ChatMessage, true>& outMessages);
+								OwningObjectList<ChatMessage>& outMessages);
 
 			// SNR history
 			bool			InsertSNRDataPoint(const char* contactKeyHex,
@@ -58,11 +58,11 @@ public:
 								uint8 pathLen);
 			int32			LoadSNRHistory(const char* contactKeyHex,
 								uint32 sinceTimestamp,
-								BObjectList<SNRDataPoint, true>& outPoints);
+								OwningObjectList<SNRDataPoint>& outPoints);
 
 			// Search
 			int32			SearchMessages(const char* query,
-								BObjectList<ChatMessage, true>& outMessages,
+								OwningObjectList<ChatMessage>& outMessages,
 								int32 maxResults = 50);
 
 			// Statistics
@@ -77,9 +77,9 @@ public:
 			int32			LoadTelemetryHistory(uint32 nodeId,
 								const char* sensorName,
 								uint32 sinceTimestamp,
-								BObjectList<TelemetryRecord, true>& outRecords);
+								OwningObjectList<TelemetryRecord>& outRecords);
 			int32			GetTelemetryNodeIds(
-								BObjectList<BString, true>& outNodeNames);
+								OwningObjectList<BString>& outNodeNames);
 
 			// Maintenance
 			void			PruneOldData(uint32 maxAgeDays);

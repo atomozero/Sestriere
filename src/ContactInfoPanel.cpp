@@ -776,7 +776,7 @@ ContactInfoPanel::_UpdateSNRChart()
 
 	// Load last 24 hours of SNR data
 	uint32 since = (uint32)time(NULL) - 86400;
-	BObjectList<SNRDataPoint, true> points(100);
+	OwningObjectList<SNRDataPoint> points(100);
 	DatabaseManager::Instance()->LoadSNRHistory(contactHex, since, points);
 
 	if (points.CountItems() > 0) {

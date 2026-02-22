@@ -122,7 +122,7 @@ public:
 	virtual void			MouseUp(BPoint where);
 	virtual void			FrameResized(float newWidth, float newHeight);
 
-			void			SetNodes(const BObjectList<ContactInfo, true>* contacts);
+			void			SetNodes(const OwningObjectList<ContactInfo>* contacts);
 			void			SetSelfInfo(const char* name, int8 rssi, int8 snr);
 			void			SetShowLabels(bool show);
 			void			SetShowSignalStrength(bool show);
@@ -171,7 +171,7 @@ private:
 			MapNode*		_FindNodeByPrefix(const uint8* prefix) const;
 			MapNode*		_FindRelayForNode(const MapNode* node) const;
 
-			BObjectList<MapNode, true>	fNodes;
+			OwningObjectList<MapNode>	fNodes;
 			MapNode			fSelfNode;
 			BPoint			fCenter;
 			float			fZoom;
@@ -182,8 +182,8 @@ private:
 			BPoint			fDragStart;
 			bool			fDragging;
 
-			BObjectList<TraceRoute, true>	fTraceRoutes;
-			BObjectList<TopologyEdge, true>	fEdges;
+			OwningObjectList<TraceRoute>	fTraceRoutes;
+			OwningObjectList<TopologyEdge>	fEdges;
 };
 
 
@@ -195,7 +195,7 @@ public:
 	virtual void			MessageReceived(BMessage* message);
 	virtual bool			QuitRequested();
 
-			void			UpdateFromContacts(const BObjectList<ContactInfo, true>* contacts);
+			void			UpdateFromContacts(const OwningObjectList<ContactInfo>* contacts);
 			void			SetSelfInfo(const char* name);
 			void			TriggerNodePulse(const uint8* pubKeyPrefix);
 			void			UpdateLinkQuality(const uint8* pubKeyPrefix,

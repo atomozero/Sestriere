@@ -62,7 +62,7 @@ struct SensorInfo {
 	float		maxValue;
 	float		avgValue;
 	rgb_color	color;
-	BObjectList<TelemetryDataPoint, true>	history;
+	OwningObjectList<TelemetryDataPoint>	history;
 
 	SensorInfo()
 		: type(SENSOR_CUSTOM),
@@ -189,7 +189,7 @@ private:
 	// Data
 	int32				fSelectedSensor;
 	bigtime_t			fCurrentTimeRange;
-	BObjectList<SensorInfo, true>	fSensors;
+	OwningObjectList<SensorInfo>	fSensors;
 };
 
 

@@ -93,7 +93,7 @@ SNRChartView::MaxSize()
 
 
 void
-SNRChartView::SetData(const BObjectList<SNRDataPoint, true>& points)
+SNRChartView::SetData(const OwningObjectList<SNRDataPoint>& points)
 {
 	delete[] fPoints;
 	fPointCount = points.CountItems();

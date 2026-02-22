@@ -146,7 +146,7 @@ private:
 			BStringView*	fStatusRate;
 
 			// Data
-			BObjectList<CapturedPacket, true>	fPackets;
+			OwningObjectList<CapturedPacket>	fPackets;
 			bool			fCapturing;
 			uint32			fPacketIndex;
 			int32			fFilterType;	// -1 = all, or specific code

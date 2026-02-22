@@ -60,7 +60,7 @@ private:
 			BButton*		fCloseButton;
 			BStringView*	fStatusLabel;
 
-			BObjectList<TraceHop, true>	fHops;
+			OwningObjectList<TraceHop>	fHops;
 			bool			fTracing;
 };
 

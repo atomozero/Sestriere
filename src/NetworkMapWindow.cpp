@@ -379,7 +379,7 @@ NetworkMapView::FrameResized(float newWidth, float newHeight)
 
 
 void
-NetworkMapView::SetNodes(const BObjectList<ContactInfo, true>* contacts)
+NetworkMapView::SetNodes(const OwningObjectList<ContactInfo>* contacts)
 {
 	// Clear selection first (it might point to a node we're about to delete)
 	fSelectedNode = NULL;
@@ -2124,7 +2124,7 @@ NetworkMapWindow::MessageReceived(BMessage* message)
 
 
 void
-NetworkMapWindow::UpdateFromContacts(const BObjectList<ContactInfo, true>* contacts)
+NetworkMapWindow::UpdateFromContacts(const OwningObjectList<ContactInfo>* contacts)
 {
 	fMapView->SetNodes(contacts);
 }

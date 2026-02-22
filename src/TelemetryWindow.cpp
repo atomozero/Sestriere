@@ -972,7 +972,7 @@ TelemetryWindow::LoadHistoryFromDB()
 		return;
 
 	// Get all sensor+node combinations from DB
-	BObjectList<BString, true> nodeNames(20);
+	OwningObjectList<BString> nodeNames(20);
 	int32 count = db->GetTelemetryNodeIds(nodeNames);
 
 	if (count == 0) {
@@ -1003,7 +1003,7 @@ TelemetryWindow::LoadHistoryFromDB()
 		BString sensorName;
 		entry->CopyInto(sensorName, colonPos + 1, entry->Length() - colonPos - 1);
 
-		BObjectList<TelemetryRecord, true> records(100);
+		OwningObjectList<TelemetryRecord> records(100);
 		int32 loaded = db->LoadTelemetryHistory(nodeId,
 			sensorName.String(), since, records);
 

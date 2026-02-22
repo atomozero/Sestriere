@@ -23,7 +23,7 @@ public:
 	virtual BSize		MinSize();
 	virtual BSize		MaxSize();
 
-			void		SetData(const BObjectList<SNRDataPoint, true>& points);
+			void		SetData(const OwningObjectList<SNRDataPoint>& points);
 			void		ClearData();
 
 private:

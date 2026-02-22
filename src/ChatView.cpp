@@ -203,7 +203,7 @@ ChatView::SetCurrentContact(ContactInfo* contact)
 }
 
 
-BObjectList<ChatMessage, true>*
+OwningObjectList<ChatMessage>*
 ChatView::GetMessageHistory()
 {
 	return &fCurrentMessages;

@@ -1979,7 +1979,7 @@ PacketAnalyzerWindow::_UpdateContactStats()
 	};
 
 	// Simple array-based map (sufficient for typical contact counts)
-	BObjectList<ContactStat, true> stats(20);
+	OwningObjectList<ContactStat> stats(20);
 
 	for (int32 i = 0; i < fPackets.CountItems(); i++) {
 		CapturedPacket* pkt = fPackets.ItemAt(i);

@@ -192,16 +192,16 @@ private:
 			bool			fConnected;
 
 			// Contacts (owning = true)
-			BObjectList<ContactInfo, true>	fContacts;
-			BObjectList<ContactInfo, true>	fOldContacts;  // Temp storage during sync
+			OwningObjectList<ContactInfo>	fContacts;
+			OwningObjectList<ContactInfo>	fOldContacts;  // Temp storage during sync
 			bool			fSyncingContacts;
 			bool			fSyncingMessages;
 
 			// Channel messages (public channel history)
-			BObjectList<ChatMessage, true>	fChannelMessages;
+			OwningObjectList<ChatMessage>	fChannelMessages;
 
 			// Private channels
-			BObjectList<ChannelInfo, true>	fChannels;
+			OwningObjectList<ChannelInfo>	fChannels;
 			uint8			fMaxChannels;
 			uint8			fChannelEnumIndex;   // Current index during enumeration
 			bool			fEnumeratingChannels;

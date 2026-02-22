@@ -36,7 +36,7 @@ public:
 			ContactInfo*	CurrentContact() const { return fCurrentContact; }
 
 			// Access to message history for the current contact
-			BObjectList<ChatMessage, true>* GetMessageHistory();
+			OwningObjectList<ChatMessage>* GetMessageHistory();
 
 private:
 			void			_ScrollToBottom();
@@ -47,7 +47,7 @@ private:
 			// Message history per contact (pubkey prefix -> messages)
 			// For simplicity, we store messages in memory only
 			// Key is hex string of first 6 bytes of pubkey
-			BObjectList<ChatMessage, true>	fCurrentMessages;
+			OwningObjectList<ChatMessage>	fCurrentMessages;
 };
 
 #endif // CHATVIEW_H
