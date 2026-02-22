@@ -273,6 +273,10 @@ enum {
 
 	// Mission Control dashboard
 	MSG_SHOW_MISSION_CONTROL = 'mctr',
+
+	// GPX export
+	MSG_EXPORT_GPX = 'xgpx',
+	MSG_EXPORT_GPX_DONE = 'xgpd',
 };
 
 // =============================================================================

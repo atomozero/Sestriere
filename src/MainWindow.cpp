@@ -14,6 +14,7 @@
 #include <Directory.h>
 #include <Entry.h>
 #include <File.h>
+#include <FilePanel.h>
 #include <FindDirectory.h>
 #include <Font.h>
 #include <LayoutBuilder.h>
@@ -242,6 +243,7 @@ MainWindow::MainWindow()
 	fSelfNodeId = 0;
 	memset(fLoginTargetKey, 0, sizeof(fLoginTargetKey));
 	fTelemetryPollIndex = 0;
+	fGpxSavePanel = NULL;
 	memset(fLoggedInKey, 0, sizeof(fLoggedInKey));
 	fHasDeviceInfo = false;
 	fRadioFreq = 0;
@@ -322,6 +324,8 @@ MainWindow::~MainWindow()
 		fMqttClient = NULL;
 	}
 
+	delete fGpxSavePanel;
+
 	// Child windows and singletons are destroyed in QuitRequested()
 }
 
@@ -373,6 +377,9 @@ MainWindow::_BuildMenuBar()
 		new BMessage(MSG_SHOW_EXPORT_CONTACT)));
 	contactMenu->AddItem(new BMenuItem("Import Contact" B_UTF8_ELLIPSIS,
 		new BMessage(MSG_SHOW_IMPORT_CONTACT)));
+	contactMenu->AddSeparatorItem();
+	contactMenu->AddItem(new BMenuItem("Export GPX" B_UTF8_ELLIPSIS,
+		new BMessage(MSG_EXPORT_GPX)));
 	contactMenu->SetTargetForItems(this);
 	fMenuBar->AddItem(contactMenu);
 
@@ -1691,6 +1698,35 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_EXPORT_GPX:
+		{
+			if (fContacts.CountItems() == 0) {
+				_LogMessage("WARN", "No contacts to export");
+				break;
+			}
+			if (fGpxSavePanel == NULL) {
+				BMessage saveMsg(MSG_EXPORT_GPX_DONE);
+				fGpxSavePanel = new BFilePanel(B_SAVE_PANEL,
+					new BMessenger(this), NULL, 0, false, &saveMsg);
+				fGpxSavePanel->SetSaveText("sestriere-contacts.gpx");
+			}
+			fGpxSavePanel->Show();
+			break;
+		}
+
+		case MSG_EXPORT_GPX_DONE:
+		{
+			entry_ref dirRef;
+			BString name;
+			if (message->FindRef("directory", &dirRef) == B_OK
+				&& message->FindString("name", &name) == B_OK) {
+				BPath path(&dirRef);
+				path.Append(name.String());
+				_ExportGPX(path.Path());
+			}
+			break;
+		}
+
 		case MSG_IMPORT_CONTACT_CMD:
 		{
 			// Send import command to device
@@ -2750,6 +2786,8 @@ MainWindow::_HandleContact(const uint8* data, size_t length)
 		strlcpy(contact->name, nameBuf, sizeof(contact->name));
 	}
 	contact->lastSeen = ReadLE32(data + kContactLastSeenOffset);
+	contact->latitude = ReadLE32Signed(data + kContactLatOffset);
+	contact->longitude = ReadLE32Signed(data + kContactLonOffset);
 	contact->isValid = true;
 
 	// Look for existing contact to preserve message history
@@ -4809,4 +4847,78 @@ MainWindow::_LoadPeopleContacts()
 		// Post message to update UI after constructor is done
 		PostMessage(MSG_UPDATE_CONTACTS);
 	}
+}
+
+
+void
+MainWindow::_ExportGPX(const char* path)
+{
+	BFile file(path, B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+	if (file.InitCheck() != B_OK) {
+		_LogMessage("ERR", BString().SetToFormat(
+			"Failed to create GPX file: %s", path));
+		return;
+	}
+
+	BString gpx;
+	gpx << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+		<< "<gpx version=\"1.1\" creator=\"Sestriere\"\n"
+		<< "  xmlns=\"http://www.topografix.com/GPX/1/1\">\n";
+
+	int32 exported = 0;
+	for (int32 i = 0; i < fContacts.CountItems(); i++) {
+		ContactInfo* contact = fContacts.ItemAt(i);
+		if (contact == NULL || !contact->HasGPS())
+			continue;
+
+		double lat = contact->latitude / 1e7;
+		double lon = contact->longitude / 1e7;
+
+		// Node type label
+		const char* typeStr = "Node";
+		switch (contact->type) {
+			case 1: typeStr = "Chat"; break;
+			case 2: typeStr = "Repeater"; break;
+			case 3: typeStr = "Room"; break;
+		}
+
+		BString name(contact->name[0] ? contact->name : "(unnamed)");
+		// Escape XML special chars
+		name.ReplaceAll("&", "&amp;");
+		name.ReplaceAll("<", "&lt;");
+		name.ReplaceAll(">", "&gt;");
+		name.ReplaceAll("\"", "&quot;");
+
+		gpx.SetToFormat("%s  <wpt lat=\"%.7f\" lon=\"%.7f\">\n",
+			gpx.String(), lat, lon);
+		gpx << "    <name>" << name << "</name>\n";
+		gpx << "    <type>" << typeStr << "</type>\n";
+
+		if (contact->lastSeen > 0) {
+			time_t t = (time_t)contact->lastSeen;
+			struct tm tm;
+			if (localtime_r(&t, &tm) != NULL) {
+				char timeBuf[32];
+				strftime(timeBuf, sizeof(timeBuf),
+					"%Y-%m-%dT%H:%M:%S", &tm);
+				gpx << "    <time>" << timeBuf << "</time>\n";
+			}
+		}
+
+		// Public key as description
+		char hexKey[kContactHexSize];
+		for (size_t j = 0; j < kPubKeyPrefixSize; j++)
+			snprintf(hexKey + j * 2, 3, "%02X",
+				contact->publicKey[j]);
+		gpx << "    <desc>" << typeStr << " [" << hexKey << "]</desc>\n";
+
+		gpx << "  </wpt>\n";
+		exported++;
+	}
+
+	gpx << "</gpx>\n";
+	file.Write(gpx.String(), gpx.Length());
+
+	_LogMessage("OK", BString().SetToFormat(
+		"Exported %d contacts with GPS to %s", (int)exported, path));
 }

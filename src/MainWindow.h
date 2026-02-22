@@ -11,6 +11,8 @@
 #include <Window.h>
 #include <ObjectList.h>
 
+class BFilePanel;
+
 #include "MqttClient.h"
 #include "Types.h"
 
@@ -144,6 +146,9 @@ private:
 			void			_LoadPeopleContacts();
 			BString			_GetPeoplePath();
 
+			// GPX export
+			void			_ExportGPX(const char* path);
+
 			SerialHandler*	fSerialHandler;
 			ProtocolHandler* fProtocol;
 
@@ -273,6 +278,9 @@ private:
 
 			// Telemetry polling state
 			int32			fTelemetryPollIndex;
+
+			// GPX export
+			BFilePanel*		fGpxSavePanel;
 };
 
 
