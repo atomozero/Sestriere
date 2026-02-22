@@ -1,0 +1,154 @@
+# Sestriere — Roadmap Feature
+
+Feature ispirate dall'analisi di meshcore-open, adattate per Haiku OS nativo.
+
+---
+
+## 1. Contact Groups + Channel Muting
+
+### Contact Groups
+Organizzare contatti in gruppi nominati (es. "Squadra Alpha", "Repeater Montagna").
+- Modello dati: nome + lista chiavi pubbliche (prefix 6 byte)
+- UI: item espandibile/comprimibile nella sidebar contact list
+- Storage: file nella settings directory o tabella SQLite
+
+### Channel Muting
+Flag mute per canale/contatto: messaggi ricevuti e visibili ma senza notifica, badge, suono.
+- Aggiungere `bool muted` a `ChannelInfo`/`ContactInfo`
+- Check in `NotificationManager` prima di notificare
+- Right-click "Mute"/"Unmute" nella contact list
+
+### Motivazione
+Entrambi migliorano la gestione della sidebar quando la rete cresce (30+ contatti).
+Toccano gli stessi file (ContactItem, ContactListView, MainWindow), da fare insieme.
+
+**Difficolta**: Bassa
+**File coinvolti**: Types.h, ContactItem.cpp/h, MainWindow.cpp/h, NotificationManager.cpp/h, DatabaseManager.cpp/h
+
+---
+
+## 2. SMAZ Message Compression
+
+Compressione dizionario per messaggi brevi, ottimizzata per chat.
+- Dizionario di 254 pattern comuni ("the ", " of ", "ing", "tion", ecc.)
+- Compressione tipica: 30-50% su messaggi inglesi
+- Messaggio compresso prefissato con marker `s:` (compatibile meshcore-open)
+- Funzione `encodeIfSmaller()`: applica solo se riduce effettivamente la dimensione
+- Implementazione self-contained: ~150 righe C++ encode/decode + tabella dizionario
+
+### Motivazione
+LoRa ha budget dati strettissimo (max ~255 byte). Su EU 868 MHz c'e duty cycle 1% imposto per legge. Ogni byte risparmiato = piu testo utile o meno airtime.
+
+### Compatibilita cross-client
+Il marker `s:` deve coincidere con quello di meshcore-open. Verificare il formato esatto prima dell'implementazione.
+
+**Difficolta**: Media
+**File coinvolti**: nuovo Smaz.h/cpp, ProtocolHandler.cpp (integrazione invio), MainWindow.cpp (integrazione ricezione)
+
+---
+
+## 3. Message Retry con Exponential Backoff
+
+Retry automatico dei messaggi quando PUSH_SEND_CONFIRMED non arriva.
+
+### Meccanismo
+1. Dopo invio, timer di 1 secondo
+2. Se ACK non arriva, rimanda il messaggio
+3. Backoff esponenziale: 1s, 2s, 4s, 8s, 16s
+4. Dopo 5 tentativi: messaggio marcato "failed"
+5. Opzionale: `SendResetPath()` dopo fallimento per forzare ricalcolo rotta
+
+### Deduplicazione
+- ACK hash: SHA256(timestamp + attempt + text + sender_pubkey) troncato
+- History circolare delle ultime 100 entry
+- Ricevente ignora messaggi con hash gia visto
+
+### Motivazione
+Attualmente se l'ACK non arriva il messaggio resta in stato "sent" per sempre. L'utente deve accorgersi e rimandare manualmente. Il retry automatico e la differenza tra "i messaggi arrivano" e "i messaggi a volte si perdono".
+
+**Difficolta**: Media-Alta
+**File coinvolti**: nuovo MessageRetryService.h/cpp (o integrato in MainWindow), Types.h (delivery status), MainWindow.cpp (timer management)
+
+---
+
+## 4. Offline Map Tiles
+
+Pre-download dei tile mappa OSM per uso senza connessione internet.
+
+### Flusso utente
+1. Seleziona area sulla mappa (rettangolo)
+2. Sceglie livelli di zoom (es. 10-15)
+3. App calcola e scarica i tile PNG
+4. Storage: `~/config/settings/Sestriere/tiles/z/x/y.png`
+5. Mappa offline carica tile dalla cache locale
+
+### Calcolo tile
+Per ogni zoom level: `(x_max - x_min + 1) * (y_max - y_min + 1)` tile.
+Area 50x50 km a zoom 10-15 = circa 20-50 MB.
+
+### Decisione architetturale
+- Opzione A: aggiungere tile rendering al MapView.cpp esistente (meno lavoro)
+- Opzione B: creare mappa tile-based separata (piu pulita)
+
+### Motivazione
+Sestriere ha gia mappa geografica (MapView.cpp) con GPS dei contatti, ma richiede internet per i tile. In scenari off-grid (dove LoRa mesh ha piu senso) non c'e internet.
+
+**Difficolta**: Media
+**File coinvolti**: MapView.cpp/h (o nuovo TileMapView.cpp/h), nuovo MapTileCache.cpp/h, UI per selezione area e progress download
+
+### Note tecniche Haiku
+- Download HTTP: `BUrlRequest` dal Network Kit
+- Rendering tile PNG: `TranslatorRoster` + `BBitmap`
+- File I/O: standard POSIX o Haiku `BFile`/`BDirectory`
+
+---
+
+## 5. Line-of-Sight Analysis
+
+Calcolo profilo elevazione terreno tra due punti per verificare se esiste linea di vista diretta per il segnale radio LoRa.
+
+### Come funziona
+1. Campionare 21-81 punti lungo la linea A-B
+2. Interrogare API Open-Meteo Elevation: `https://api.open-meteo.com/v1/elevation?latitude=X&longitude=Y`
+3. Calcolare curvatura terrestre: `earthBulge = distance^2 / (2 * R * k)` con k-factor 4/3 (rifrazione atmosferica)
+4. Calcolare zona di Fresnel: `fresnelRadius = sqrt(n * lambda * d1 * d2 / (d1 + d2))` con lambda dalla frequenza LoRa
+5. Disegnare profilo: terreno, linea di vista, zona di Fresnel. Verde = sgombro, rosso = ostruito
+
+### UI
+- Selezione punti: click su mappa o scelta da contatti con GPS
+- Parametri configurabili: altezza antenna (0-122 m), k-factor
+- Grafico: BView custom con DrawLine/FillRect/DrawString
+- Risultato: distanza, azimut, clearance %, raccomandazione (OK/ostruito)
+
+### Motivazione
+Feature unica e differenziante. Nessun altro client desktop la offre. Valore enorme per chi piazza repeater in montagna: verificare il link dal divano prima di salire con l'attrezzatura.
+
+**Difficolta**: Alta
+**File coinvolti**: nuovo LoSWindow.cpp/h, nuovo ElevationService.cpp/h, integrazione con MapView per selezione punti
+
+### Note tecniche Haiku
+- HTTP API: `BUrlRequest` (Network Kit) o socket POSIX con TLS
+- JSON parse: riutilizzare parser minimale (stile ProfileWindow)
+- Rendering grafico: `BView::Draw()` custom
+- Calcoli geodetici: formula di Haversine per distanze, bearing
+
+---
+
+## Priorita suggerita
+
+| # | Feature | Difficolta | Impatto |
+|---|---------|-----------|---------|
+| 1 | Contact Groups + Channel Muting | Bassa | Alto (UX quotidiana) |
+| 2 | SMAZ Compression | Media | Alto (efficienza LoRa) |
+| 3 | Message Retry | Media-Alta | Alto (affidabilita) |
+| 4 | Offline Map Tiles | Media | Alto (uso off-grid) |
+| 5 | Line-of-Sight Analysis | Alta | Alto (pianificazione RF) |
+
+---
+
+## Riferimenti
+- meshcore-open: https://github.com/zjs81/meshcore-open
+- SMAZ algorithm: https://github.com/antirez/smaz
+- Open-Meteo Elevation API: https://open-meteo.com/en/docs/elevation-api
+- CayenneLPP format: https://docs.mydevices.com/docs/lorawan/cayenne-lpp
+- OSM tile server: https://tile.openstreetmap.org/{z}/{x}/{y}.png
