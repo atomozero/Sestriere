@@ -4,26 +4,24 @@ Feature ispirate dall'analisi di meshcore-open, adattate per Haiku OS nativo.
 
 ---
 
-## 1. Contact Groups + Channel Muting
+## 1. Contact Groups + Channel Muting ✓ COMPLETATO
 
-### Contact Groups
-Organizzare contatti in gruppi nominati (es. "Squadra Alpha", "Repeater Montagna").
-- Modello dati: nome + lista chiavi pubbliche (prefix 6 byte)
-- UI: item espandibile/comprimibile nella sidebar contact list
-- Storage: file nella settings directory o tabella SQLite
+### Contact Groups ✓
+Contatti organizzati in gruppi nominati via SQLite (`contact_groups` + `contact_group_members`).
+- Right-click contatto → menu "Group" → seleziona/crea/rimuovi gruppo
+- Sidebar mostra separatori per gruppo, contatti non raggruppati sotto "Ungrouped"
+- Un contatto può appartenere a un solo gruppo alla volta
+- Filtro testo si applica sia a nomi contatto che nomi gruppo
 
-### Channel Muting
-Flag mute per canale/contatto: messaggi ricevuti e visibili ma senza notifica, badge, suono.
-- Aggiungere `bool muted` a `ChannelInfo`/`ContactInfo`
-- Check in `NotificationManager` prima di notificare
-- Right-click "Mute"/"Unmute" nella contact list
+### Channel/Contact Muting ✓
+Flag mute persistente in SQLite (`mute_settings`) per contatti e canali.
+- Right-click → "Mute"/"Unmute" su qualsiasi contatto o canale
+- Mute sopprime notifiche desktop e badge unread
+- Nome visualizzato in colore attenuato quando muted
+- Chiave mute: `aabbccddeeff` per contatti, `ch_public`/`ch_N` per canali
 
-### Motivazione
-Entrambi migliorano la gestione della sidebar quando la rete cresce (30+ contatti).
-Toccano gli stessi file (ContactItem, ContactListView, MainWindow), da fare insieme.
-
-**Difficolta**: Bassa
-**File coinvolti**: Types.h, ContactItem.cpp/h, MainWindow.cpp/h, NotificationManager.cpp/h, DatabaseManager.cpp/h
+**File modificati**: Constants.h, ContactItem.cpp/h, MainWindow.cpp/h, DatabaseManager.cpp/h
+**Test**: test_mute_logic (6 test), test_contact_groups (8 test)
 
 ---
 
