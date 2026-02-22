@@ -26,6 +26,7 @@ SRCS = \
 	LoginWindow.cpp \
 	MapView.cpp \
 	ContactExportWindow.cpp \
+	ProfileWindow.cpp \
 	TopBarView.cpp \
 	ContactInfoPanel.cpp \
 	GrowingTextView.cpp \

@@ -280,6 +280,13 @@ enum {
 
 	// Ping
 	MSG_CONTACT_PING = 'cpng',
+
+	// Profile export/import
+	MSG_SHOW_PROFILE = 'prof',
+	MSG_PROFILE_IMPORT_CONTACTS = 'pimc',
+	MSG_PROFILE_IMPORT_CHANNELS = 'pich',
+	MSG_PROFILE_IMPORT_RADIO = 'pird',
+	MSG_PROFILE_IMPORT_MQTT = 'pimq',
 };
 
 // =============================================================================

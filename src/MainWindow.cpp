@@ -56,6 +56,7 @@
 #include "MqttLogWindow.h"
 #include "NetworkMapWindow.h"
 #include "PacketAnalyzerWindow.h"
+#include "ProfileWindow.h"
 #include "NotificationManager.h"
 #include "ProtocolHandler.h"
 #include "SerialHandler.h"
@@ -219,6 +220,7 @@ MainWindow::MainWindow()
 	fPacketAnalyzerWindow(NULL),
 	fMqttLogWindow(NULL),
 	fMissionControlWindow(NULL),
+	fProfileWindow(NULL),
 	fMqttClient(NULL),
 	fRawPacketCount(0),
 	fLastRawPacketTime(0),
@@ -383,6 +385,9 @@ MainWindow::_BuildMenuBar()
 	contactMenu->AddSeparatorItem();
 	contactMenu->AddItem(new BMenuItem("Export GPX" B_UTF8_ELLIPSIS,
 		new BMessage(MSG_EXPORT_GPX)));
+	contactMenu->AddSeparatorItem();
+	contactMenu->AddItem(new BMenuItem("Export/Import Profile" B_UTF8_ELLIPSIS,
+		new BMessage(MSG_SHOW_PROFILE)));
 	contactMenu->SetTargetForItems(this);
 	fMenuBar->AddItem(contactMenu);
 
@@ -1784,6 +1789,138 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_SHOW_PROFILE:
+		{
+			if (fProfileWindow == NULL) {
+				fProfileWindow = new ProfileWindow(this);
+			}
+			fProfileWindow->SetDeviceInfo(fDeviceName, fPublicKey,
+				fDeviceFirmware);
+			fProfileWindow->SetContacts(fContacts);
+			fProfileWindow->SetChannels(fChannels);
+			if (fHasRadioParams)
+				fProfileWindow->SetRadioParams(fRadioFreq, fRadioBw,
+					fRadioSf, fRadioCr, fRadioTxPower);
+			fProfileWindow->SetMqttSettings(fMqttSettings);
+			if (fProfileWindow->IsHidden())
+				fProfileWindow->Show();
+			else
+				_ShowWindow(fProfileWindow);
+			break;
+		}
+
+		case MSG_PROFILE_IMPORT_CONTACTS:
+		{
+			if (!fConnected) {
+				_LogMessage("ERROR", "Device not connected");
+				break;
+			}
+			int32 count = 0;
+			const void* pubkey;
+			ssize_t size;
+			for (int32 i = 0;
+				message->FindData("pubkey", B_RAW_TYPE, i, &pubkey, &size)
+					== B_OK;
+				i++) {
+				const char* name = message->GetString("name", i, "");
+				int32 type = message->GetInt32("type", i);
+				fProtocol->SendAddUpdateContact((const uint8*)pubkey,
+					name, (uint8)type);
+				count++;
+			}
+			if (count > 0) {
+				BString logMsg;
+				logMsg.SetToFormat("Profile: importing %d contacts...",
+					(int)count);
+				_LogMessage("INFO", logMsg.String());
+				fProtocol->SendGetContacts();
+			}
+			break;
+		}
+
+		case MSG_PROFILE_IMPORT_CHANNELS:
+		{
+			if (!fConnected) {
+				_LogMessage("ERROR", "Device not connected");
+				break;
+			}
+			int32 count = 0;
+			int32 index;
+			for (int32 i = 0;
+				message->FindInt32("index", i, &index) == B_OK;
+				i++) {
+				const char* name = message->GetString("name", i, "");
+				const void* secret;
+				ssize_t secretSize;
+				if (message->FindData("secret", B_RAW_TYPE, i,
+					&secret, &secretSize) == B_OK && secretSize == 16) {
+					fProtocol->SendSetChannel((uint8)index, name,
+						(const uint8*)secret);
+					count++;
+				}
+			}
+			if (count > 0) {
+				BString logMsg;
+				logMsg.SetToFormat("Profile: importing %d channels...",
+					(int)count);
+				_LogMessage("INFO", logMsg.String());
+				// Re-enumerate channels
+				fEnumeratingChannels = true;
+				fChannelEnumIndex = 0;
+				fProtocol->SendGetChannel(0);
+			}
+			break;
+		}
+
+		case MSG_PROFILE_IMPORT_RADIO:
+		{
+			if (!fConnected) {
+				_LogMessage("ERROR", "Device not connected");
+				break;
+			}
+			uint32 freq = message->GetUInt32("frequency", 0);
+			uint32 bw = message->GetUInt32("bandwidth", 0);
+			uint8 sf = message->GetUInt8("sf", 0);
+			uint8 cr = message->GetUInt8("cr", 0);
+			uint8 txPower = message->GetUInt8("txPower", 0);
+			if (freq > 0) {
+				fProtocol->SendRadioParams(freq, bw, sf, cr);
+				if (txPower > 0)
+					fProtocol->SendSetTxPower(txPower);
+				_LogMessage("INFO", "Profile: radio parameters applied");
+			}
+			break;
+		}
+
+		case MSG_PROFILE_IMPORT_MQTT:
+		{
+			fMqttSettings.enabled = message->GetBool("enabled", false);
+			strlcpy(fMqttSettings.broker, message->GetString("broker", ""),
+				sizeof(fMqttSettings.broker));
+			fMqttSettings.port = message->GetInt32("port", 1883);
+			strlcpy(fMqttSettings.username,
+				message->GetString("username", ""),
+				sizeof(fMqttSettings.username));
+			const char* pw = message->GetString("password", "");
+			if (pw[0] != '\0')
+				strlcpy(fMqttSettings.password, pw,
+					sizeof(fMqttSettings.password));
+			strlcpy(fMqttSettings.iataCode,
+				message->GetString("iata", "XXX"),
+				sizeof(fMqttSettings.iataCode));
+			fMqttSettings.latitude = message->GetDouble("latitude", 0.0);
+			fMqttSettings.longitude = message->GetDouble("longitude", 0.0);
+			_SaveMqttSettings();
+			_LogMessage("INFO", "Profile: MQTT settings imported");
+
+			if (fMqttClient != NULL) {
+				fMqttClient->SetSettings(fMqttSettings);
+				if (fMqttSettings.enabled)
+					fMqttClient->Connect();
+			}
+			break;
+		}
+
 		default:
 			BWindow::MessageReceived(message);
 			break;
@@ -1859,6 +1996,11 @@ MainWindow::QuitRequested()
 		fMissionControlWindow->Lock();
 		fMissionControlWindow->Quit();
 		fMissionControlWindow = NULL;
+	}
+	if (fProfileWindow != NULL) {
+		fProfileWindow->Lock();
+		fProfileWindow->Quit();
+		fProfileWindow = NULL;
 	}
 
 	// Destroy singletons
