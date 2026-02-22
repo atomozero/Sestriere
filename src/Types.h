@@ -8,7 +8,7 @@
 #ifndef TYPES_H
 #define TYPES_H
 
-#include <ObjectList.h>
+#include "Compat.h"
 #include <SupportDefs.h>
 
 #include <cstring>

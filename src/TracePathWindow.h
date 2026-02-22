@@ -9,7 +9,7 @@
 #define TRACEPATHWINDOW_H
 
 #include <Window.h>
-#include <ObjectList.h>
+#include "Compat.h"
 
 #include "Types.h"
 

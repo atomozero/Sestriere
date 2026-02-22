@@ -9,7 +9,7 @@
 #define MAINWINDOW_H
 
 #include <Window.h>
-#include <ObjectList.h>
+#include "Compat.h"
 
 class BFilePanel;
 

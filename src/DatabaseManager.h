@@ -9,7 +9,7 @@
 #define DATABASEMANAGER_H
 
 #include <Locker.h>
-#include <ObjectList.h>
+#include "Compat.h"
 #include <String.h>
 
 #include <sqlite3.h>

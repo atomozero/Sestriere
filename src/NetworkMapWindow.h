@@ -10,7 +10,7 @@
 
 #include <Window.h>
 #include <View.h>
-#include <ObjectList.h>
+#include "Compat.h"
 
 #include "Types.h"
 

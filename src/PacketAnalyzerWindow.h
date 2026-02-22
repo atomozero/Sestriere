@@ -10,7 +10,7 @@
 
 #include <Window.h>
 #include <ColumnTypes.h>
-#include <ObjectList.h>
+#include "Compat.h"
 #include <String.h>
 
 #include "Types.h"

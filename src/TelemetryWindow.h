@@ -10,7 +10,7 @@
 
 #include <Button.h>
 #include <MessageRunner.h>
-#include <ObjectList.h>
+#include "Compat.h"
 #include <ScrollView.h>
 #include <String.h>
 #include <StringView.h>

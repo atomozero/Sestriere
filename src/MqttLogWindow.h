@@ -8,7 +8,7 @@
 #ifndef MQTTLOGWINDOW_H
 #define MQTTLOGWINDOW_H
 
-#include <ObjectList.h>
+#include "Compat.h"
 #include <String.h>
 #include <Window.h>
 

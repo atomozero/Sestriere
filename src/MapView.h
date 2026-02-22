@@ -8,7 +8,7 @@
 #ifndef MAPVIEW_H
 #define MAPVIEW_H
 
-#include <ObjectList.h>
+#include "Compat.h"
 #include <View.h>
 #include <Window.h>
 

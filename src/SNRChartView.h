@@ -8,7 +8,7 @@
 #ifndef SNRCHARTVIEW_H
 #define SNRCHARTVIEW_H
 
-#include <ObjectList.h>
+#include "Compat.h"
 #include <View.h>
 
 #include "DatabaseManager.h"
