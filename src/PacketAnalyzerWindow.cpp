@@ -368,7 +368,7 @@ private:
 
 PacketAnalyzerWindow::PacketAnalyzerWindow(BWindow* parent)
 	:
-	BWindow(BRect(100, 100, 820, 620), "Packet Analyzer",
+	BWindow(BRect(0, 0, 719, 499), "Packet Analyzer",
 		B_TITLED_WINDOW,
 		B_AUTO_UPDATE_SIZE_LIMITS | B_CLOSE_ON_ESCAPE),
 	fParent(parent),
@@ -399,6 +399,11 @@ PacketAnalyzerWindow::PacketAnalyzerWindow(BWindow* parent)
 	_BuildMenuBar();
 	_BuildUI();
 	_UpdateStatusBar();
+
+	if (fParent != NULL)
+		CenterIn(fParent->Frame());
+	else
+		CenterOnScreen();
 }
 
 
@@ -737,7 +742,7 @@ PacketAnalyzerWindow::_BuildUI()
 		B_TRUNCATE_END, B_ALIGN_RIGHT), kSNRColumn);
 	fPacketList->AddColumn(new BStringColumn("Size", 45, 35, 60,
 		B_TRUNCATE_END, B_ALIGN_RIGHT), kSizeColumn);
-	fPacketList->AddColumn(new BStringColumn("Summary", 250, 100, 600,
+	fPacketList->AddColumn(new BStringColumn("Summary", 200, 100, 400,
 		B_TRUNCATE_END), kSummaryColumn);
 
 	// Detail view (hex dump + decoded fields)

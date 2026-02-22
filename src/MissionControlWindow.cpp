@@ -300,13 +300,27 @@ public:
 			float textY = y + fh.ascent;
 
 			// Label (left-aligned, dim)
+			float labelWidth = StringWidth(fLabels[i]);
+			float maxLabelWidth = bounds.Width() * 0.4f - 10;
 			SetHighColor(dimColor);
-			DrawString(fLabels[i], BPoint(10, textY));
+			BString label(fLabels[i]);
+			if (labelWidth > maxLabelWidth) {
+				labelFont.TruncateString(&label, B_TRUNCATE_END,
+					maxLabelWidth);
+			}
+			DrawString(label.String(), BPoint(10, textY));
 
-			// Value (right-aligned, colored)
-			float valWidth = StringWidth(fValues[i]);
+			// Value (right-aligned, colored, truncated if needed)
+			float maxValWidth = bounds.Width() * 0.58f - 10;
+			BString value(fValues[i]);
+			float valWidth = StringWidth(value.String());
+			if (valWidth > maxValWidth) {
+				labelFont.TruncateString(&value, B_TRUNCATE_MIDDLE,
+					maxValWidth);
+				valWidth = StringWidth(value.String());
+			}
 			SetHighColor(fValueColors[i]);
-			DrawString(fValues[i],
+			DrawString(value.String(),
 				BPoint(bounds.right - 10 - valWidth, textY));
 
 			y += rowHeight;
@@ -1286,7 +1300,7 @@ private:
 
 MissionControlWindow::MissionControlWindow(BWindow* parent)
 	:
-	BWindow(BRect(120, 80, 920, 680), "Mission Control",
+	BWindow(BRect(0, 0, 799, 519), "Mission Control",
 		B_TITLED_WINDOW, B_AUTO_UPDATE_SIZE_LIMITS),
 	fParent(parent),
 	fAlertBanner(NULL),
@@ -1322,6 +1336,11 @@ MissionControlWindow::MissionControlWindow(BWindow* parent)
 	fAlertFlashTimer(NULL)
 {
 	_BuildLayout();
+
+	if (fParent != NULL)
+		CenterIn(fParent->Frame());
+	else
+		CenterOnScreen();
 
 	// Refresh timer (10 seconds) — requests stats
 	BMessage tickMsg(MSG_REFRESH_TICK);

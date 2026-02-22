@@ -40,7 +40,7 @@ static const int32 kFilterAll = -1;
 
 MqttLogWindow::MqttLogWindow()
 	:
-	BWindow(BRect(200, 200, 750, 550), "MQTT Log",
+	BWindow(BRect(0, 0, 549, 349), "MQTT Log",
 		B_TITLED_WINDOW, B_AUTO_UPDATE_SIZE_LIMITS),
 	fLogView(NULL),
 	fScrollView(NULL),
@@ -145,6 +145,8 @@ MqttLogWindow::MqttLogWindow()
 			.Add(fClearButton)
 		.End()
 	.End();
+
+	CenterOnScreen();
 }
 
 

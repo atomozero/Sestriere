@@ -25,7 +25,7 @@ DebugLogWindow*
 DebugLogWindow::Instance()
 {
 	if (sInstance == NULL) {
-		BRect frame(150, 150, 750, 500);
+		BRect frame(0, 0, 599, 349);
 		sInstance = new DebugLogWindow(frame);
 	}
 	return sInstance;
@@ -88,6 +88,8 @@ DebugLogWindow::DebugLogWindow(BRect frame)
 
 	// Don't quit app when this window closes
 	SetFlags(Flags() | B_CLOSE_ON_ESCAPE);
+
+	CenterOnScreen();
 }
 
 

@@ -489,7 +489,7 @@ TelemetrySensorView::UpdateValue()
 
 TelemetryWindow::TelemetryWindow(BWindow* parent)
 	:
-	BWindow(BRect(100, 100, 750, 500), "Sensor Telemetry", B_TITLED_WINDOW,
+	BWindow(BRect(0, 0, 649, 399), "Sensor Telemetry", B_TITLED_WINDOW,
 		B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS),
 	fParent(parent),
 	fRefreshRunner(NULL),
@@ -498,6 +498,11 @@ TelemetryWindow::TelemetryWindow(BWindow* parent)
 	fSensors(20)
 {
 	_BuildLayout();
+
+	if (fParent != NULL)
+		CenterIn(fParent->Frame());
+	else
+		CenterOnScreen();
 
 	BMessage timerMsg(MSG_TELEMETRY_TIMER);
 	fRefreshRunner = new BMessageRunner(BMessenger(this), &timerMsg,
@@ -521,12 +526,12 @@ TelemetryWindow::_BuildLayout()
 
 	fSensorScrollView = new BScrollView("sensor_scroll", fSensorListView,
 		B_FOLLOW_ALL_SIDES, 0, false, true);
-	fSensorScrollView->SetExplicitMinSize(BSize(220, B_SIZE_UNSET));
+	fSensorScrollView->SetExplicitMinSize(BSize(180, B_SIZE_UNSET));
 	fSensorScrollView->SetExplicitMaxSize(BSize(220, B_SIZE_UNLIMITED));
 
 	// Right panel - graph
 	fGraphView = new TelemetryGraphView(BRect(0, 0, 400, 250));
-	fGraphView->SetExplicitMinSize(BSize(400, 250));
+	fGraphView->SetExplicitMinSize(BSize(350, 200));
 
 	// Stats box
 	BBox* statsBox = new BBox("stats_box");

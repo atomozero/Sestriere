@@ -1985,7 +1985,8 @@ NetworkMapWindow::NetworkMapWindow(BWindow* parent)
 	fCloseButton = new BButton("close", "Close",
 		new BMessage(B_QUIT_REQUESTED));
 
-	fInfoLabel = new BStringView("info", "Double-click node to chat • Right-click for menu");
+	fInfoLabel = new BStringView("info", "Double-click node to chat \xE2\x80\xA2 Right-click for menu");
+	fInfoLabel->SetTruncation(B_TRUNCATE_END);
 	fInfoLabel->SetHighColor(150, 150, 150);
 
 	// Layout

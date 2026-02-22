@@ -165,7 +165,7 @@ _LockIfVisible(BWindow* window)
 
 MainWindow::MainWindow()
 	:
-	BWindow(BRect(100, 100, 900, 650), APP_NAME,
+	BWindow(BRect(0, 0, 799, 529), APP_NAME,
 		B_TITLED_WINDOW, B_AUTO_UPDATE_SIZE_LIMITS),
 	fSerialHandler(NULL),
 	fMenuBar(NULL),
@@ -286,6 +286,7 @@ MainWindow::MainWindow()
 	fprintf(stderr, "[MainWindow] People contacts loaded\n");
 
 	SetSizeLimits(600, B_SIZE_UNLIMITED, 400, B_SIZE_UNLIMITED);
+	CenterOnScreen();
 
 	// Start auto-connect timer (will try to connect after 1 second)
 	BMessage autoConnectMsg(MSG_AUTO_CONNECT);

@@ -616,7 +616,7 @@ MapView::_ColorForType(uint8 type) const
 
 MapWindow::MapWindow(BWindow* parent)
 	:
-	BWindow(BRect(100, 100, 700, 550), "Geographic Map", B_TITLED_WINDOW,
+	BWindow(BRect(0, 0, 599, 449), "Geographic Map", B_TITLED_WINDOW,
 		B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS),
 	fParent(parent)
 {
@@ -644,6 +644,11 @@ MapWindow::MapWindow(BWindow* parent)
 		.Add(fMapView, 1.0)
 		.Add(controlBar)
 	.End();
+
+	if (fParent != NULL)
+		CenterIn(fParent->Frame());
+	else
+		CenterOnScreen();
 }
 
 
