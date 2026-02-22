@@ -386,7 +386,7 @@ NetworkMapView::SetNodes(const OwningObjectList<ContactInfo>* contacts)
 
 	// Keep existing nodes to preserve animation state
 	// RemoveItemAt returns the pointer without deleting it
-	BObjectList<MapNode, false> oldNodes(20);
+	BObjectList<MapNode> oldNodes(20);
 	while (fNodes.CountItems() > 0) {
 		MapNode* node = fNodes.RemoveItemAt(0);
 		if (node != NULL)
@@ -677,7 +677,7 @@ NetworkMapView::ExpireStaleEdges()
 
 
 int32
-NetworkMapView::GetMultiHopNodes(BObjectList<MapNode, false>* outList) const
+NetworkMapView::GetMultiHopNodes(BObjectList<MapNode>* outList) const
 {
 	if (outList == NULL)
 		return 0;
@@ -711,9 +711,9 @@ NetworkMapView::_CalculatePositions()
 	// Ring 3 = 3+ hop contacts
 
 	// First pass: separate nodes into rings
-	BObjectList<MapNode, false> ring1(10);  // Direct
-	BObjectList<MapNode, false> ring2(10);  // 2-hop
-	BObjectList<MapNode, false> ring3(10);  // 3+ hop
+	BObjectList<MapNode> ring1(10);  // Direct
+	BObjectList<MapNode> ring2(10);  // 2-hop
+	BObjectList<MapNode> ring3(10);  // 3+ hop
 
 	for (int32 i = 0; i < count; i++) {
 		MapNode* node = fNodes.ItemAt(i);
@@ -2216,7 +2216,7 @@ NetworkMapWindow::_RequestAutoTrace()
 	}
 
 	// Round-robin through all online/recent multi-hop nodes
-	BObjectList<MapNode, false> multiHop(10);
+	BObjectList<MapNode> multiHop(10);
 	fMapView->GetMultiHopNodes(&multiHop);
 
 	if (multiHop.CountItems() == 0)

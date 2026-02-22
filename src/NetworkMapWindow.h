@@ -138,7 +138,7 @@ public:
 
 			MapNode*		GetSelectedNode() const { return fSelectedNode; }
 			int32			GetMultiHopNodes(
-								BObjectList<MapNode, false>* outList) const;
+								BObjectList<MapNode>* outList) const;
 
 private:
 			void			_CalculatePositions();
@@ -226,7 +226,7 @@ private:
 			int32			fAutoTraceIndex;
 
 			// Discovery state
-			BObjectList<MapNode, false>	fDiscoveryQueue;
+			BObjectList<MapNode>	fDiscoveryQueue;
 			int32			fDiscoveryTotal;
 			bool			fDiscoveryActive;
 };
