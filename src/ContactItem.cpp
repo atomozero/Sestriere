@@ -66,6 +66,7 @@ ContactItem::ContactItem(const ContactInfo& contact)
 	fLastMessageTime(0),
 	fUnreadCount(0),
 	fIsChannel(false),
+	fMuted(false),
 	fChannelIndex(-1),
 	fBaselineOffset(0)
 {
@@ -79,6 +80,7 @@ ContactItem::ContactItem(const char* name, bool isChannel)
 	fLastMessageTime(0),
 	fUnreadCount(0),
 	fIsChannel(isChannel),
+	fMuted(false),
 	fChannelIndex(-1),
 	fBaselineOffset(0)
 {
@@ -175,7 +177,10 @@ ContactItem::DrawItem(BView* owner, BRect frame, bool complete)
 
 	// Contact name (top-left, bold)
 	owner->SetFont(&nameFont);
-	owner->SetHighColor(fIsChannel ? ChannelColor() : NameColor());
+	if (fMuted)
+		owner->SetHighColor(tint_color(ui_color(B_LIST_ITEM_TEXT_COLOR), B_LIGHTEN_2_TINT));
+	else
+		owner->SetHighColor(fIsChannel ? ChannelColor() : NameColor());
 
 	BString displayName = fContact.name[0] ? fContact.name : "Unknown";
 
@@ -250,8 +255,8 @@ ContactItem::DrawItem(BView* owner, BRect frame, bool complete)
 	owner->DrawString(msgPreview.String(),
 		BPoint(textLeft, bottomY - smallFh.descent));
 
-	// Unread badge (bottom-right)
-	if (fUnreadCount > 0) {
+	// Unread badge (bottom-right) — hidden when muted
+	if (fUnreadCount > 0 && !fMuted) {
 		float badgeCenterY = bottomY - smallFh.descent - kBadgeSize / 2 + 2;
 		BRect badgeRect(
 			textRight - kBadgeSize,

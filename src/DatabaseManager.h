@@ -9,6 +9,7 @@
 #define DATABASEMANAGER_H
 
 #include <Locker.h>
+#include <Message.h>
 #include "Compat.h"
 #include <String.h>
 
@@ -80,6 +81,23 @@ public:
 								OwningObjectList<TelemetryRecord>& outRecords);
 			int32			GetTelemetryNodeIds(
 								OwningObjectList<BString>& outNodeNames);
+
+			// Mute settings
+			bool			SetMuted(const char* keyHex, bool muted);
+			bool			IsMuted(const char* keyHex);
+			void			LoadAllMuted(BMessage* outMsg);
+
+			// Contact groups
+			bool			CreateGroup(const char* name);
+			bool			DeleteGroup(const char* name);
+			bool			AddContactToGroup(const char* groupName,
+								const char* contactKeyHex);
+			bool			RemoveContactFromGroup(const char* groupName,
+								const char* contactKeyHex);
+			int32			LoadGroups(OwningObjectList<BString>& outNames);
+			int32			LoadGroupMembers(const char* groupName,
+								OwningObjectList<BString>& outKeys);
+			BString			GetContactGroup(const char* contactKeyHex);
 
 			// Maintenance
 			void			PruneOldData(uint32 maxAgeDays);

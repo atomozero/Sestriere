@@ -485,6 +485,295 @@ DatabaseManager::PruneOldMessages(uint32 maxAgeDays)
 
 
 bool
+DatabaseManager::SetMuted(const char* keyHex, bool muted)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL)
+		return false;
+
+	const char* sql =
+		"INSERT OR REPLACE INTO mute_settings (key_hex, muted) VALUES (?, ?)";
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "[DatabaseManager] prepare failed: %s\n",
+			sqlite3_errmsg(fDB));
+		return false;
+	}
+
+	sqlite3_bind_text(stmt, 1, keyHex, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 2, muted ? 1 : 0);
+
+	rc = sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+	return rc == SQLITE_DONE;
+}
+
+
+bool
+DatabaseManager::IsMuted(const char* keyHex)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL)
+		return false;
+
+	const char* sql =
+		"SELECT muted FROM mute_settings WHERE key_hex = ?";
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
+	if (rc != SQLITE_OK)
+		return false;
+
+	sqlite3_bind_text(stmt, 1, keyHex, -1, SQLITE_TRANSIENT);
+
+	bool muted = false;
+	if (sqlite3_step(stmt) == SQLITE_ROW)
+		muted = (sqlite3_column_int(stmt, 0) != 0);
+
+	sqlite3_finalize(stmt);
+	return muted;
+}
+
+
+void
+DatabaseManager::LoadAllMuted(BMessage* outMsg)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL || outMsg == NULL)
+		return;
+
+	const char* sql =
+		"SELECT key_hex FROM mute_settings WHERE muted = 1";
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
+	if (rc != SQLITE_OK)
+		return;
+
+	while (sqlite3_step(stmt) == SQLITE_ROW) {
+		const char* key = (const char*)sqlite3_column_text(stmt, 0);
+		if (key != NULL)
+			outMsg->AddString("muted_key", key);
+	}
+
+	sqlite3_finalize(stmt);
+}
+
+
+bool
+DatabaseManager::CreateGroup(const char* name)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL || name == NULL || name[0] == '\0')
+		return false;
+
+	const char* sql =
+		"INSERT OR IGNORE INTO contact_groups (name) VALUES (?)";
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "[DatabaseManager] prepare failed: %s\n",
+			sqlite3_errmsg(fDB));
+		return false;
+	}
+
+	sqlite3_bind_text(stmt, 1, name, -1, SQLITE_TRANSIENT);
+
+	rc = sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+	return rc == SQLITE_DONE;
+}
+
+
+bool
+DatabaseManager::DeleteGroup(const char* name)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL || name == NULL)
+		return false;
+
+	// Enable foreign keys for CASCADE to work
+	_Execute("PRAGMA foreign_keys = ON");
+
+	const char* sql = "DELETE FROM contact_groups WHERE name = ?";
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
+	if (rc != SQLITE_OK)
+		return false;
+
+	sqlite3_bind_text(stmt, 1, name, -1, SQLITE_TRANSIENT);
+
+	rc = sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+	return rc == SQLITE_DONE;
+}
+
+
+bool
+DatabaseManager::AddContactToGroup(const char* groupName,
+	const char* contactKeyHex)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL || groupName == NULL || contactKeyHex == NULL)
+		return false;
+
+	// Remove from any existing group first (1 group per contact)
+	const char* removeSql =
+		"DELETE FROM contact_group_members WHERE contact_key = ?";
+	sqlite3_stmt* removeStmt;
+	if (sqlite3_prepare_v2(fDB, removeSql, -1, &removeStmt, NULL) == SQLITE_OK) {
+		sqlite3_bind_text(removeStmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
+		sqlite3_step(removeStmt);
+		sqlite3_finalize(removeStmt);
+	}
+
+	const char* sql =
+		"INSERT OR REPLACE INTO contact_group_members "
+		"(group_name, contact_key) VALUES (?, ?)";
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "[DatabaseManager] prepare failed: %s\n",
+			sqlite3_errmsg(fDB));
+		return false;
+	}
+
+	sqlite3_bind_text(stmt, 1, groupName, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_text(stmt, 2, contactKeyHex, -1, SQLITE_TRANSIENT);
+
+	rc = sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+	return rc == SQLITE_DONE;
+}
+
+
+bool
+DatabaseManager::RemoveContactFromGroup(const char* groupName,
+	const char* contactKeyHex)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL || groupName == NULL || contactKeyHex == NULL)
+		return false;
+
+	const char* sql =
+		"DELETE FROM contact_group_members "
+		"WHERE group_name = ? AND contact_key = ?";
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
+	if (rc != SQLITE_OK)
+		return false;
+
+	sqlite3_bind_text(stmt, 1, groupName, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_text(stmt, 2, contactKeyHex, -1, SQLITE_TRANSIENT);
+
+	rc = sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+	return rc == SQLITE_DONE;
+}
+
+
+int32
+DatabaseManager::LoadGroups(OwningObjectList<BString>& outNames)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL)
+		return 0;
+
+	const char* sql = "SELECT name FROM contact_groups ORDER BY name ASC";
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
+	if (rc != SQLITE_OK)
+		return 0;
+
+	int32 count = 0;
+	while (sqlite3_step(stmt) == SQLITE_ROW) {
+		const char* name = (const char*)sqlite3_column_text(stmt, 0);
+		if (name != NULL) {
+			outNames.AddItem(new BString(name));
+			count++;
+		}
+	}
+
+	sqlite3_finalize(stmt);
+	return count;
+}
+
+
+int32
+DatabaseManager::LoadGroupMembers(const char* groupName,
+	OwningObjectList<BString>& outKeys)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL || groupName == NULL)
+		return 0;
+
+	const char* sql =
+		"SELECT contact_key FROM contact_group_members "
+		"WHERE group_name = ? ORDER BY contact_key ASC";
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
+	if (rc != SQLITE_OK)
+		return 0;
+
+	sqlite3_bind_text(stmt, 1, groupName, -1, SQLITE_TRANSIENT);
+
+	int32 count = 0;
+	while (sqlite3_step(stmt) == SQLITE_ROW) {
+		const char* key = (const char*)sqlite3_column_text(stmt, 0);
+		if (key != NULL) {
+			outKeys.AddItem(new BString(key));
+			count++;
+		}
+	}
+
+	sqlite3_finalize(stmt);
+	return count;
+}
+
+
+BString
+DatabaseManager::GetContactGroup(const char* contactKeyHex)
+{
+	BAutolock lock(fLock);
+	BString result;
+	if (fDB == NULL || contactKeyHex == NULL)
+		return result;
+
+	const char* sql =
+		"SELECT group_name FROM contact_group_members WHERE contact_key = ?";
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
+	if (rc != SQLITE_OK)
+		return result;
+
+	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
+
+	if (sqlite3_step(stmt) == SQLITE_ROW) {
+		const char* name = (const char*)sqlite3_column_text(stmt, 0);
+		if (name != NULL)
+			result = name;
+	}
+
+	sqlite3_finalize(stmt);
+	return result;
+}
+
+
+bool
 DatabaseManager::InsertTelemetry(uint32 nodeId, const char* sensorName,
 	uint8 sensorType, float value, const char* unit)
 {
@@ -806,6 +1095,34 @@ DatabaseManager::_CreateTables()
 	ok = _Execute(
 		"CREATE INDEX IF NOT EXISTS idx_telemetry_node_sensor "
 		"ON telemetry_history (node_id, sensor_name, timestamp)");
+	if (!ok)
+		return false;
+
+	// Mute settings table — stores muted contacts and channels
+	ok = _Execute(
+		"CREATE TABLE IF NOT EXISTS mute_settings ("
+		"  key_hex TEXT PRIMARY KEY,"
+		"  muted INTEGER NOT NULL DEFAULT 0"
+		")");
+	if (!ok)
+		return false;
+
+	// Contact groups table
+	ok = _Execute(
+		"CREATE TABLE IF NOT EXISTS contact_groups ("
+		"  name TEXT PRIMARY KEY"
+		")");
+	if (!ok)
+		return false;
+
+	// Contact group membership table
+	ok = _Execute(
+		"CREATE TABLE IF NOT EXISTS contact_group_members ("
+		"  group_name TEXT NOT NULL,"
+		"  contact_key TEXT NOT NULL,"
+		"  PRIMARY KEY (group_name, contact_key),"
+		"  FOREIGN KEY (group_name) REFERENCES contact_groups(name) ON DELETE CASCADE"
+		")");
 
 	return ok;
 }

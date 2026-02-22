@@ -37,6 +37,9 @@ public:
 			void			SetChannelIndex(int32 index) { fChannelIndex = index; }
 			int32			ChannelIndex() const { return fChannelIndex; }
 
+			void			SetMuted(bool muted) { fMuted = muted; }
+			bool			IsMuted() const { return fMuted; }
+
 private:
 			void			_DrawAvatar(BView* owner, BRect rect);
 			rgb_color		_AvatarColor() const;
@@ -48,6 +51,7 @@ private:
 			uint32			fLastMessageTime;
 			int32			fUnreadCount;
 			bool			fIsChannel;
+			bool			fMuted;
 			int32			fChannelIndex;	// -1 = public ch, >= 0 = private ch slot
 
 			float			fBaselineOffset;

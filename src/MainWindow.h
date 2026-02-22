@@ -150,6 +150,14 @@ private:
 			// GPX export
 			void			_ExportGPX(const char* path);
 
+			// Mute helpers
+			bool			_IsMuted(const char* keyHex);
+			void			_SetMuted(const char* keyHex, bool muted);
+
+			// Contact group helpers
+			void			_LoadContactGroups();
+			void			_RefreshContactList();
+
 			SerialHandler*	fSerialHandler;
 			ProtocolHandler* fProtocol;
 
@@ -288,6 +296,12 @@ private:
 			bigtime_t		fPingStartTime;
 			uint8			fPingTargetKey[kPubKeyPrefixSize];
 			bool			fPingPending;
+
+			// Mute state
+			BMessage		fMutedKeys;
+
+			// Contact groups
+			OwningObjectList<BString>	fGroupNames;
 };
 
 

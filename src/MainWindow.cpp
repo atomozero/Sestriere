@@ -32,6 +32,7 @@
 #include <Roster.h>
 #include <ScrollView.h>
 #include <SplitView.h>
+#include <StringItem.h>
 #include <StringView.h>
 #include <TextControl.h>
 
@@ -280,6 +281,10 @@ MainWindow::MainWindow()
 	fMqttClient = NULL;
 	_LoadMqttSettings();  // Just load settings, don't create client yet
 	fTopBar->SetMqttEnabled(fMqttSettings.enabled);
+
+	// Load muted keys and contact groups from database
+	DatabaseManager::Instance()->LoadAllMuted(&fMutedKeys);
+	_LoadContactGroups();
 
 	fprintf(stderr, "[MainWindow] Refreshing ports...\n");
 
@@ -1162,13 +1167,33 @@ MainWindow::MessageReceived(BMessage* message)
 				// Public Channel context menu — offer "Add Channel"
 				menu->AddItem(new BMenuItem("Add Channel" B_UTF8_ELLIPSIS,
 					new BMessage(MSG_ADD_CHANNEL)));
+				// Mute/Unmute public channel
+				menu->AddSeparatorItem();
+				BMessage* muteMsg = new BMessage(MSG_CONTACT_MUTE_TOGGLE);
+				muteMsg->AddString("key_hex", "ch_public");
+				bool isMuted = _IsMuted("ch_public");
+				menu->AddItem(new BMenuItem(
+					isMuted ? "Unmute Channel" : "Mute Channel", muteMsg));
 			} else if (ctxItem->IsChannel() && ctxItem->ChannelIndex() >= 0) {
 				// Private channel context menu
 				BMessage* removeMsg = new BMessage(MSG_REMOVE_CHANNEL);
 				removeMsg->AddInt32("channel_idx", ctxItem->ChannelIndex());
 				menu->AddItem(new BMenuItem("Remove Channel", removeMsg));
+				// Mute/Unmute private channel
+				menu->AddSeparatorItem();
+				char chKey[16];
+				snprintf(chKey, sizeof(chKey), "ch_%d",
+					ctxItem->ChannelIndex());
+				BMessage* muteMsg = new BMessage(MSG_CONTACT_MUTE_TOGGLE);
+				muteMsg->AddString("key_hex", chKey);
+				bool isMuted = _IsMuted(chKey);
+				menu->AddItem(new BMenuItem(
+					isMuted ? "Unmute" : "Mute", muteMsg));
 			} else {
 				// Contact context menu
+				char contactHex[kContactHexSize];
+				FormatContactKey(contactHex, ctxItem->GetContact().publicKey);
+
 				BMessage* pingMsg = new BMessage(MSG_CONTACT_PING);
 				pingMsg->AddData("pubkey", B_RAW_TYPE,
 					ctxItem->GetContact().publicKey, kPubKeySize);
@@ -1177,6 +1202,63 @@ MainWindow::MessageReceived(BMessage* message)
 				resetMsg->AddData("pubkey", B_RAW_TYPE,
 					ctxItem->GetContact().publicKey, kPubKeySize);
 				menu->AddItem(new BMenuItem("Reset Path", resetMsg));
+				menu->AddSeparatorItem();
+
+				// Mute/Unmute contact
+				BMessage* muteMsg = new BMessage(MSG_CONTACT_MUTE_TOGGLE);
+				muteMsg->AddString("key_hex", contactHex);
+				bool isMuted = _IsMuted(contactHex);
+				menu->AddItem(new BMenuItem(
+					isMuted ? "Unmute" : "Mute", muteMsg));
+
+				// Group submenu
+				BMenu* groupMenu = new BMenu("Group");
+				// "New Group..." option
+				BMessage* newGroupMsg = new BMessage(MSG_GROUP_CREATE);
+				newGroupMsg->AddString("contact_key", contactHex);
+				groupMenu->AddItem(new BMenuItem(
+					"New Group" B_UTF8_ELLIPSIS, newGroupMsg));
+
+				BString currentGroup =
+					DatabaseManager::Instance()->GetContactGroup(contactHex);
+
+				if (fGroupNames.CountItems() > 0) {
+					groupMenu->AddSeparatorItem();
+					for (int32 g = 0; g < fGroupNames.CountItems(); g++) {
+						BString* gName = fGroupNames.ItemAt(g);
+						if (gName == NULL)
+							continue;
+						BMessage* addMsg =
+							new BMessage(MSG_GROUP_ADD_CONTACT);
+						addMsg->AddString("group_name", gName->String());
+						addMsg->AddString("contact_key", contactHex);
+						BMenuItem* gItem = new BMenuItem(
+							gName->String(), addMsg);
+						if (currentGroup == *gName)
+							gItem->SetMarked(true);
+						groupMenu->AddItem(gItem);
+					}
+				}
+
+				if (currentGroup.Length() > 0) {
+					groupMenu->AddSeparatorItem();
+					BMessage* rmMsg =
+						new BMessage(MSG_GROUP_REMOVE_CONTACT);
+					rmMsg->AddString("group_name", currentGroup.String());
+					rmMsg->AddString("contact_key", contactHex);
+					groupMenu->AddItem(new BMenuItem(
+						"Remove from Group", rmMsg));
+
+					BMessage* delMsg =
+						new BMessage(MSG_GROUP_DELETE);
+					delMsg->AddString("group_name", currentGroup.String());
+					groupMenu->AddItem(new BMenuItem(
+						"Delete Group", delMsg));
+				}
+
+				groupMenu->SetTargetForItems(this);
+				menu->AddItem(groupMenu);
+
 				menu->AddSeparatorItem();
 				BMessage* removeMsg = new BMessage(MSG_CONTACT_REMOVE);
 				removeMsg->AddData("pubkey", B_RAW_TYPE,
@@ -1383,6 +1465,78 @@ MainWindow::MessageReceived(BMessage* message)
 
 			_LogMessage("OK", BString().SetToFormat(
 				"Created channel #%s (slot %d)", name, (int)emptySlot));
+			break;
+		}
+
+		case MSG_CONTACT_MUTE_TOGGLE:
+		{
+			const char* keyHex = message->GetString("key_hex", "");
+			if (keyHex[0] != '\0') {
+				bool currentlyMuted = _IsMuted(keyHex);
+				_SetMuted(keyHex, !currentlyMuted);
+			}
+			break;
+		}
+
+		case MSG_GROUP_CREATE:
+		{
+			const char* contactKey = message->GetString("contact_key", "");
+			// Generate incremental group name
+			BString groupName;
+			groupName.SetToFormat("Group %d",
+				(int)fGroupNames.CountItems() + 1);
+
+			DatabaseManager::Instance()->CreateGroup(groupName.String());
+			if (contactKey[0] != '\0')
+				DatabaseManager::Instance()->AddContactToGroup(
+					groupName.String(), contactKey);
+			_LoadContactGroups();
+			_RefreshContactList();
+
+			_LogMessage("INFO", BString().SetToFormat(
+				"Created group \"%s\"", groupName.String()));
+			break;
+		}
+
+		case MSG_GROUP_ADD_CONTACT:
+		{
+			const char* groupName = message->GetString("group_name", "");
+			const char* contactKey = message->GetString("contact_key", "");
+			if (groupName[0] != '\0' && contactKey[0] != '\0') {
+				// If already in this group, remove instead (toggle)
+				BString current =
+					DatabaseManager::Instance()->GetContactGroup(contactKey);
+				if (current == groupName)
+					DatabaseManager::Instance()->RemoveContactFromGroup(
+						groupName, contactKey);
+				else
+					DatabaseManager::Instance()->AddContactToGroup(
+						groupName, contactKey);
+				_RefreshContactList();
+			}
+			break;
+		}
+
+		case MSG_GROUP_REMOVE_CONTACT:
+		{
+			const char* groupName = message->GetString("group_name", "");
+			const char* contactKey = message->GetString("contact_key", "");
+			if (groupName[0] != '\0' && contactKey[0] != '\0') {
+				DatabaseManager::Instance()->RemoveContactFromGroup(
+					groupName, contactKey);
+				_RefreshContactList();
+			}
+			break;
+		}
+
+		case MSG_GROUP_DELETE:
+		{
+			const char* groupName = message->GetString("group_name", "");
+			if (groupName[0] != '\0') {
+				DatabaseManager::Instance()->DeleteGroup(groupName);
+				_LoadContactGroups();
+				_RefreshContactList();
+			}
 			break;
 		}
 
@@ -3367,10 +3521,13 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 	ContactItem* item = _FindContactItemByPrefix(senderPrefix);
 	if (item != NULL) {
 		item->SetLastMessage(text, timestamp);
-		// Increment unread if not currently viewing this contact
-		if (fChatView->CurrentContact() == NULL ||
-			memcmp(fChatView->CurrentContact()->publicKey, senderPrefix,
-				kPubKeyPrefixSize) != 0) {
+		// Increment unread if not currently viewing this contact (skip if muted)
+		char muteCheckHex[kContactHexSize];
+		FormatContactKey(muteCheckHex, senderPrefix);
+		if (!_IsMuted(muteCheckHex)
+			&& (fChatView->CurrentContact() == NULL
+				|| memcmp(fChatView->CurrentContact()->publicKey, senderPrefix,
+					kPubKeyPrefixSize) != 0)) {
 			item->IncrementUnread();
 		}
 		fContactList->Invalidate();
@@ -3403,10 +3560,14 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 		}
 	}
 
-	// Desktop notification if window not active
-	if (!IsActive()) {
-		NotificationManager::Instance()->NotifyNewMessage(
-			senderName.String(), text, false);
+	// Desktop notification if window not active and not muted
+	{
+		char notifyHex[kContactHexSize];
+		FormatContactKey(notifyHex, senderPrefix);
+		if (!IsActive() && !_IsMuted(notifyHex)) {
+			NotificationManager::Instance()->NotifyNewMessage(
+				senderName.String(), text, false);
+		}
 	}
 
 	// Trigger pulse and update link quality on network map
@@ -3589,10 +3750,19 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 	if (isCurrentChannel)
 		fChatView->AddMessage(chatMsg, senderName.String());
 
+	// Build channel mute key
+	char channelMuteKey[16];
+	if (channelIdx == 0)
+		strlcpy(channelMuteKey, "ch_public", sizeof(channelMuteKey));
+	else
+		snprintf(channelMuteKey, sizeof(channelMuteKey), "ch_%d",
+			(int)channelIdx);
+	bool channelMuted = _IsMuted(channelMuteKey);
+
 	// Update sidebar item
 	if (channelIdx == 0) {
 		fChannelItem->SetLastMessage(messageText, timestamp);
-		if (!isCurrentChannel)
+		if (!isCurrentChannel && !channelMuted)
 			fChannelItem->IncrementUnread();
 		fContactList->InvalidateItem(0);
 	} else {
@@ -3602,7 +3772,7 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 			if (ci != NULL && ci->IsChannel()
 				&& ci->ChannelIndex() == (int32)channelIdx) {
 				ci->SetLastMessage(messageText, timestamp);
-				if (!isCurrentChannel)
+				if (!isCurrentChannel && !channelMuted)
 					ci->IncrementUnread();
 				fContactList->InvalidateItem(i);
 				break;
@@ -3610,8 +3780,8 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 		}
 	}
 
-	// Desktop notification if window not active
-	if (!IsActive()) {
+	// Desktop notification if window not active and channel not muted
+	if (!IsActive() && !channelMuted) {
 		NotificationManager::Instance()->NotifyNewMessage(
 			senderName.String(), messageText, true);
 	}
@@ -4443,6 +4613,10 @@ MainWindow::_FilterContacts(const char* filter)
 		delete item;
 	}
 
+	// Set muted state on Public Channel item
+	if (fChannelItem != NULL)
+		fChannelItem->SetMuted(_IsMuted("ch_public"));
+
 	bool hasFilter = (filter != NULL && filter[0] != '\0');
 
 	// Add private channels after Public Channel
@@ -4464,27 +4638,178 @@ MainWindow::_FilterContacts(const char* filter)
 		label.SetToFormat("#%s", ch->name);
 		ContactItem* item = new ContactItem(label.String(), true);
 		item->SetChannelIndex(ch->index);
+
+		// Set muted state on private channel
+		char chKey[16];
+		snprintf(chKey, sizeof(chKey), "ch_%d", (int)ch->index);
+		item->SetMuted(_IsMuted(chKey));
+
 		fContactList->AddItem(item);
 	}
 
-	// Add contacts that match the filter
-	for (int32 i = 0; i < fContacts.CountItems(); i++) {
-		ContactInfo* contact = fContacts.ItemAt(i);
-		if (contact == NULL || !contact->isValid)
-			continue;
+	// Build grouped contact list
+	DatabaseManager* db = DatabaseManager::Instance();
+	bool hasGroups = (fGroupNames.CountItems() > 0);
 
-		// Apply case-insensitive filter on name
-		if (hasFilter) {
-			BString name(contact->name);
-			BString query(filter);
-			name.ToLower();
-			query.ToLower();
-			if (name.FindFirst(query) < 0)
+	if (hasGroups) {
+		// Track which contacts have been added (by index in fContacts)
+		int32 contactCount = fContacts.CountItems();
+		bool* added = new bool[contactCount];
+		memset(added, 0, contactCount * sizeof(bool));
+
+		// For each group, add a separator and its members
+		for (int32 g = 0; g < fGroupNames.CountItems(); g++) {
+			BString* groupName = fGroupNames.ItemAt(g);
+			if (groupName == NULL)
 				continue;
+
+			// Check if group name matches filter
+			if (hasFilter) {
+				BString gLower(*groupName);
+				gLower.ToLower();
+				BString qLower(filter);
+				qLower.ToLower();
+				// Show group if its name matches, or if any member matches
+				// We'll check member match below
+			}
+
+			// Collect members of this group
+			OwningObjectList<BString> memberKeys;
+			db->LoadGroupMembers(groupName->String(), memberKeys);
+
+			// Find matching contacts for this group
+			bool groupHasVisibleMembers = false;
+			for (int32 m = 0; m < memberKeys.CountItems(); m++) {
+				BString* mk = memberKeys.ItemAt(m);
+				if (mk == NULL)
+					continue;
+				for (int32 c = 0; c < contactCount; c++) {
+					if (added[c])
+						continue;
+					ContactInfo* contact = fContacts.ItemAt(c);
+					if (contact == NULL || !contact->isValid)
+						continue;
+					char hex[kContactHexSize];
+					FormatContactKey(hex, contact->publicKey);
+					if (*mk != hex)
+						continue;
+					// Apply filter
+					if (hasFilter) {
+						BString name(contact->name);
+						BString query(filter);
+						name.ToLower();
+						query.ToLower();
+						BString gLower(*groupName);
+						gLower.ToLower();
+						if (name.FindFirst(query) < 0
+							&& gLower.FindFirst(query) < 0)
+							continue;
+					}
+					groupHasVisibleMembers = true;
+					break;
+				}
+				if (groupHasVisibleMembers)
+					break;
+			}
+
+			if (!groupHasVisibleMembers)
+				continue;
+
+			// Add group separator
+			BStringItem* separator = new BStringItem(
+				groupName->String());
+			separator->SetEnabled(false);
+			fContactList->AddItem(separator);
+
+			// Add member contacts
+			for (int32 m = 0; m < memberKeys.CountItems(); m++) {
+				BString* mk = memberKeys.ItemAt(m);
+				if (mk == NULL)
+					continue;
+				for (int32 c = 0; c < contactCount; c++) {
+					if (added[c])
+						continue;
+					ContactInfo* contact = fContacts.ItemAt(c);
+					if (contact == NULL || !contact->isValid)
+						continue;
+					char hex[kContactHexSize];
+					FormatContactKey(hex, contact->publicKey);
+					if (*mk != hex)
+						continue;
+					if (hasFilter) {
+						BString name(contact->name);
+						BString query(filter);
+						name.ToLower();
+						query.ToLower();
+						BString gLower(*groupName);
+						gLower.ToLower();
+						if (name.FindFirst(query) < 0
+							&& gLower.FindFirst(query) < 0)
+							continue;
+					}
+					ContactItem* item = new ContactItem(*contact);
+					item->SetMuted(_IsMuted(hex));
+					fContactList->AddItem(item);
+					added[c] = true;
+					break;
+				}
+			}
 		}
 
-		ContactItem* item = new ContactItem(*contact);
-		fContactList->AddItem(item);
+		// Add ungrouped contacts
+		bool addedUngroupedHeader = false;
+		for (int32 c = 0; c < contactCount; c++) {
+			if (added[c])
+				continue;
+			ContactInfo* contact = fContacts.ItemAt(c);
+			if (contact == NULL || !contact->isValid)
+				continue;
+			if (hasFilter) {
+				BString name(contact->name);
+				BString query(filter);
+				name.ToLower();
+				query.ToLower();
+				if (name.FindFirst(query) < 0)
+					continue;
+			}
+			if (!addedUngroupedHeader) {
+				BStringItem* separator =
+					new BStringItem("Ungrouped");
+				separator->SetEnabled(false);
+				fContactList->AddItem(separator);
+				addedUngroupedHeader = true;
+			}
+			char hex[kContactHexSize];
+			FormatContactKey(hex, contact->publicKey);
+			ContactItem* item = new ContactItem(*contact);
+			item->SetMuted(_IsMuted(hex));
+			fContactList->AddItem(item);
+		}
+
+		delete[] added;
+	} else {
+		// No groups — flat list (original behavior)
+		for (int32 i = 0; i < fContacts.CountItems(); i++) {
+			ContactInfo* contact = fContacts.ItemAt(i);
+			if (contact == NULL || !contact->isValid)
+				continue;
+
+			// Apply case-insensitive filter on name
+			if (hasFilter) {
+				BString name(contact->name);
+				BString query(filter);
+				name.ToLower();
+				query.ToLower();
+				if (name.FindFirst(query) < 0)
+					continue;
+			}
+
+			char hex[kContactHexSize];
+			FormatContactKey(hex, contact->publicKey);
+			ContactItem* item = new ContactItem(*contact);
+			item->SetMuted(_IsMuted(hex));
+			fContactList->AddItem(item);
+		}
 	}
 
 	// Re-enable selection messages
@@ -5126,4 +5451,83 @@ MainWindow::_ExportGPX(const char* path)
 
 	_LogMessage("OK", BString().SetToFormat(
 		"Exported %d contacts with GPS to %s", (int)exported, path));
+}
+
+
+bool
+MainWindow::_IsMuted(const char* keyHex)
+{
+	const char* key;
+	for (int32 i = 0;
+		fMutedKeys.FindString("muted_key", i, &key) == B_OK; i++) {
+		if (strcmp(key, keyHex) == 0)
+			return true;
+	}
+	return false;
+}
+
+
+void
+MainWindow::_SetMuted(const char* keyHex, bool muted)
+{
+	DatabaseManager::Instance()->SetMuted(keyHex, muted);
+
+	// Update in-memory cache
+	if (muted) {
+		if (!_IsMuted(keyHex))
+			fMutedKeys.AddString("muted_key", keyHex);
+	} else {
+		// Remove from fMutedKeys
+		const char* key;
+		for (int32 i = 0;
+			fMutedKeys.FindString("muted_key", i, &key) == B_OK; i++) {
+			if (strcmp(key, keyHex) == 0) {
+				fMutedKeys.RemoveData("muted_key", i);
+				break;
+			}
+		}
+	}
+
+	// Update visual state on matching sidebar items
+	for (int32 i = 0; i < fContactList->CountItems(); i++) {
+		ContactItem* ci = dynamic_cast<ContactItem*>(fContactList->ItemAt(i));
+		if (ci == NULL)
+			continue;
+
+		if (ci->IsChannel()) {
+			char channelKey[16];
+			if (i == 0)
+				strlcpy(channelKey, "ch_public", sizeof(channelKey));
+			else
+				snprintf(channelKey, sizeof(channelKey), "ch_%d",
+					ci->ChannelIndex());
+			if (strcmp(channelKey, keyHex) == 0) {
+				ci->SetMuted(muted);
+				fContactList->InvalidateItem(i);
+			}
+		} else {
+			char contactHex[kContactHexSize];
+			FormatContactKey(contactHex, ci->GetContact().publicKey);
+			if (strcmp(contactHex, keyHex) == 0) {
+				ci->SetMuted(muted);
+				fContactList->InvalidateItem(i);
+			}
+		}
+	}
+}
+
+
+void
+MainWindow::_LoadContactGroups()
+{
+	fGroupNames.MakeEmpty();
+	DatabaseManager::Instance()->LoadGroups(fGroupNames);
+}
+
+
+void
+MainWindow::_RefreshContactList()
+{
+	const char* filter = fSearchField ? fSearchField->Text() : "";
+	_FilterContacts(filter);
 }

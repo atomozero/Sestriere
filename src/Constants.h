@@ -287,6 +287,15 @@ enum {
 	MSG_PROFILE_IMPORT_CHANNELS = 'pich',
 	MSG_PROFILE_IMPORT_RADIO = 'pird',
 	MSG_PROFILE_IMPORT_MQTT = 'pimq',
+
+	// Mute toggle
+	MSG_CONTACT_MUTE_TOGGLE = 'cmut',
+
+	// Contact groups
+	MSG_GROUP_ADD_CONTACT = 'gadd',
+	MSG_GROUP_REMOVE_CONTACT = 'grmv',
+	MSG_GROUP_CREATE = 'gcrt',
+	MSG_GROUP_DELETE = 'gdel',
 };
 
 // =============================================================================
