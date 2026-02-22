@@ -890,11 +890,7 @@ ContactInfoPanel::_DrawAdminSections(float& y)
 	_DrawSectionHeader(y, "Device");
 
 	// Battery — percentage with color
-	int battPct = 0;
-	if (fBattMv > 0)
-		battPct = ((int)fBattMv - kBattMinMv) * 100 / kBattRangeMv;
-	if (battPct < 0) battPct = 0;
-	if (battPct > 100) battPct = 100;
+	int battPct = BatteryPercent(fBattMv);
 
 	rgb_color battColor;
 	if (battPct > 50)

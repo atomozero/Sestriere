@@ -1614,9 +1614,7 @@ MissionControlWindow::SetBatteryInfo(uint16 battMv, uint32 usedKb,
 	fUsedKb = usedKb;
 	fTotalKb = totalKb;
 
-	int32 pct = 0;
-	if (battMv >= 4200) pct = 100;
-	else if (battMv >= 3300) pct = (int32)((battMv - 3300) / 9.0f);
+	int32 pct = BatteryPercent(battMv);
 
 	char battStr[32];
 	snprintf(battStr, sizeof(battStr), "%d%% (%u mV)", (int)pct,

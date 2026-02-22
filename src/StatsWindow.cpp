@@ -424,11 +424,7 @@ StatsWindow::_UpdateDisplay()
 
 	// Battery
 	if (fCoreStats.batteryMv > 0) {
-		int32 pct = 0;
-		if (fCoreStats.batteryMv > kBattMinMv)
-			pct = (int32)((fCoreStats.batteryMv - kBattMinMv) * 100
-				/ kBattRangeMv);
-		if (pct > 100) pct = 100;
+		int32 pct = BatteryPercent(fCoreStats.batteryMv);
 		snprintf(buf, sizeof(buf), "%u mV (%d%%)",
 			(unsigned)fCoreStats.batteryMv, (int)pct);
 		rgb_color battColor;

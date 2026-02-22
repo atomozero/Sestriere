@@ -20,6 +20,7 @@
 #include <cstring>
 
 #include "Constants.h"
+#include "Utils.h"
 
 
 // Messages from the app to update replicant state
@@ -186,10 +187,7 @@ DeskbarReplicant::MessageReceived(BMessage* message)
 		{
 			uint16 mV;
 			if (message->FindUInt16("battery_mv", &mV) == B_OK) {
-				// Convert mV to percentage (3.0V=0%, 4.2V=100%)
-				int level = ((int)mV - kBattMinMv) * 100 / kBattRangeMv;
-				if (level < 0) level = 0;
-				if (level > 100) level = 100;
+				int level = BatteryPercent(mV);
 				SetBatteryLevel((uint8)level);
 			}
 			break;

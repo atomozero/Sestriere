@@ -150,4 +150,46 @@ FormatUptime(char* dest, size_t size, uint32 totalSeconds)
 }
 
 
+// Battery chemistry types with voltage curves
+enum BatteryChemistry {
+	BATTERY_LIPO = 0,		// LiPo/Li-ion: 3.0V-4.2V (default)
+	BATTERY_LIFEPO4 = 1,	// LiFePO4: 2.5V-3.65V
+	BATTERY_NMC = 2,		// NMC (18650): 2.5V-4.2V
+	BATTERY_CHEMISTRY_COUNT
+};
+
+// Battery voltage ranges per chemistry (millivolts)
+struct BatteryRange {
+	uint16 minMv;
+	uint16 maxMv;
+};
+
+static const BatteryRange kBatteryRanges[] = {
+	{ 3000, 4200 },		// LiPo: 3.0V-4.2V
+	{ 2500, 3650 },		// LiFePO4: 2.5V-3.65V
+	{ 2500, 4200 },		// NMC: 2.5V-4.2V
+};
+
+static const char* const kBatteryChemistryNames[] = {
+	"LiPo",
+	"LiFePO4",
+	"NMC",
+};
+
+// Calculate battery percentage for given chemistry
+inline int32
+BatteryPercent(uint16 millivolts, BatteryChemistry chemistry = BATTERY_LIPO)
+{
+	if (chemistry >= BATTERY_CHEMISTRY_COUNT)
+		chemistry = BATTERY_LIPO;
+	const BatteryRange& range = kBatteryRanges[chemistry];
+	if (millivolts <= range.minMv)
+		return 0;
+	if (millivolts >= range.maxMv)
+		return 100;
+	return ((int)millivolts - range.minMv) * 100
+		/ (range.maxMv - range.minMv);
+}
+
+
 #endif // UTILS_H
