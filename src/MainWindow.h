@@ -281,6 +281,11 @@ private:
 
 			// GPX export
 			BFilePanel*		fGpxSavePanel;
+
+			// Ping
+			bigtime_t		fPingStartTime;
+			uint8			fPingTargetKey[kPubKeyPrefixSize];
+			bool			fPingPending;
 };
 
 

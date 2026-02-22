@@ -244,6 +244,9 @@ MainWindow::MainWindow()
 	memset(fLoginTargetKey, 0, sizeof(fLoginTargetKey));
 	fTelemetryPollIndex = 0;
 	fGpxSavePanel = NULL;
+	fPingStartTime = 0;
+	fPingPending = false;
+	memset(fPingTargetKey, 0, sizeof(fPingTargetKey));
 	memset(fLoggedInKey, 0, sizeof(fLoggedInKey));
 	fHasDeviceInfo = false;
 	fRadioFreq = 0;
@@ -1161,6 +1164,10 @@ MainWindow::MessageReceived(BMessage* message)
 				menu->AddItem(new BMenuItem("Remove Channel", removeMsg));
 			} else {
 				// Contact context menu
+				BMessage* pingMsg = new BMessage(MSG_CONTACT_PING);
+				pingMsg->AddData("pubkey", B_RAW_TYPE,
+					ctxItem->GetContact().publicKey, kPubKeySize);
+				menu->AddItem(new BMenuItem("Ping", pingMsg));
 				BMessage* resetMsg = new BMessage(MSG_CONTACT_RESET_PATH);
 				resetMsg->AddData("pubkey", B_RAW_TYPE,
 					ctxItem->GetContact().publicKey, kPubKeySize);
@@ -1175,6 +1182,37 @@ MainWindow::MessageReceived(BMessage* message)
 			menu->SetTargetForItems(this);
 			menu->Go(screenPt, true, true);
 			delete menu;
+			break;
+		}
+
+		case MSG_CONTACT_PING:
+		{
+			if (!fConnected) {
+				_LogMessage("WARN", "Not connected");
+				break;
+			}
+			const void* keyData;
+			ssize_t keySize;
+			if (message->FindData("pubkey", B_RAW_TYPE, &keyData, &keySize) == B_OK
+				&& keySize >= (ssize_t)kPubKeyPrefixSize) {
+				// Send trace path as ping mechanism
+				uint8 payload[7];
+				payload[0] = CMD_SEND_TRACE_PATH;
+				memcpy(payload + 1, keyData, kPubKeyPrefixSize);
+				fSerialHandler->SendFrame(payload, 7);
+
+				// Record ping start
+				fPingStartTime = system_time();
+				memcpy(fPingTargetKey, keyData, kPubKeyPrefixSize);
+				fPingPending = true;
+
+				ContactInfo* contact = _FindContactByPrefix(
+					(const uint8*)keyData, kPubKeyPrefixSize);
+				_LogMessage("PING", BString().SetToFormat(
+					"Pinging %s...",
+					(contact && contact->name[0])
+						? contact->name : "(unknown)"));
+			}
 			break;
 		}
 
@@ -3808,6 +3846,31 @@ MainWindow::_HandlePushTraceData(const uint8* data, size_t length)
 	if (_LockIfVisible(fNetworkMapWindow)) {
 		fNetworkMapWindow->HandleTraceData(data, length);
 		fNetworkMapWindow->UnlockLooper();
+	}
+
+	// Handle ping response
+	if (fPingPending) {
+		bigtime_t rtt = system_time() - fPingStartTime;
+		fPingPending = false;
+
+		uint8 hops = (length >= 3) ? data[2] : 0;
+		ContactInfo* target = _FindContactByPrefix(
+			fPingTargetKey, kPubKeyPrefixSize);
+		const char* name = (target && target->name[0])
+			? target->name : "(unknown)";
+
+		BString result;
+		if (rtt < 1000)
+			result.SetToFormat("Ping %s: %lld us, %d hop(s)",
+				name, (long long)rtt, hops);
+		else if (rtt < 1000000)
+			result.SetToFormat("Ping %s: %lld ms, %d hop(s)",
+				name, (long long)(rtt / 1000), hops);
+		else
+			result.SetToFormat("Ping %s: %.1f s, %d hop(s)",
+				name, rtt / 1000000.0, hops);
+
+		_LogMessage("PING", result.String());
 	}
 
 	// Log trace path summary
