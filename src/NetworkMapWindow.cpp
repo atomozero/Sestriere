@@ -8,6 +8,7 @@
 #include "NetworkMapWindow.h"
 
 #include "Constants.h"
+#include "RepeaterMonitorView.h"
 
 #include <Application.h>
 #include <Button.h>
@@ -484,6 +485,125 @@ NetworkMapView::SetSelfInfo(const char* name, int8 rssi, int8 snr)
 	}
 	fSelfNode.rssi = rssi;
 	fSelfNode.snr = snr;
+	Invalidate();
+}
+
+
+void
+NetworkMapView::SetRepeaterTopology(const char* selfName,
+	const RepeaterNodeInfo* nodes, int32 nodeCount,
+	const RepeaterLink* links, int32 linkCount)
+{
+	// Clear selection
+	fSelectedNode = NULL;
+
+	// Keep existing nodes to preserve animation state
+	BObjectList<MapNode> oldNodes(20);
+	while (fNodes.CountItems() > 0) {
+		MapNode* node = fNodes.RemoveItemAt(0);
+		if (node != NULL)
+			oldNodes.AddItem(node);
+	}
+
+	// Clear existing edges
+	fEdges.MakeEmpty();
+
+	// Update self node
+	if (selfName != NULL && selfName[0] != '\0')
+		strlcpy(fSelfNode.name, selfName, sizeof(fSelfNode.name));
+
+	// Create MapNodes from RepeaterNodeInfo
+	for (int32 i = 0; i < nodeCount; i++) {
+		const RepeaterNodeInfo& info = nodes[i];
+		if (info.name[0] == '\0')
+			continue;
+
+		// Build synthetic pubkey prefix from hex ID
+		uint8 syntheticPrefix[kPubKeyPrefixSize];
+		memset(syntheticPrefix, 0, sizeof(syntheticPrefix));
+		// Parse hex ID (e.g. "FD") into first byte
+		unsigned int hexVal = 0;
+		sscanf(info.name, "%x", &hexVal);
+		syntheticPrefix[0] = (uint8)(hexVal & 0xFF);
+		// Use index as second byte to avoid collisions between
+		// single-byte hex IDs
+		syntheticPrefix[1] = (uint8)(i + 1);
+
+		// Try to reuse existing node for animation continuity
+		MapNode* existingNode = NULL;
+		for (int32 j = 0; j < oldNodes.CountItems(); j++) {
+			MapNode* old = oldNodes.ItemAt(j);
+			if (old && memcmp(old->pubKeyPrefix, syntheticPrefix,
+					kPubKeyPrefixSize) == 0) {
+				existingNode = oldNodes.RemoveItemAt(j);
+				break;
+			}
+		}
+
+		MapNode* node;
+		if (existingNode != NULL) {
+			node = existingNode;
+		} else {
+			node = new MapNode();
+			node->position = fCenter;
+		}
+
+		memcpy(node->pubKeyPrefix, syntheticPrefix, kPubKeyPrefixSize);
+		strlcpy(node->name, info.name, sizeof(node->name));
+		node->nodeType = NODE_UNKNOWN;
+		node->hops = info.isDirect ? 1 : (info.isForwarded ? 2 : 1);
+		node->status = STATUS_ONLINE;  // Seen in log = online
+		node->messageCount = info.packetCount;
+		node->activityLevel = fminf(1.0f, info.packetCount / 20.0f);
+
+		if (info.avgSnr != 0) {
+			node->snr = info.avgSnr;
+			node->hasSNRData = true;
+		}
+		if (info.avgRssi != 0)
+			node->rssi = (int8)(info.avgRssi > 127 ? 127
+				: (info.avgRssi < -128 ? -128 : info.avgRssi));
+
+		node->lastSeen = (uint32)time(NULL);
+
+		fNodes.AddItem(node);
+	}
+
+	// Delete remaining old nodes
+	for (int32 i = 0; i < oldNodes.CountItems(); i++)
+		delete oldNodes.ItemAt(i);
+
+	// Build TopologyEdges from RepeaterLink data
+	for (int32 i = 0; i < linkCount; i++) {
+		const RepeaterLink& link = links[i];
+		if (link.src[0] == '\0' || link.dst[0] == '\0')
+			continue;
+
+		// Find source and dest nodes by name
+		MapNode* srcNode = NULL;
+		MapNode* dstNode = NULL;
+		for (int32 n = 0; n < fNodes.CountItems(); n++) {
+			MapNode* node = fNodes.ItemAt(n);
+			if (node == NULL)
+				continue;
+			if (strcmp(node->name, link.src) == 0)
+				srcNode = node;
+			if (strcmp(node->name, link.dst) == 0)
+				dstNode = node;
+		}
+
+		if (srcNode == NULL || dstNode == NULL)
+			continue;
+
+		TopologyEdge* edge = new TopologyEdge();
+		memcpy(edge->fromPrefix, srcNode->pubKeyPrefix, kPubKeyPrefixSize);
+		memcpy(edge->toPrefix, dstNode->pubKeyPrefix, kPubKeyPrefixSize);
+		edge->snr = link.snr;
+		edge->timestamp = (uint32)time(NULL);
+		edge->ambiguous = false;
+		fEdges.AddItem(edge);
+	}
+
 	Invalidate();
 }
 
@@ -2137,6 +2257,22 @@ NetworkMapWindow::SetSelfInfo(const char* name)
 		strlcpy(fSelfName, name, sizeof(fSelfName));
 		fMapView->SetSelfInfo(fSelfName, 0, 0);
 	}
+}
+
+
+void
+NetworkMapWindow::SetRepeaterTopology(const char* selfName,
+	const RepeaterNodeInfo* nodes, int32 nodeCount,
+	const RepeaterLink* links, int32 linkCount)
+{
+	fMapView->SetRepeaterTopology(selfName, nodes, nodeCount,
+		links, linkCount);
+
+	// Update info label
+	char info[64];
+	snprintf(info, sizeof(info), "Repeater topology — %d nodes, %d links",
+		(int)nodeCount, (int)linkCount);
+	fInfoLabel->SetText(info);
 }
 
 
