@@ -58,6 +58,7 @@
 #include "NetworkMapWindow.h"
 #include "PacketAnalyzerWindow.h"
 #include "ProfileWindow.h"
+#include "SerialMonitorWindow.h"
 #include "NotificationManager.h"
 #include "ProtocolHandler.h"
 #include "SerialHandler.h"
@@ -224,6 +225,7 @@ MainWindow::MainWindow()
 	fMqttLogWindow(NULL),
 	fMissionControlWindow(NULL),
 	fProfileWindow(NULL),
+	fSerialMonitorWindow(NULL),
 	fMqttClient(NULL),
 	fRawPacketCount(0),
 	fLastRawPacketTime(0),
@@ -424,6 +426,8 @@ MainWindow::_BuildMenuBar()
 		new BMessage(MSG_SHOW_PACKET_ANALYZER), 'P', B_SHIFT_KEY));
 	viewMenu->AddItem(new BMenuItem("Mission Control",
 		new BMessage(MSG_SHOW_MISSION_CONTROL), 'D', B_SHIFT_KEY));
+	viewMenu->AddItem(new BMenuItem("Serial Monitor",
+		new BMessage(MSG_SHOW_SERIAL_MONITOR), 'S', B_SHIFT_KEY));
 	viewMenu->AddSeparatorItem();
 	viewMenu->AddItem(new BMenuItem("MQTT Log",
 		new BMessage(MSG_SHOW_MQTT_LOG), 'M', B_SHIFT_KEY));
@@ -676,6 +680,21 @@ MainWindow::MessageReceived(BMessage* message)
 		case MSG_FRAME_SENT:
 			_OnFrameSent(message);
 			break;
+
+		case MSG_RAW_SERIAL_DATA:
+		{
+			const char* line;
+			if (message->FindString("line", &line) == B_OK) {
+				_LogMessage("SERIAL", line);
+				// Forward to Serial Monitor window
+				if (fSerialMonitorWindow != NULL
+					&& fSerialMonitorWindow->LockLooper()) {
+					fSerialMonitorWindow->AppendOutput(line);
+					fSerialMonitorWindow->UnlockLooper();
+				}
+			}
+			break;
+		}
 
 		case MSG_SYNC_CONTACTS:
 			fSyncingContacts = true;
@@ -1148,6 +1167,9 @@ MainWindow::MessageReceived(BMessage* message)
 				delete fStatsRefreshTimer;
 				fStatsRefreshTimer = NULL;
 
+				// Switch to raw mode so '>' in CLI prompts isn't parsed as frame marker
+				fSerialHandler->SetRawMode(true);
+
 				BAlert* alert = new BAlert("No Response",
 					"The connected device is not responding to MeshCore "
 					"Companion Protocol commands.\n\n"
@@ -1156,13 +1178,21 @@ MainWindow::MessageReceived(BMessage* message)
 					"(not a Companion Radio)\n"
 					"  • The device firmware doesn't support the Companion Protocol\n"
 					"  • The baud rate is incorrect\n\n"
-					"Would you like to disconnect?",
-					"Keep Connected", "Disconnect", NULL,
+					"You can open the Serial Monitor to interact with the "
+					"device's text CLI.",
+					"Keep Connected", "Disconnect", "Serial Monitor",
 					B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 				int32 result = alert->Go();
 				if (result == 1) {
 					// User chose to disconnect
 					fSerialHandler->PostMessage(MSG_SERIAL_DISCONNECT);
+				} else if (result == 2) {
+					// User chose Serial Monitor
+					PostMessage(MSG_SHOW_SERIAL_MONITOR);
+					// Send a probe to wake up the CLI
+					BMessage probe(MSG_SERIAL_SEND_RAW);
+					probe.AddString("text", "");
+					fSerialHandler->PostMessage(&probe);
 				}
 			}
 			break;
@@ -1717,6 +1747,25 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_SHOW_SERIAL_MONITOR:
+		{
+			if (fSerialMonitorWindow == NULL) {
+				fSerialMonitorWindow = new SerialMonitorWindow(this);
+				fSerialMonitorWindow->Show();
+			} else {
+				_ShowWindow(fSerialMonitorWindow);
+			}
+			break;
+		}
+
+		case MSG_SERIAL_SEND_RAW:
+		{
+			// Forward raw text command to SerialHandler
+			if (fSerialHandler != NULL)
+				fSerialHandler->PostMessage(message);
+			break;
+		}
+
 		// Repeater admin commands
 		case MSG_ADMIN_SEND_CLI:
 		{
@@ -2192,6 +2241,11 @@ MainWindow::QuitRequested()
 		fProfileWindow->Lock();
 		fProfileWindow->Quit();
 		fProfileWindow = NULL;
+	}
+	if (fSerialMonitorWindow != NULL) {
+		fSerialMonitorWindow->Lock();
+		fSerialMonitorWindow->Quit();
+		fSerialMonitorWindow = NULL;
 	}
 
 	// Destroy singletons

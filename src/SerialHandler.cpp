@@ -32,16 +32,19 @@ SerialHandler::SerialHandler(BHandler* target)
 	fReadThread(-1),
 	fRunning(false),
 	fConnected(false),
+	fRawMode(false),
 	fBufferPos(0),
 	fBufferLen(0),
 	fFramePos(0),
 	fInFrame(false),
 	fExpectedFrameLen(0),
+	fLineLen(0),
 	fLock("serial_lock"),
 	fWriteLock("write_lock")
 {
 	memset(fReadBuffer, 0, sizeof(fReadBuffer));
 	memset(fFrameBuffer, 0, sizeof(fFrameBuffer));
+	memset(fLineBuffer, 0, sizeof(fLineBuffer));
 }
 
 
@@ -66,6 +69,14 @@ SerialHandler::MessageReceived(BMessage* message)
 		case MSG_SERIAL_DISCONNECT:
 			Disconnect();
 			break;
+
+		case MSG_SERIAL_SEND_RAW:
+		{
+			const char* text;
+			if (message->FindString("text", &text) == B_OK)
+				SendRawText(text);
+			break;
+		}
 
 		default:
 			BLooper::MessageReceived(message);
@@ -210,6 +221,7 @@ SerialHandler::Disconnect()
 		BAutolock lock(fLock);
 		fReadThread = -1;
 		fConnected = false;
+		fRawMode = false;
 		fPortName = "";
 	}
 
@@ -259,6 +271,34 @@ SerialHandler::SendFrame(const uint8* payload, size_t length)
 
 
 status_t
+SerialHandler::SendRawText(const char* text)
+{
+	BAutolock lock(fWriteLock);
+
+	if (!fConnected || fSerialFd < 0)
+		return B_NOT_INITIALIZED;
+
+	if (text == NULL)
+		return B_BAD_VALUE;
+
+	size_t len = strlen(text);
+	if (len > 0) {
+		ssize_t written = write(fSerialFd, text, len);
+		if (written < 0)
+			return B_IO_ERROR;
+	}
+
+	// Send \r\n line terminator
+	const char* crlf = "\r\n";
+	ssize_t written = write(fSerialFd, crlf, 2);
+	if (written < 0)
+		return B_IO_ERROR;
+
+	return B_OK;
+}
+
+
+status_t
 SerialHandler::ListPorts(BMessage* outPorts)
 {
 	if (outPorts == NULL)
@@ -293,6 +333,19 @@ SerialHandler::ListPorts(BMessage* outPorts)
 	}
 
 	return B_OK;
+}
+
+
+void
+SerialHandler::SetRawMode(bool raw)
+{
+	fRawMode = raw;
+
+	// If switching to raw mode, abort any in-progress frame
+	if (raw) {
+		fInFrame = false;
+		fFramePos = 0;
+	}
 }
 
 
@@ -341,11 +394,29 @@ SerialHandler::_ProcessBuffer()
 		uint8 byte = fReadBuffer[fBufferPos];
 
 		if (!fInFrame) {
-			// Looking for frame start marker '>'
-			if (byte == kFrameMarkerOutbound) {
+			// Looking for frame start marker '>' (skip in raw mode)
+			if (byte == kFrameMarkerOutbound && !fRawMode) {
+				// Flush any accumulated raw text before switching to frame mode
+				if (fLineLen > 0) {
+					fLineBuffer[fLineLen] = '\0';
+					_NotifyRawLine(fLineBuffer);
+					fLineLen = 0;
+				}
 				fInFrame = true;
 				fFramePos = 0;
 				fExpectedFrameLen = 0;
+			} else {
+				// Non-frame byte — accumulate as raw text line
+				if (byte == '\n' || byte == '\r') {
+					if (fLineLen > 0) {
+						fLineBuffer[fLineLen] = '\0';
+						_NotifyRawLine(fLineBuffer);
+						fLineLen = 0;
+					}
+				} else if (byte >= 0x20 && fLineLen < sizeof(fLineBuffer) - 1) {
+					// Printable character
+					fLineBuffer[fLineLen++] = (char)byte;
+				}
 			}
 			fBufferPos++;
 		} else {
@@ -441,6 +512,22 @@ SerialHandler::_NotifyFrameSent(const uint8* data, size_t length)
 	BMessage msg(MSG_FRAME_SENT);
 	msg.AddData(kFieldData, B_RAW_TYPE, data, length);
 	msg.AddInt32(kFieldSize, length);
+
+	BLooper* looper = fTarget->Looper();
+	if (looper != NULL)
+		looper->PostMessage(&msg, fTarget);
+}
+
+
+void
+SerialHandler::_NotifyRawLine(const char* line)
+{
+	BAutolock lock(fLock);
+	if (fTarget == NULL)
+		return;
+
+	BMessage msg(MSG_RAW_SERIAL_DATA);
+	msg.AddString("line", line);
 
 	BLooper* looper = fTarget->Looper();
 	if (looper != NULL)

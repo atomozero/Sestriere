@@ -291,6 +291,13 @@ enum {
 	// Mute toggle
 	MSG_CONTACT_MUTE_TOGGLE = 'cmut',
 
+	// Raw serial data (non-protocol text from device)
+	MSG_RAW_SERIAL_DATA = 'raws',
+
+	// Serial Monitor
+	MSG_SERIAL_SEND_RAW = 'srnd',
+	MSG_SHOW_SERIAL_MONITOR = 'srmn',
+
 	// Contact groups
 	MSG_GROUP_ADD_CONTACT = 'gadd',
 	MSG_GROUP_REMOVE_CONTACT = 'grmv',

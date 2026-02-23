@@ -41,6 +41,7 @@ class NetworkMapWindow;
 class ProfileWindow;
 class PacketAnalyzerWindow;
 class SerialHandler;
+class SerialMonitorWindow;
 class SettingsWindow;
 class StatsWindow;
 class TelemetryWindow;
@@ -239,6 +240,7 @@ private:
 			MqttLogWindow*	fMqttLogWindow;
 			MissionControlWindow* fMissionControlWindow;
 			ProfileWindow*	fProfileWindow;
+			SerialMonitorWindow* fSerialMonitorWindow;
 
 			// MQTT client
 			MqttClient*		fMqttClient;

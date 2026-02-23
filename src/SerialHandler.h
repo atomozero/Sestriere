@@ -31,7 +31,11 @@ public:
 			bool			IsConnected() const;
 
 			status_t		SendFrame(const uint8* payload, size_t length);
+			status_t		SendRawText(const char* text);
 	static	status_t		ListPorts(BMessage* outPorts);
+
+			void			SetRawMode(bool raw);
+			bool			IsRawMode() const { return fRawMode; }
 
 private:
 			void			_ReadLoop();
@@ -42,6 +46,7 @@ private:
 
 			void			_NotifyFrameReceived(const uint8* data, size_t length);
 			void			_NotifyFrameSent(const uint8* data, size_t length);
+			void			_NotifyRawLine(const char* line);
 			void			_NotifyError(status_t error, const char* message);
 			void			_NotifyConnected();
 			void			_NotifyDisconnected();
@@ -53,6 +58,7 @@ private:
 			thread_id		fReadThread;
 			volatile bool	fRunning;
 			volatile bool	fConnected;
+			volatile bool	fRawMode;
 
 			// Read buffer
 			uint8			fReadBuffer[4096];
@@ -64,6 +70,10 @@ private:
 			size_t			fFramePos;
 			bool			fInFrame;
 			size_t			fExpectedFrameLen;
+
+			// Raw text line buffer (for non-protocol serial output)
+			char			fLineBuffer[512];
+			size_t			fLineLen;
 
 			BLocker			fLock;
 			BLocker			fWriteLock;
