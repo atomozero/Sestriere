@@ -254,6 +254,7 @@ private:
 			BMessageRunner*	fAutoSyncRunner;
 			BMessageRunner*	fAdminRefreshTimer;
 			BMessageRunner*	fTelemetryPollTimer;
+			BMessageRunner*	fHandshakeTimer;
 
 			// Cached stats for status bar
 			uint16			fBatteryMv;

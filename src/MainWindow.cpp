@@ -95,6 +95,7 @@ enum {
 	MSG_ADD_CHANNEL = 'achn',
 	MSG_REMOVE_CHANNEL = 'rmch',
 	MSG_CREATE_CHANNEL = 'crcn',	// From AddChannelWindow
+	MSG_HANDSHAKE_TIMEOUT = 'hstm',
 };
 
 // Timer intervals
@@ -102,6 +103,7 @@ static const bigtime_t kAutoConnectDelay = 1000000;     // 1 second
 static const bigtime_t kStatsRefreshInterval = 10000000; // 10 seconds
 static const bigtime_t kAutoSyncDelay = 3000000;         // 3 seconds
 static const bigtime_t kAdminRefreshInterval = 15000000; // 15 seconds
+static const bigtime_t kHandshakeTimeout = 5000000;      // 5 seconds
 
 
 // Thin BListView subclass to detect right-clicks
@@ -230,6 +232,7 @@ MainWindow::MainWindow()
 	fAutoSyncRunner(NULL),
 	fAdminRefreshTimer(NULL),
 	fTelemetryPollTimer(NULL),
+	fHandshakeTimer(NULL),
 	fBatteryMv(0),
 	fLastRssi(0),
 	fLastSnr(0),
@@ -312,6 +315,7 @@ MainWindow::~MainWindow()
 	delete fAutoConnectTimer;
 	delete fStatsRefreshTimer;
 	delete fAutoSyncRunner;
+	delete fHandshakeTimer;
 
 	// Protocol handler cleanup
 	delete fProtocol;
@@ -1127,6 +1131,39 @@ MainWindow::MessageReceived(BMessage* message)
 			if (fConnected) {
 				fProtocol->SendGetBattery();
 				fProtocol->SendGetStats();
+			}
+			break;
+		}
+
+		case MSG_HANDSHAKE_TIMEOUT:
+		{
+			delete fHandshakeTimer;
+			fHandshakeTimer = NULL;
+
+			if (fConnected && !fHasDeviceInfo) {
+				_LogMessage("WARNING",
+					"Device not responding — this may not be a MeshCore Companion Radio");
+
+				// Stop the stats refresh timer to avoid flooding a non-companion device
+				delete fStatsRefreshTimer;
+				fStatsRefreshTimer = NULL;
+
+				BAlert* alert = new BAlert("No Response",
+					"The connected device is not responding to MeshCore "
+					"Companion Protocol commands.\n\n"
+					"This may happen if:\n"
+					"  • The device is a repeater or standalone node "
+					"(not a Companion Radio)\n"
+					"  • The device firmware doesn't support the Companion Protocol\n"
+					"  • The baud rate is incorrect\n\n"
+					"Would you like to disconnect?",
+					"Keep Connected", "Disconnect", NULL,
+					B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+				int32 result = alert->Go();
+				if (result == 1) {
+					// User chose to disconnect
+					fSerialHandler->PostMessage(MSG_SERIAL_DISCONNECT);
+				}
 			}
 			break;
 		}
@@ -3064,6 +3101,10 @@ MainWindow::_HandleExportContact(const uint8* data, size_t length)
 	if (fPublicKey[0] != '\0') {
 		fHasDeviceInfo = true;
 
+		// Handshake succeeded — cancel timeout
+		delete fHandshakeTimer;
+		fHandshakeTimer = NULL;
+
 		// Update MQTT client with latest settings (including device name)
 		if (fMqttClient != NULL) {
 			fMqttClient->SetSettings(fMqttSettings);
@@ -3423,6 +3464,11 @@ MainWindow::_HandleSelfInfo(const uint8* data, size_t length)
 
 	// Mark that we have device info and publish MQTT status if connected
 	fHasDeviceInfo = true;
+
+	// Handshake succeeded — cancel timeout
+	delete fHandshakeTimer;
+	fHandshakeTimer = NULL;
+
 	if (fMqttClient != NULL && fMqttClient->IsConnected()) {
 		_LogMessage("MQTT", "Device info received, publishing status now");
 		fMqttClient->PublishStatus(fDeviceName, fDeviceFirmware, fDeviceBoard,
@@ -4486,6 +4532,12 @@ MainWindow::_OnConnected(BMessage* message)
 	// Use a one-shot delayed message instead of blocking snooze()
 	BMessage initMsg(MSG_POST_CONNECT_INIT);
 	BMessageRunner::StartSending(this, &initMsg, 100000, 1);  // 100ms, once
+
+	// Start handshake timeout — if device doesn't respond within 5s, warn user
+	delete fHandshakeTimer;
+	fHandshakeTimer = NULL;
+	BMessage hsMsg(MSG_HANDSHAKE_TIMEOUT);
+	fHandshakeTimer = new BMessageRunner(this, &hsMsg, kHandshakeTimeout, 1);
 }
 
 
@@ -4513,6 +4565,10 @@ MainWindow::_OnDisconnected()
 	// Stop telemetry poll timer
 	delete fTelemetryPollTimer;
 	fTelemetryPollTimer = NULL;
+
+	// Stop handshake timer
+	delete fHandshakeTimer;
+	fHandshakeTimer = NULL;
 
 	// Forward to Mission Control
 	if (_LockIfVisible(fMissionControlWindow)) {
