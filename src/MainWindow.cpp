@@ -10,6 +10,7 @@
 #include <Alert.h>
 #include <Application.h>
 #include <Button.h>
+#include <CardView.h>
 #include <Deskbar.h>
 #include <Directory.h>
 #include <Entry.h>
@@ -58,6 +59,7 @@
 #include "NetworkMapWindow.h"
 #include "PacketAnalyzerWindow.h"
 #include "ProfileWindow.h"
+#include "RepeaterMonitorView.h"
 #include "SerialMonitorWindow.h"
 #include "NotificationManager.h"
 #include "ProtocolHandler.h"
@@ -195,6 +197,9 @@ MainWindow::MainWindow()
 	fSearchActive(false),
 	fInfoPanel(NULL),
 	fMainSplit(NULL),
+	fCardView(NULL),
+	fRepeaterMonitorView(NULL),
+	fDeviceAdvType(0),
 	fSelectedPreset(PRESET_EU_UK_NARROW),
 	fSelectedPort(""),
 	fSelectedContact(-1),
@@ -235,6 +240,7 @@ MainWindow::MainWindow()
 	fAdminRefreshTimer(NULL),
 	fTelemetryPollTimer(NULL),
 	fHandshakeTimer(NULL),
+	fRepeaterMapTimer(NULL),
 	fBatteryMv(0),
 	fLastRssi(0),
 	fLastSnr(0),
@@ -318,6 +324,7 @@ MainWindow::~MainWindow()
 	delete fStatsRefreshTimer;
 	delete fAutoSyncRunner;
 	delete fHandshakeTimer;
+	delete fRepeaterMapTimer;
 
 	// Protocol handler cleanup
 	delete fProtocol;
@@ -428,6 +435,8 @@ MainWindow::_BuildMenuBar()
 		new BMessage(MSG_SHOW_MISSION_CONTROL), 'D', B_SHIFT_KEY));
 	viewMenu->AddItem(new BMenuItem("Serial Monitor",
 		new BMessage(MSG_SHOW_SERIAL_MONITOR), 'S', B_SHIFT_KEY));
+	viewMenu->AddItem(new BMenuItem("Repeater Monitor",
+		new BMessage(MSG_SHOW_REPEATER_MONITOR), 'R', B_SHIFT_KEY));
 	viewMenu->AddSeparatorItem();
 	viewMenu->AddItem(new BMenuItem("MQTT Log",
 		new BMessage(MSG_SHOW_MQTT_LOG), 'M', B_SHIFT_KEY));
@@ -586,6 +595,15 @@ MainWindow::_BuildUI()
 	fMainSplit->SetCollapsible(1, false);
 	fMainSplit->SetCollapsible(2, true);
 
+	// === REPEATER MONITOR VIEW ===
+	fRepeaterMonitorView = new RepeaterMonitorView(this);
+
+	// === CARD VIEW (chat mode / repeater mode) ===
+	fCardView = new BCardView("mode_card");
+	fCardView->AddChild(fMainSplit);           // Card 0: chat
+	fCardView->AddChild(fRepeaterMonitorView); // Card 1: repeater
+	fCardView->CardLayout()->SetVisibleItem((int32)0);
+
 	// === MENU BAR + STATUS BAR ===
 	fMenuBar = new BMenuBar("menubar");
 	_BuildMenuBar();
@@ -595,7 +613,7 @@ MainWindow::_BuildUI()
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(fMenuBar)
 		.Add(fTopBar)
-		.Add(fMainSplit, 1.0)
+		.Add(fCardView, 1.0)
 	.End();
 }
 
@@ -692,6 +710,9 @@ MainWindow::MessageReceived(BMessage* message)
 					fSerialMonitorWindow->AppendOutput(line);
 					fSerialMonitorWindow->UnlockLooper();
 				}
+				// Forward to Repeater Monitor view (embedded, same looper)
+				if (fRepeaterMonitorView != NULL)
+					fRepeaterMonitorView->ProcessLine(line);
 			}
 			break;
 		}
@@ -827,10 +848,16 @@ MainWindow::MessageReceived(BMessage* message)
 			} else {
 				_ShowWindow(fNetworkMapWindow);
 			}
-			// Update with current contacts
-			if (fNetworkMapWindow->LockLooper()) {
-				fNetworkMapWindow->UpdateFromContacts(&fContacts);
-				fNetworkMapWindow->UnlockLooper();
+			// In repeater mode, use repeater topology instead of
+			// companion contacts
+			if (fCardView != NULL
+				&& fCardView->CardLayout()->VisibleIndex() == 1) {
+				_UpdateRepeaterMap();
+			} else {
+				if (fNetworkMapWindow->LockLooper()) {
+					fNetworkMapWindow->UpdateFromContacts(&fContacts);
+					fNetworkMapWindow->UnlockLooper();
+				}
 			}
 			break;
 		}
@@ -1170,31 +1197,15 @@ MainWindow::MessageReceived(BMessage* message)
 				// Switch to raw mode so '>' in CLI prompts isn't parsed as frame marker
 				fSerialHandler->SetRawMode(true);
 
-				BAlert* alert = new BAlert("No Response",
-					"The connected device is not responding to MeshCore "
-					"Companion Protocol commands.\n\n"
-					"This may happen if:\n"
-					"  • The device is a repeater or standalone node "
-					"(not a Companion Radio)\n"
-					"  • The device firmware doesn't support the Companion Protocol\n"
-					"  • The baud rate is incorrect\n\n"
-					"You can open the Serial Monitor to interact with the "
-					"device's text CLI.",
-					"Keep Connected", "Disconnect", "Serial Monitor",
-					B_WIDTH_AS_USUAL, B_WARNING_ALERT);
-				int32 result = alert->Go();
-				if (result == 1) {
-					// User chose to disconnect
-					fSerialHandler->PostMessage(MSG_SERIAL_DISCONNECT);
-				} else if (result == 2) {
-					// User chose Serial Monitor
-					PostMessage(MSG_SHOW_SERIAL_MONITOR);
-					// Send a probe to wake up the CLI
-					BMessage probe(MSG_SERIAL_SEND_RAW);
-					probe.AddString("text", "");
-					fSerialHandler->PostMessage(&probe);
-				}
+				// Auto-switch to Repeater Monitor for non-companion devices
+				_SwitchToRepeaterMode();
 			}
+			break;
+		}
+
+		case MSG_REPEATER_MAP_TICK:
+		{
+			_UpdateRepeaterMap();
 			break;
 		}
 
@@ -1758,6 +1769,18 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_SHOW_REPEATER_MONITOR:
+		{
+			// Toggle between chat mode and repeater monitor
+			int32 current = fCardView->CardLayout()->VisibleIndex();
+			if (current == 0) {
+				_SwitchToRepeaterMode();
+			} else {
+				_SwitchToChatMode();
+			}
+			break;
+		}
+
 		case MSG_SERIAL_SEND_RAW:
 		{
 			// Forward raw text command to SerialHandler
@@ -2247,6 +2270,7 @@ MainWindow::QuitRequested()
 		fSerialMonitorWindow->Quit();
 		fSerialMonitorWindow = NULL;
 	}
+	// fRepeaterMonitorView is a child of fCardView, destroyed automatically
 
 	// Destroy singletons
 	DebugLogWindow::Destroy();
@@ -3428,10 +3452,15 @@ MainWindow::_HandleSelfInfo(const uint8* data, size_t length)
 	if (length >= 36) {
 		// Extract type and power info
 		uint8 advType = data[1];
+		fDeviceAdvType = advType;
 		fRadioTxPower = data[2];
 		uint8 maxTxPower = data[3];
 		_LogMessage("INFO", BString().SetToFormat(
 			"Self type:%d txPower:%d maxTxPower:%d", advType, fRadioTxPower, maxTxPower));
+
+		// Auto-switch to repeater monitor for repeater/room devices
+		if (advType == 2 || advType == 3)
+			_SwitchToRepeaterMode();
 
 		// Extract and store public key as hex string (offset 4-35)
 		FormatPubKeyFull(fPublicKey, data + 4);
@@ -4600,6 +4629,8 @@ MainWindow::_OnDisconnected()
 {
 	fConnected = false;
 	fHasDeviceInfo = false;  // Reset for next connection
+	fDeviceAdvType = 0;
+	_SwitchToChatMode();
 	fSyncingMessages = false;
 	fEnumeratingChannels = false;
 	fPendingMsgIndex = -1;
@@ -5640,4 +5671,82 @@ MainWindow::_RefreshContactList()
 {
 	const char* filter = fSearchField ? fSearchField->Text() : "";
 	_FilterContacts(filter);
+}
+
+
+void
+MainWindow::_SwitchToRepeaterMode()
+{
+	if (fCardView == NULL)
+		return;
+
+	fCardView->CardLayout()->SetVisibleItem(1);
+
+	// Update window title
+	SetTitle("Sestriere \xe2\x80\x94 Repeater Monitor");
+
+	// Auto-request firmware version and log
+	if (fSerialHandler != NULL) {
+		BMessage verMsg(MSG_SERIAL_SEND_RAW);
+		verMsg.AddString("text", "ver");
+		fSerialHandler->PostMessage(&verMsg);
+
+		BMessage logMsg(MSG_SERIAL_SEND_RAW);
+		logMsg.AddString("text", "log");
+		fSerialHandler->PostMessage(&logMsg);
+	}
+
+	// Start repeater map update timer (5 seconds)
+	delete fRepeaterMapTimer;
+	BMessage mapTick(MSG_REPEATER_MAP_TICK);
+	fRepeaterMapTimer = new BMessageRunner(this, &mapTick, 5000000);
+
+	// Auto-open the network map
+	PostMessage(MSG_SHOW_NETWORK_MAP);
+}
+
+
+void
+MainWindow::_SwitchToChatMode()
+{
+	if (fCardView == NULL)
+		return;
+
+	// Only switch if we're not already in chat mode
+	if (fCardView->CardLayout()->VisibleIndex() == 0)
+		return;
+
+	fCardView->CardLayout()->SetVisibleItem((int32)0);
+
+	// Stop repeater map timer
+	delete fRepeaterMapTimer;
+	fRepeaterMapTimer = NULL;
+
+	// Clear repeater monitor data
+	if (fRepeaterMonitorView != NULL)
+		fRepeaterMonitorView->Clear();
+
+	// Reset window title
+	SetTitle("Sestriere");
+}
+
+
+void
+MainWindow::_UpdateRepeaterMap()
+{
+	if (fNetworkMapWindow == NULL || fRepeaterMonitorView == NULL)
+		return;
+	if (!_LockIfVisible(fNetworkMapWindow))
+		return;
+
+	RepeaterNodeInfo nodes[64];
+	int32 nodeCount = fRepeaterMonitorView->GetNodeInfos(nodes, 64);
+
+	RepeaterLink links[128];
+	int32 linkCount = fRepeaterMonitorView->GetLinks(links, 128);
+
+	fNetworkMapWindow->SetRepeaterTopology(
+		fDeviceName[0] ? fDeviceName : "Repeater",
+		nodes, nodeCount, links, linkCount);
+	fNetworkMapWindow->UnlockLooper();
 }

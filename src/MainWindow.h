@@ -11,6 +11,7 @@
 #include <Window.h>
 #include "Compat.h"
 
+class BCardView;
 class BFilePanel;
 
 #include "MqttClient.h"
@@ -40,6 +41,7 @@ class MissionControlWindow;
 class NetworkMapWindow;
 class ProfileWindow;
 class PacketAnalyzerWindow;
+class RepeaterMonitorView;
 class SerialHandler;
 class SerialMonitorWindow;
 class SettingsWindow;
@@ -159,6 +161,11 @@ private:
 			void			_LoadContactGroups();
 			void			_RefreshContactList();
 
+			// Repeater mode switching
+			void			_SwitchToRepeaterMode();
+			void			_SwitchToChatMode();
+			void			_UpdateRepeaterMap();
+
 			SerialHandler*	fSerialHandler;
 			ProtocolHandler* fProtocol;
 
@@ -194,6 +201,9 @@ private:
 
 			// UI elements - Layout
 			BSplitView*		fMainSplit;
+			BCardView*		fCardView;
+			RepeaterMonitorView*	fRepeaterMonitorView;
+			uint8			fDeviceAdvType;
 
 			// State
 			int32			fSelectedPreset;
@@ -257,6 +267,7 @@ private:
 			BMessageRunner*	fAdminRefreshTimer;
 			BMessageRunner*	fTelemetryPollTimer;
 			BMessageRunner*	fHandshakeTimer;
+			BMessageRunner*	fRepeaterMapTimer;
 
 			// Cached stats for status bar
 			uint16			fBatteryMv;

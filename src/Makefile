@@ -35,7 +35,8 @@ SRCS = \
 	PacketAnalyzerWindow.cpp \
 	ProtocolHandler.cpp \
 	MissionControlWindow.cpp \
-	SerialMonitorWindow.cpp
+	SerialMonitorWindow.cpp \
+	RepeaterMonitorView.cpp
 
 RDEFS = Sestriere.rdef
 

@@ -303,6 +303,12 @@ enum {
 	MSG_GROUP_REMOVE_CONTACT = 'grmv',
 	MSG_GROUP_CREATE = 'gcrt',
 	MSG_GROUP_DELETE = 'gdel',
+
+	// Repeater Monitor
+	MSG_SHOW_REPEATER_MONITOR = 'rmon',
+
+	// Repeater map update timer
+	MSG_REPEATER_MAP_TICK = 'rmtk',
 };
 
 // =============================================================================
