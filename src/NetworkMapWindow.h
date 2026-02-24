@@ -96,6 +96,22 @@ struct TraceRoute {
 	}
 };
 
+// Animated packet flow along a link (from RepeaterMonitor)
+struct PacketFlowAnim {
+	uint8		fromPrefix[kPubKeyPrefixSize];
+	uint8		toPrefix[kPubKeyPrefixSize];
+	float		phase;		// 0.0 → 1.0 (traversal progress)
+	float		alpha;		// 1.0 → 0.0 (fade out after arrival)
+	rgb_color	color;
+	bool		active;
+
+	PacketFlowAnim() : phase(0), alpha(1.0f), active(false) {
+		memset(fromPrefix, 0, sizeof(fromPrefix));
+		memset(toPrefix, 0, sizeof(toPrefix));
+		color = (rgb_color){60, 130, 240, 255};
+	}
+};
+
 // Discovered inter-node connection from trace route analysis
 struct TopologyEdge {
 	uint8		fromPrefix[kPubKeyPrefixSize];	// Source node pubkey prefix
@@ -136,6 +152,9 @@ public:
 			void			TriggerNodePulse(const uint8* pubKeyPrefix);
 			void			UpdateNodeSNR(const uint8* pubKeyPrefix,
 								int8 snr, int8 rssi);
+			void			TriggerPacketFlow(const char* srcHex,
+								const char* dstHex, int8 snr,
+								bool isMessage);
 			void			SetTraceRoute(const TraceRoute& route);
 			void			ClearTraceRoutes();
 			void			BuildEdgesFromTrace(const TraceRoute& route);
@@ -157,6 +176,7 @@ private:
 			void			_DrawFlowDots(BPoint from, BPoint to,
 								float phase, rgb_color color);
 			void			_DrawTraceRoutes();
+			void			_DrawPacketFlows();
 			void			_DrawTopologyEdges();
 			void			_DrawInfoPanel();
 			void			_DrawLinkQualityLegend();
@@ -190,6 +210,12 @@ private:
 
 			OwningObjectList<TraceRoute>	fTraceRoutes;
 			OwningObjectList<TopologyEdge>	fEdges;
+
+			// Packet flow animations
+			static const int32 kMaxPacketFlows = 32;
+			PacketFlowAnim	fPacketFlows[32];
+			int32			fPacketFlowCount;
+			char			fSelfHexId[8];
 };
 
 
@@ -210,6 +236,9 @@ public:
 			void			UpdateLinkQuality(const uint8* pubKeyPrefix,
 								int8 snr, int8 rssi);
 			void			HandleTraceData(const uint8* data, size_t length);
+			void			TriggerPacketFlow(const char* srcHex,
+								const char* dstHex, int8 snr,
+								bool isMessage);
 
 private:
 			void			_RequestUpdate();

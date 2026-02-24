@@ -1209,6 +1209,26 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_REPEATER_PACKET_FLOW:
+		{
+			const char* src = NULL;
+			const char* dst = NULL;
+			int8 snr = 0;
+			int32 type = 0;
+			if (message->FindString("src", &src) == B_OK
+				&& message->FindString("dst", &dst) == B_OK) {
+				message->FindInt8("snr", &snr);
+				message->FindInt32("type", &type);
+				bool isMessage = (type == 2);
+				if (_LockIfVisible(fNetworkMapWindow)) {
+					fNetworkMapWindow->TriggerPacketFlow(
+						src, dst, snr, isMessage);
+					fNetworkMapWindow->UnlockLooper();
+				}
+			}
+			break;
+		}
+
 		case MSG_AUTO_SYNC_CONTACTS:
 		{
 			delete fAutoSyncRunner;
@@ -3305,6 +3325,10 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 
 	// Start offline message sync to drain any queued messages
 	fProtocol->SendSyncNextMessage();
+
+	// Trigger immediate repeater map update now that contacts are available
+	if (fCardView != NULL && fCardView->CardLayout()->VisibleIndex() == 1)
+		_UpdateRepeaterMap();
 
 	// Forward contact counts to Mission Control
 	if (fMissionControlWindow != NULL
@@ -5680,6 +5704,12 @@ MainWindow::_SwitchToRepeaterMode()
 	if (fCardView == NULL)
 		return;
 
+	// If already in repeater mode, just update the map and return
+	if (fCardView->CardLayout()->VisibleIndex() == 1) {
+		_UpdateRepeaterMap();
+		return;
+	}
+
 	fCardView->CardLayout()->SetVisibleItem(1);
 
 	// Update window title
@@ -5698,11 +5728,15 @@ MainWindow::_SwitchToRepeaterMode()
 
 	// Start repeater map update timer (5 seconds)
 	delete fRepeaterMapTimer;
+	fRepeaterMapTimer = NULL;
 	BMessage mapTick(MSG_REPEATER_MAP_TICK);
 	fRepeaterMapTimer = new BMessageRunner(this, &mapTick, 5000000);
 
-	// Auto-open the network map
-	PostMessage(MSG_SHOW_NETWORK_MAP);
+	// Auto-open the network map (only on first switch, not re-activation)
+	if (fNetworkMapWindow == NULL)
+		PostMessage(MSG_SHOW_NETWORK_MAP);
+	else
+		_UpdateRepeaterMap();
 }
 
 
@@ -5764,6 +5798,51 @@ MainWindow::_UpdateRepeaterMap()
 				break;
 			}
 		}
+	}
+
+	// Merge companion contacts that aren't already in the repeater log
+	int32 mergedCount = 0;
+	int32 contactTotal = fContacts.CountItems();
+	_LogMessage("MAP", BString().SetToFormat(
+		"RepeaterMap: %d log nodes, %d contacts to merge",
+		(int)nodeCount, (int)contactTotal));
+	for (int32 c = 0; c < contactTotal && nodeCount < 64; c++) {
+		ContactInfo* contact = fContacts.ItemAt(c);
+		if (contact == NULL || !contact->isValid || contact->name[0] == '\0')
+			continue;
+
+		uint8 idByte = contact->publicKey[0];
+
+		// Skip if this contact is already in the repeater node list
+		bool alreadyPresent = false;
+		for (int32 n = 0; n < nodeCount; n++) {
+			unsigned int hexVal = 0;
+			sscanf(nodes[n].name, "%x", &hexVal);
+			if ((uint8)(hexVal & 0xFF) == idByte) {
+				alreadyPresent = true;
+				break;
+			}
+		}
+		if (alreadyPresent)
+			continue;
+
+		// Add as a new node from companion contacts
+		RepeaterNodeInfo& info = nodes[nodeCount];
+		memset(&info, 0, sizeof(RepeaterNodeInfo));
+		snprintf(info.name, sizeof(info.name), "%02X", idByte);
+		strlcpy(info.fullName, contact->name, sizeof(info.fullName));
+		info.packetCount = 0;
+		info.isSelf = false;
+		info.isDirect = (contact->outPathLen <= 1);
+		info.isForwarded = (contact->outPathLen > 1);
+		nodeCount++;
+		mergedCount++;
+	}
+
+	if (mergedCount > 0) {
+		_LogMessage("MAP", BString().SetToFormat(
+			"RepeaterMap: merged %d companion contacts (total nodes: %d)",
+			(int)mergedCount, (int)nodeCount));
 	}
 
 	RepeaterLink links[128];

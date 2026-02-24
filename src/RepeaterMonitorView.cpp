@@ -806,6 +806,16 @@ RepeaterMonitorView::ProcessLine(const char* line)
 	// Update node stats
 	_UpdateNodeStats(pkt);
 
+	// Send packet flow animation to NetworkMapWindow via MainWindow
+	if (pkt.src[0] != '\0' && pkt.dst[0] != '\0') {
+		BMessage flowMsg(MSG_REPEATER_PACKET_FLOW);
+		flowMsg.AddString("src", pkt.src);
+		flowMsg.AddString("dst", pkt.dst);
+		flowMsg.AddInt8("snr", pkt.snr);
+		flowMsg.AddInt32("type", pkt.type);
+		BMessenger(fTarget).SendMessage(&flowMsg);
+	}
+
 	// Update status bar
 	_UpdateStats();
 }
@@ -1008,6 +1018,43 @@ RepeaterMonitorView::_UpdateNodeStats(const RepeaterPacket& pkt)
 	// Track src→dst link
 	if (pkt.src[0] != '\0' && pkt.dst[0] != '\0')
 		_UpdateLink(pkt.src, pkt.dst, pkt.isTx ? 0 : pkt.snr);
+
+	// Also ensure destination node exists in the node list
+	// (so nodes that only appear as destinations are still visible on the map)
+	if (pkt.dst[0] != '\0' && strcmp(pkt.dst, pkt.src) != 0) {
+		bool dstExists = false;
+		for (int32 i = 0; i < fNodeStatsList->CountRows(); i++) {
+			BRow* row = fNodeStatsList->RowAt(i);
+			BStringField* nameField
+				= static_cast<BStringField*>(row->GetField(kNodeColName));
+			if (nameField != NULL
+				&& strcmp(nameField->String(), pkt.dst) == 0) {
+				dstExists = true;
+				break;
+			}
+		}
+		if (!dstExists && fNodeStatsList->CountRows() < kMaxNodes) {
+			int32 newIndex = fNodeStatsList->CountRows();
+			BRow* row = new BRow();
+			row->SetField(new BStringField(pkt.dst), kNodeColName);
+			row->SetField(new BIntegerField(0), kNodeColPkts);
+			if (newIndex < kMaxNodes) {
+				fNodeTxAsSrc[newIndex] = 0;
+				fNodeRxAsSrc[newIndex] = 0;
+				row->SetField(new BIntegerField(0), kNodeColTx);
+				row->SetField(new BIntegerField(0), kNodeColRx);
+				row->SetField(
+					new RMColorStringField("Remote",
+						(rgb_color){100, 180, 255, 255}),
+					kNodeColRole);
+			}
+			row->SetField(
+				new BStringField("\xe2\x80\x94"), kNodeColAvgSNR);
+			row->SetField(new BIntegerField(0), kNodeColAvgRSSI);
+			row->SetField(new BStringField(""), kNodeColLastSeen);
+			fNodeStatsList->AddRow(row);
+		}
+	}
 }
 
 

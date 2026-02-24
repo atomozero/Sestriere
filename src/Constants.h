@@ -309,6 +309,9 @@ enum {
 
 	// Repeater map update timer
 	MSG_REPEATER_MAP_TICK = 'rmtk',
+
+	// Repeater packet flow animation
+	MSG_REPEATER_PACKET_FLOW = 'rpfl',
 };
 
 // =============================================================================

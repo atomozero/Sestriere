@@ -125,6 +125,8 @@ NetworkMapView::NetworkMapView()
 	strlcpy(fSelfNode.name, "Me", sizeof(fSelfNode.name));
 	fSelfNode.pulsePhase = 0;
 	fSelfNode.activityLevel = 1.0f;
+	fPacketFlowCount = 0;
+	memset(fSelfHexId, 0, sizeof(fSelfHexId));
 }
 
 
@@ -183,6 +185,24 @@ NetworkMapView::Pulse()
 			node->position.y += dy * 0.15f;
 			needsRedraw = true;
 		}
+	}
+
+	// Animate packet flows
+	for (int32 i = 0; i < fPacketFlowCount; i++) {
+		PacketFlowAnim& flow = fPacketFlows[i];
+		if (!flow.active)
+			continue;
+		if (flow.phase < 1.0f) {
+			flow.phase += 0.04f;  // ~1.25s traversal at 50ms/tick
+		} else {
+			// Arrived — fade out
+			flow.alpha -= 0.08f;
+			if (flow.alpha <= 0.0f) {
+				flow.active = false;
+				continue;
+			}
+		}
+		needsRedraw = true;
 	}
 
 	if (needsRedraw)
@@ -255,12 +275,13 @@ NetworkMapView::Draw(BRect updateRect)
 		if (node == NULL)
 			continue;
 
-		// Check if this node has discovered edges leading to it
+		// Check if this node has discovered edges (to or from it)
 		bool hasEdge = false;
 		for (int32 e = 0; e < fEdges.CountItems(); e++) {
 			TopologyEdge* edge = fEdges.ItemAt(e);
 			if (edge && !edge->ambiguous &&
-				memcmp(edge->toPrefix, node->pubKeyPrefix, kPubKeyPrefixSize) == 0) {
+				(memcmp(edge->toPrefix, node->pubKeyPrefix, kPubKeyPrefixSize) == 0
+				|| memcmp(edge->fromPrefix, node->pubKeyPrefix, kPubKeyPrefixSize) == 0)) {
 				hasEdge = true;
 				break;
 			}
@@ -274,6 +295,9 @@ NetworkMapView::Draw(BRect updateRect)
 
 	// Draw trace route overlays (between connections and nodes)
 	_DrawTraceRoutes();
+
+	// Draw packet flow animations
+	_DrawPacketFlows();
 
 	// Draw self node at center with glow
 	_DrawSelfNode();
@@ -494,7 +518,12 @@ NetworkMapView::SetRepeaterTopology(const char* selfName,
 	const RepeaterNodeInfo* nodes, int32 nodeCount,
 	const RepeaterLink* links, int32 linkCount)
 {
-	// Clear selection
+	// Save selection to restore after rebuild
+	uint8 savedSelPrefix[kPubKeyPrefixSize];
+	bool hadSelection = (fSelectedNode != NULL);
+	if (hadSelection)
+		memcpy(savedSelPrefix, fSelectedNode->pubKeyPrefix,
+			kPubKeyPrefixSize);
 	fSelectedNode = NULL;
 
 	// Keep existing nodes to preserve animation state
@@ -525,6 +554,13 @@ NetworkMapView::SetRepeaterTopology(const char* selfName,
 		// fSelfNode at center instead of creating a duplicate
 		if (info.isSelf) {
 			strlcpy(selfHexId, info.name, sizeof(selfHexId));
+			strlcpy(fSelfHexId, info.name, sizeof(fSelfHexId));
+			// Set synthetic prefix for self node (for packet flow matching)
+			unsigned int selfHexVal = 0;
+			sscanf(info.name, "%x", &selfHexVal);
+			memset(fSelfNode.pubKeyPrefix, 0,
+				sizeof(fSelfNode.pubKeyPrefix));
+			fSelfNode.pubKeyPrefix[0] = (uint8)(selfHexVal & 0xFF);
 			// Use resolved full name if available
 			if (info.fullName[0] != '\0')
 				strlcpy(fSelfNode.name, info.fullName,
@@ -576,9 +612,15 @@ NetworkMapView::SetRepeaterTopology(const char* selfName,
 			strlcpy(node->name, info.name, sizeof(node->name));
 		node->nodeType = NODE_UNKNOWN;
 		node->hops = info.isDirect ? 1 : (info.isForwarded ? 2 : 1);
-		node->status = STATUS_ONLINE;  // Seen in log = online
 		node->messageCount = info.packetCount;
 		node->activityLevel = fminf(1.0f, info.packetCount / 20.0f);
+
+		// Nodes from repeater log (packetCount > 0) are online;
+		// companion-only contacts (packetCount == 0) are shown dimmer
+		if (info.packetCount > 0)
+			node->status = STATUS_ONLINE;
+		else
+			node->status = STATUS_RECENT;
 
 		if (info.avgSnr != 0) {
 			node->snr = info.avgSnr;
@@ -671,6 +713,15 @@ NetworkMapView::SetRepeaterTopology(const char* selfName,
 		fEdges.AddItem(edge);
 	}
 
+	// Restore selection if the node still exists
+	if (hadSelection) {
+		MapNode* restored = _FindNodeByPrefix(savedSelPrefix);
+		if (restored != NULL) {
+			fSelectedNode = restored;
+			restored->isSelected = true;
+		}
+	}
+
 	Invalidate();
 }
 
@@ -726,6 +777,110 @@ NetworkMapView::UpdateNodeSNR(const uint8* pubKeyPrefix, int8 snr, int8 rssi)
 			break;
 		}
 	}
+}
+
+
+void
+NetworkMapView::TriggerPacketFlow(const char* srcHex, const char* dstHex,
+	int8 snr, bool isMessage)
+{
+	// Find a free slot or reuse the oldest
+	int32 slot = -1;
+	for (int32 i = 0; i < fPacketFlowCount; i++) {
+		if (!fPacketFlows[i].active) {
+			slot = i;
+			break;
+		}
+	}
+	if (slot < 0) {
+		if (fPacketFlowCount < kMaxPacketFlows) {
+			slot = fPacketFlowCount++;
+		} else {
+			// Reuse oldest (lowest alpha or highest phase)
+			slot = 0;
+			float lowestAlpha = fPacketFlows[0].alpha;
+			for (int32 i = 1; i < kMaxPacketFlows; i++) {
+				if (fPacketFlows[i].alpha < lowestAlpha) {
+					lowestAlpha = fPacketFlows[i].alpha;
+					slot = i;
+				}
+			}
+		}
+	}
+
+	PacketFlowAnim& flow = fPacketFlows[slot];
+	flow.active = true;
+	flow.phase = 0.0f;
+	flow.alpha = 1.0f;
+
+	// Color by packet type
+	if (isMessage)
+		flow.color = (rgb_color){60, 130, 240, 255};	// Blue for messages
+	else
+		flow.color = (rgb_color){80, 200, 80, 255};	// Green for advert/other
+
+	// Map hex IDs to pubKeyPrefix
+	// Check self node first
+	memset(flow.fromPrefix, 0, sizeof(flow.fromPrefix));
+	memset(flow.toPrefix, 0, sizeof(flow.toPrefix));
+
+	bool foundSrc = false;
+	bool foundDst = false;
+
+	// Self node match
+	if (fSelfHexId[0] != '\0') {
+		if (strcmp(srcHex, fSelfHexId) == 0) {
+			memcpy(flow.fromPrefix, fSelfNode.pubKeyPrefix,
+				kPubKeyPrefixSize);
+			foundSrc = true;
+		}
+		if (strcmp(dstHex, fSelfHexId) == 0) {
+			memcpy(flow.toPrefix, fSelfNode.pubKeyPrefix,
+				kPubKeyPrefixSize);
+			foundDst = true;
+		}
+	}
+
+	// Parse hex IDs to byte values for prefix matching
+	unsigned int srcHexVal = 0;
+	unsigned int dstHexVal = 0;
+	sscanf(srcHex, "%x", &srcHexVal);
+	sscanf(dstHex, "%x", &dstHexVal);
+
+	// Search other nodes by name or synthetic prefix[0]
+	for (int32 i = 0; i < fNodes.CountItems(); i++) {
+		MapNode* node = fNodes.ItemAt(i);
+		if (node == NULL)
+			continue;
+
+		// Match by: direct name, or synthetic prefix[0] (hex byte value)
+		bool srcMatch = (strcmp(srcHex, node->name) == 0)
+			|| (node->pubKeyPrefix[0] == (uint8)(srcHexVal & 0xFF)
+				&& srcHexVal != 0);
+		bool dstMatch = (strcmp(dstHex, node->name) == 0)
+			|| (node->pubKeyPrefix[0] == (uint8)(dstHexVal & 0xFF)
+				&& dstHexVal != 0);
+
+		if (!foundSrc && srcMatch) {
+			memcpy(flow.fromPrefix, node->pubKeyPrefix,
+				kPubKeyPrefixSize);
+			foundSrc = true;
+		}
+		if (!foundDst && dstMatch) {
+			memcpy(flow.toPrefix, node->pubKeyPrefix,
+				kPubKeyPrefixSize);
+			foundDst = true;
+		}
+		if (foundSrc && foundDst)
+			break;
+	}
+
+	if (!foundSrc || !foundDst) {
+		flow.active = false;
+		return;
+	}
+
+	Invalidate();
 }
 
 
@@ -1454,6 +1609,99 @@ NetworkMapView::_DrawFlowDots(BPoint from, BPoint to, float phase, rgb_color col
 
 
 void
+NetworkMapView::_DrawPacketFlows()
+{
+	for (int32 i = 0; i < fPacketFlowCount; i++) {
+		PacketFlowAnim& flow = fPacketFlows[i];
+		if (!flow.active)
+			continue;
+
+		// Find source and destination positions
+		BPoint fromPos = fCenter;
+		BPoint toPos = fCenter;
+
+		// Self node uses fCenter
+		bool srcIsSelf = (memcmp(flow.fromPrefix, fSelfNode.pubKeyPrefix,
+			kPubKeyPrefixSize) == 0);
+		bool dstIsSelf = (memcmp(flow.toPrefix, fSelfNode.pubKeyPrefix,
+			kPubKeyPrefixSize) == 0);
+
+		if (srcIsSelf) {
+			fromPos = fCenter;
+		} else {
+			MapNode* srcNode = _FindNodeByPrefix(flow.fromPrefix);
+			if (srcNode != NULL)
+				fromPos = srcNode->position;
+			else
+				continue;  // Source node not found
+		}
+
+		if (dstIsSelf) {
+			toPos = fCenter;
+		} else {
+			MapNode* dstNode = _FindNodeByPrefix(flow.toPrefix);
+			if (dstNode != NULL)
+				toPos = dstNode->position;
+			else
+				continue;  // Dest node not found
+		}
+
+		float dx = toPos.x - fromPos.x;
+		float dy = toPos.y - fromPos.y;
+		float len = sqrtf(dx * dx + dy * dy);
+		if (len < 20.0f)
+			continue;
+
+		float phase = flow.phase < 1.0f ? flow.phase : 1.0f;
+		float baseAlpha = flow.alpha;
+
+		// Main dot position
+		float dotX = fromPos.x + dx * phase;
+		float dotY = fromPos.y + dy * phase;
+
+		// Draw trail (3 smaller dots behind the main one)
+		float trailOffsets[] = {0.03f, 0.06f, 0.09f};
+		float trailRadii[] = {4.0f, 3.0f, 2.0f};
+		float trailAlphas[] = {0.6f, 0.3f, 0.1f};
+
+		SetPenSize(1.0f);
+		for (int t = 2; t >= 0; t--) {
+			float trailPhase = phase - trailOffsets[t];
+			if (trailPhase < 0.0f)
+				continue;
+			float tx = fromPos.x + dx * trailPhase;
+			float ty = fromPos.y + dy * trailPhase;
+
+			rgb_color trailColor = flow.color;
+			trailColor.alpha = (uint8)(255 * baseAlpha * trailAlphas[t]);
+			SetHighColor(trailColor);
+			float r = trailRadii[t] * fZoom;
+			FillEllipse(BPoint(tx, ty), r, r);
+		}
+
+		// Draw main dot
+		rgb_color mainColor = flow.color;
+		mainColor.alpha = (uint8)(255 * baseAlpha);
+		SetHighColor(mainColor);
+		float mainRadius = 5.0f * fZoom;
+		FillEllipse(BPoint(dotX, dotY), mainRadius, mainRadius);
+
+		// Trigger destination node pulse when arriving
+		if (flow.phase >= 1.0f && flow.alpha > 0.9f) {
+			if (dstIsSelf) {
+				// Pulse self node
+				fSelfNode.pulsePhase = (float)M_PI;
+			} else {
+				MapNode* dstNode = _FindNodeByPrefix(flow.toPrefix);
+				if (dstNode != NULL && dstNode->pulsePhase < 0.5f)
+					dstNode->pulsePhase = 1.0f;
+			}
+		}
+	}
+}
+
+
+void
 NetworkMapView::_DrawTraceRoutes()
 {
 	uint32 now = (uint32)time(NULL);
@@ -1579,10 +1827,11 @@ NetworkMapView::_DrawTopologyEdges()
 		BPoint toPos;
 		float opacity = 0.8f;
 
-		// Check if "from" is self (all zeros)
+		// Check if "from" is self node (all zeros or matching self prefix)
 		uint8 zeroPrefix[kPubKeyPrefixSize];
 		memset(zeroPrefix, 0, sizeof(zeroPrefix));
-		bool fromIsSelf = (memcmp(edge->fromPrefix, zeroPrefix, kPubKeyPrefixSize) == 0);
+		bool fromIsSelf = (memcmp(edge->fromPrefix, zeroPrefix, kPubKeyPrefixSize) == 0)
+			|| (memcmp(edge->fromPrefix, fSelfNode.pubKeyPrefix, kPubKeyPrefixSize) == 0);
 
 		if (fromIsSelf) {
 			fromPos = fCenter;
@@ -1594,11 +1843,20 @@ NetworkMapView::_DrawTopologyEdges()
 			opacity *= _OpacityForNode(*fromNode);
 		}
 
-		MapNode* toNode = _FindNodeByPrefix(edge->toPrefix);
-		if (toNode == NULL)
-			continue;
-		toPos = toNode->position;
-		opacity *= _OpacityForNode(*toNode);
+		bool toIsSelf = (memcmp(edge->toPrefix, zeroPrefix, kPubKeyPrefixSize) == 0)
+			|| (memcmp(edge->toPrefix, fSelfNode.pubKeyPrefix, kPubKeyPrefixSize) == 0);
+
+		MapNode* toNode = NULL;
+		if (toIsSelf) {
+			toPos = fCenter;
+			toNode = &fSelfNode;
+		} else {
+			toNode = _FindNodeByPrefix(edge->toPrefix);
+			if (toNode == NULL)
+				continue;
+			toPos = toNode->position;
+			opacity *= _OpacityForNode(*toNode);
+		}
 
 		// Fade out edges approaching expiry
 		uint32 age = (now > edge->timestamp) ? (now - edge->timestamp) : 0;
@@ -2354,6 +2612,14 @@ void
 NetworkMapWindow::UpdateLinkQuality(const uint8* pubKeyPrefix, int8 snr, int8 rssi)
 {
 	fMapView->UpdateNodeSNR(pubKeyPrefix, snr, rssi);
+}
+
+
+void
+NetworkMapWindow::TriggerPacketFlow(const char* srcHex, const char* dstHex,
+	int8 snr, bool isMessage)
+{
+	fMapView->TriggerPacketFlow(srcHex, dstHex, snr, isMessage);
 }
 
 
