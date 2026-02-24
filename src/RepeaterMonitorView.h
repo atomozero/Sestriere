@@ -96,6 +96,13 @@ private:
 			int32			fTotalDirect;
 			int32			fPacketCount;
 
+			// Per-node tracking (indexed by node stats row order)
+			static const int32 kMaxNodes = 64;
+			bool			fNodeHasDirect[64];
+			bool			fNodeHasForwarded[64];
+			int32			fNodeTxAsSrc[64];
+			int32			fNodeRxAsSrc[64];
+
 			// Link tracking for topology
 			static const int32 kMaxLinks = 128;
 			RepeaterLink	fLinks[128];

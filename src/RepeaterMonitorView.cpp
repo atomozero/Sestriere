@@ -482,8 +482,11 @@ enum {
 enum {
 	kNodeColName = 0,
 	kNodeColPkts,
+	kNodeColTx,
+	kNodeColRx,
 	kNodeColAvgSNR,
 	kNodeColAvgRSSI,
+	kNodeColRole,
 	kNodeColLastSeen,
 };
 
@@ -510,6 +513,10 @@ RepeaterMonitorView::RepeaterMonitorView(BHandler* target)
 	fPacketCount(0),
 	fLinkCount(0)
 {
+	memset(fNodeHasDirect, 0, sizeof(fNodeHasDirect));
+	memset(fNodeHasForwarded, 0, sizeof(fNodeHasForwarded));
+	memset(fNodeTxAsSrc, 0, sizeof(fNodeTxAsSrc));
+	memset(fNodeRxAsSrc, 0, sizeof(fNodeRxAsSrc));
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 
 	// --- Toolbar ---
@@ -565,17 +572,26 @@ RepeaterMonitorView::RepeaterMonitorView(BHandler* target)
 	fNodeStatsList->SetSelectionMessage(new BMessage(MSG_RM_NODE_CLICK));
 
 	fNodeStatsList->AddColumn(
-		new BStringColumn("Node", 60, 40, 100, B_TRUNCATE_END),
+		new BStringColumn("Node", 50, 35, 80, B_TRUNCATE_END),
 		kNodeColName);
 	fNodeStatsList->AddColumn(
-		new BIntegerColumn("Packets", 60, 40, 100, B_ALIGN_RIGHT),
+		new BIntegerColumn("Pkts", 45, 35, 70, B_ALIGN_RIGHT),
 		kNodeColPkts);
 	fNodeStatsList->AddColumn(
-		new RMColorStringColumn("Avg SNR", 70, 50, 100, B_TRUNCATE_END),
+		new BIntegerColumn("TX", 40, 30, 60, B_ALIGN_RIGHT),
+		kNodeColTx);
+	fNodeStatsList->AddColumn(
+		new BIntegerColumn("RX", 40, 30, 60, B_ALIGN_RIGHT),
+		kNodeColRx);
+	fNodeStatsList->AddColumn(
+		new RMColorStringColumn("SNR", 50, 35, 80, B_TRUNCATE_END),
 		kNodeColAvgSNR);
 	fNodeStatsList->AddColumn(
-		new BIntegerColumn("Avg RSSI", 70, 50, 100, B_ALIGN_RIGHT),
+		new BIntegerColumn("RSSI", 50, 35, 80, B_ALIGN_RIGHT),
 		kNodeColAvgRSSI);
+	fNodeStatsList->AddColumn(
+		new RMColorStringColumn("Role", 60, 40, 100, B_TRUNCATE_END),
+		kNodeColRole);
 	fNodeStatsList->AddColumn(
 		new BStringColumn("Last Seen", 100, 70, 160, B_TRUNCATE_END),
 		kNodeColLastSeen);
@@ -819,6 +835,10 @@ RepeaterMonitorView::Clear()
 	fSearchField->SetText("");
 	fTotalStatsLabel->SetText(
 		"TX: 0 | RX: 0 | Fwd: 0 | Direct: 0");
+	memset(fNodeHasDirect, 0, sizeof(fNodeHasDirect));
+	memset(fNodeHasForwarded, 0, sizeof(fNodeHasForwarded));
+	memset(fNodeTxAsSrc, 0, sizeof(fNodeTxAsSrc));
+	memset(fNodeRxAsSrc, 0, sizeof(fNodeRxAsSrc));
 	fLinkCount = 0;
 }
 
@@ -847,12 +867,14 @@ RepeaterMonitorView::_UpdateNodeStats(const RepeaterPacket& pkt)
 
 	// Search existing rows
 	BRow* foundRow = NULL;
+	int32 rowIndex = -1;
 	for (int32 i = 0; i < fNodeStatsList->CountRows(); i++) {
 		BRow* row = fNodeStatsList->RowAt(i);
 		BStringField* nameField
 			= static_cast<BStringField*>(row->GetField(kNodeColName));
 		if (nameField != NULL && strcmp(nameField->String(), pkt.src) == 0) {
 			foundRow = row;
+			rowIndex = i;
 			break;
 		}
 	}
@@ -864,15 +886,30 @@ RepeaterMonitorView::_UpdateNodeStats(const RepeaterPacket& pkt)
 		int32 newCount = pktsField ? (int32)pktsField->Value() + 1 : 1;
 		foundRow->SetField(new BIntegerField(newCount), kNodeColPkts);
 
-		// Update SNR average (we store sum in a simple way: recalculate)
-		// For simplicity, we use a running approximation
+		// Track TX/RX counts
+		if (rowIndex >= 0 && rowIndex < kMaxNodes) {
+			if (pkt.isTx)
+				fNodeTxAsSrc[rowIndex]++;
+			else
+				fNodeRxAsSrc[rowIndex]++;
+			foundRow->SetField(
+				new BIntegerField(fNodeTxAsSrc[rowIndex]), kNodeColTx);
+			foundRow->SetField(
+				new BIntegerField(fNodeRxAsSrc[rowIndex]), kNodeColRx);
+
+			if (pkt.route == 'D')
+				fNodeHasDirect[rowIndex] = true;
+			else if (pkt.route == 'F')
+				fNodeHasForwarded[rowIndex] = true;
+		}
+
+		// Update SNR average
 		if (!pkt.isTx && pkt.snr != 0) {
 			RMColorStringField* snrField = dynamic_cast<RMColorStringField*>(
 				foundRow->GetField(kNodeColAvgSNR));
 			int oldAvg = 0;
 			if (snrField != NULL)
 				oldAvg = atoi(snrField->String());
-			// Exponential moving average
 			int newAvg = (oldAvg * (newCount - 1) + pkt.snr) / newCount;
 			char snrStr[8];
 			snprintf(snrStr, sizeof(snrStr), "%d", newAvg);
@@ -889,6 +926,26 @@ RepeaterMonitorView::_UpdateNodeStats(const RepeaterPacket& pkt)
 			foundRow->SetField(new BIntegerField(newAvg), kNodeColAvgRSSI);
 		}
 
+		// Auto-detect role from TX/RX pattern
+		if (rowIndex >= 0 && rowIndex < kMaxNodes) {
+			int32 tx = fNodeTxAsSrc[rowIndex];
+			int32 rx = fNodeRxAsSrc[rowIndex];
+			const char* role;
+			rgb_color roleColor;
+			if (rx == 0 && tx > 0) {
+				role = "Self";
+				roleColor = (rgb_color){255, 180, 50, 255};  // amber
+			} else if (tx > rx * 2 && tx > 3) {
+				role = "Self?";
+				roleColor = (rgb_color){255, 180, 50, 255};
+			} else {
+				role = "Remote";
+				roleColor = (rgb_color){100, 180, 255, 255};  // blue
+			}
+			foundRow->SetField(
+				new RMColorStringField(role, roleColor), kNodeColRole);
+		}
+
 		// Last seen
 		char lastSeen[32];
 		snprintf(lastSeen, sizeof(lastSeen), "%s %s", pkt.time, pkt.date);
@@ -897,9 +954,35 @@ RepeaterMonitorView::_UpdateNodeStats(const RepeaterPacket& pkt)
 		fNodeStatsList->UpdateRow(foundRow);
 	} else {
 		// New node
+		int32 newIndex = fNodeStatsList->CountRows();
 		BRow* row = new BRow();
 		row->SetField(new BStringField(pkt.src), kNodeColName);
 		row->SetField(new BIntegerField(1), kNodeColPkts);
+
+		// Initial TX/RX count
+		if (newIndex < kMaxNodes) {
+			if (pkt.isTx)
+				fNodeTxAsSrc[newIndex] = 1;
+			else
+				fNodeRxAsSrc[newIndex] = 1;
+			row->SetField(
+				new BIntegerField(fNodeTxAsSrc[newIndex]), kNodeColTx);
+			row->SetField(
+				new BIntegerField(fNodeRxAsSrc[newIndex]), kNodeColRx);
+
+			if (pkt.route == 'D')
+				fNodeHasDirect[newIndex] = true;
+			else if (pkt.route == 'F')
+				fNodeHasForwarded[newIndex] = true;
+
+			// Initial role
+			const char* role = pkt.isTx ? "Self?" : "Remote";
+			rgb_color roleColor = pkt.isTx
+				? (rgb_color){255, 180, 50, 255}
+				: (rgb_color){100, 180, 255, 255};
+			row->SetField(
+				new RMColorStringField(role, roleColor), kNodeColRole);
+		}
 
 		if (!pkt.isTx && pkt.snr != 0) {
 			char snrStr[8];
@@ -967,14 +1050,10 @@ RepeaterMonitorView::GetNodeInfos(RepeaterNodeInfo* outArray,
 		if (lastField != NULL)
 			strlcpy(info.lastTime, lastField->String(), sizeof(info.lastTime));
 
-		// Determine direct/forwarded from link data
-		for (int32 l = 0; l < fLinkCount; l++) {
-			if (strcmp(fLinks[l].src, info.name) == 0
-				|| strcmp(fLinks[l].dst, info.name) == 0) {
-				// Check if any link involving this node was direct
-				// (We approximate: if node appears as src with snr!=0, it was RX)
-				info.isDirect = true;
-			}
+		// Read per-node route flags (index matches row order)
+		if (i < kMaxNodes) {
+			info.isDirect = fNodeHasDirect[i];
+			info.isForwarded = fNodeHasForwarded[i];
 		}
 
 		count++;
