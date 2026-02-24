@@ -508,15 +508,35 @@ NetworkMapView::SetRepeaterTopology(const char* selfName,
 	// Clear existing edges
 	fEdges.MakeEmpty();
 
-	// Update self node
+	// Update self node name (fallback)
 	if (selfName != NULL && selfName[0] != '\0')
 		strlcpy(fSelfNode.name, selfName, sizeof(fSelfNode.name));
+
+	// Track which hex ID is the self/repeater node
+	char selfHexId[8] = {};
 
 	// Create MapNodes from RepeaterNodeInfo
 	for (int32 i = 0; i < nodeCount; i++) {
 		const RepeaterNodeInfo& info = nodes[i];
 		if (info.name[0] == '\0')
 			continue;
+
+		// If this node is detected as self (the repeater), merge into
+		// fSelfNode at center instead of creating a duplicate
+		if (info.isSelf) {
+			strlcpy(selfHexId, info.name, sizeof(selfHexId));
+			// Use resolved full name if available
+			if (info.fullName[0] != '\0')
+				strlcpy(fSelfNode.name, info.fullName,
+					sizeof(fSelfNode.name));
+			fSelfNode.nodeType = NODE_REPEATER;
+			fSelfNode.messageCount = info.packetCount;
+			fSelfNode.activityLevel = fminf(1.0f,
+				info.packetCount / 20.0f);
+			fSelfNode.status = STATUS_ONLINE;
+			fSelfNode.lastSeen = (uint32)time(NULL);
+			continue;
+		}
 
 		// Build synthetic pubkey prefix from hex ID
 		uint8 syntheticPrefix[kPubKeyPrefixSize];
@@ -554,7 +574,7 @@ NetworkMapView::SetRepeaterTopology(const char* selfName,
 			strlcpy(node->name, info.fullName, sizeof(node->name));
 		else
 			strlcpy(node->name, info.name, sizeof(node->name));
-		node->nodeType = info.isSelf ? NODE_REPEATER : NODE_UNKNOWN;
+		node->nodeType = NODE_UNKNOWN;
 		node->hops = info.isDirect ? 1 : (info.isForwarded ? 2 : 1);
 		node->status = STATUS_ONLINE;  // Seen in log = online
 		node->messageCount = info.packetCount;
@@ -583,18 +603,60 @@ NetworkMapView::SetRepeaterTopology(const char* selfName,
 		if (link.src[0] == '\0' || link.dst[0] == '\0')
 			continue;
 
-		// Find source and dest nodes by hex ID via input array index
+		// Find source and dest nodes by hex ID
+		// Self node is at center (fSelfNode), others in fNodes
 		MapNode* srcNode = NULL;
 		MapNode* dstNode = NULL;
+
+		// Check if src or dst is the self/repeater node
+		if (selfHexId[0] != '\0') {
+			if (strcmp(link.src, selfHexId) == 0)
+				srcNode = &fSelfNode;
+			if (strcmp(link.dst, selfHexId) == 0)
+				dstNode = &fSelfNode;
+		}
+
+		// Search remaining nodes by hex ID via input array
 		for (int32 n = 0; n < nodeCount; n++) {
-			if (n >= fNodes.CountItems())
-				break;
+			if (nodes[n].isSelf)
+				continue;  // Already handled above
 			if (srcNode == NULL
-				&& strcmp(nodes[n].name, link.src) == 0)
-				srcNode = fNodes.ItemAt(n);
+				&& strcmp(nodes[n].name, link.src) == 0) {
+				// Find corresponding MapNode in fNodes
+				for (int32 m = 0; m < fNodes.CountItems(); m++) {
+					MapNode* mn = fNodes.ItemAt(m);
+					if (mn == NULL)
+						continue;
+					uint8 prefix[kPubKeyPrefixSize] = {};
+					unsigned int hv = 0;
+					sscanf(nodes[n].name, "%x", &hv);
+					prefix[0] = (uint8)(hv & 0xFF);
+					prefix[1] = (uint8)(n + 1);
+					if (memcmp(mn->pubKeyPrefix, prefix,
+							kPubKeyPrefixSize) == 0) {
+						srcNode = mn;
+						break;
+					}
+				}
+			}
 			if (dstNode == NULL
-				&& strcmp(nodes[n].name, link.dst) == 0)
-				dstNode = fNodes.ItemAt(n);
+				&& strcmp(nodes[n].name, link.dst) == 0) {
+				for (int32 m = 0; m < fNodes.CountItems(); m++) {
+					MapNode* mn = fNodes.ItemAt(m);
+					if (mn == NULL)
+						continue;
+					uint8 prefix[kPubKeyPrefixSize] = {};
+					unsigned int hv = 0;
+					sscanf(nodes[n].name, "%x", &hv);
+					prefix[0] = (uint8)(hv & 0xFF);
+					prefix[1] = (uint8)(n + 1);
+					if (memcmp(mn->pubKeyPrefix, prefix,
+							kPubKeyPrefixSize) == 0) {
+						dstNode = mn;
+						break;
+					}
+				}
+			}
 		}
 
 		if (srcNode == NULL || dstNode == NULL)
