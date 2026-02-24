@@ -5742,6 +5742,30 @@ MainWindow::_UpdateRepeaterMap()
 	RepeaterNodeInfo nodes[64];
 	int32 nodeCount = fRepeaterMonitorView->GetNodeInfos(nodes, 64);
 
+	// Try to resolve full names by matching hex ID (first pubkey byte)
+	// against known contacts
+	for (int32 i = 0; i < nodeCount; i++) {
+		if (nodes[i].fullName[0] != '\0')
+			continue;  // Already resolved
+
+		// Parse hex ID to byte value
+		unsigned int hexVal = 0;
+		sscanf(nodes[i].name, "%x", &hexVal);
+		uint8 idByte = (uint8)(hexVal & 0xFF);
+
+		// Search contacts for matching first pubkey byte
+		for (int32 c = 0; c < fContacts.CountItems(); c++) {
+			ContactInfo* contact = fContacts.ItemAt(c);
+			if (contact != NULL && contact->isValid
+				&& contact->publicKey[0] == idByte
+				&& contact->name[0] != '\0') {
+				strlcpy(nodes[i].fullName, contact->name,
+					sizeof(nodes[i].fullName));
+				break;
+			}
+		}
+	}
+
 	RepeaterLink links[128];
 	int32 linkCount = fRepeaterMonitorView->GetLinks(links, 128);
 

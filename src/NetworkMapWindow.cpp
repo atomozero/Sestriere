@@ -549,8 +549,12 @@ NetworkMapView::SetRepeaterTopology(const char* selfName,
 		}
 
 		memcpy(node->pubKeyPrefix, syntheticPrefix, kPubKeyPrefixSize);
-		strlcpy(node->name, info.name, sizeof(node->name));
-		node->nodeType = NODE_UNKNOWN;
+		// Use full resolved name if available, otherwise hex ID
+		if (info.fullName[0] != '\0')
+			strlcpy(node->name, info.fullName, sizeof(node->name));
+		else
+			strlcpy(node->name, info.name, sizeof(node->name));
+		node->nodeType = info.isSelf ? NODE_REPEATER : NODE_UNKNOWN;
 		node->hops = info.isDirect ? 1 : (info.isForwarded ? 2 : 1);
 		node->status = STATUS_ONLINE;  // Seen in log = online
 		node->messageCount = info.packetCount;
@@ -579,17 +583,18 @@ NetworkMapView::SetRepeaterTopology(const char* selfName,
 		if (link.src[0] == '\0' || link.dst[0] == '\0')
 			continue;
 
-		// Find source and dest nodes by name
+		// Find source and dest nodes by hex ID via input array index
 		MapNode* srcNode = NULL;
 		MapNode* dstNode = NULL;
-		for (int32 n = 0; n < fNodes.CountItems(); n++) {
-			MapNode* node = fNodes.ItemAt(n);
-			if (node == NULL)
-				continue;
-			if (strcmp(node->name, link.src) == 0)
-				srcNode = node;
-			if (strcmp(node->name, link.dst) == 0)
-				dstNode = node;
+		for (int32 n = 0; n < nodeCount; n++) {
+			if (n >= fNodes.CountItems())
+				break;
+			if (srcNode == NULL
+				&& strcmp(nodes[n].name, link.src) == 0)
+				srcNode = fNodes.ItemAt(n);
+			if (dstNode == NULL
+				&& strcmp(nodes[n].name, link.dst) == 0)
+				dstNode = fNodes.ItemAt(n);
 		}
 
 		if (srcNode == NULL || dstNode == NULL)

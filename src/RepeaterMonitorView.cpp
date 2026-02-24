@@ -1050,10 +1050,16 @@ RepeaterMonitorView::GetNodeInfos(RepeaterNodeInfo* outArray,
 		if (lastField != NULL)
 			strlcpy(info.lastTime, lastField->String(), sizeof(info.lastTime));
 
-		// Read per-node route flags (index matches row order)
+		// Read per-node flags (index matches row order)
 		if (i < kMaxNodes) {
 			info.isDirect = fNodeHasDirect[i];
 			info.isForwarded = fNodeHasForwarded[i];
+
+			// Self-detection: TX only with no RX, or TX >> RX
+			int32 tx = fNodeTxAsSrc[i];
+			int32 rx = fNodeRxAsSrc[i];
+			info.isSelf = (rx == 0 && tx > 0)
+				|| (tx > rx * 2 && tx > 3);
 		}
 
 		count++;

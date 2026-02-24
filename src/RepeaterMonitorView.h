@@ -24,11 +24,13 @@ class BTextControl;
 // Data exported for network map visualization
 struct RepeaterNodeInfo {
 	char	name[8];		// Node hex ID (e.g. "FD")
+	char	fullName[64];	// Resolved name (from contacts DB, or empty)
 	int32	packetCount;
 	int8	avgSnr;
 	int16	avgRssi;
 	bool	isDirect;		// Has packets with route='D'
 	bool	isForwarded;	// Has packets with route='F'
+	bool	isSelf;			// Auto-detected as repeater itself
 	char	lastTime[12];
 };
 
