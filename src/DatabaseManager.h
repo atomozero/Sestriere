@@ -99,6 +99,13 @@ public:
 								OwningObjectList<BString>& outKeys);
 			BString			GetContactGroup(const char* contactKeyHex);
 
+			// Topology edges (discovered inter-node connections)
+			bool			InsertTopologyEdge(const char* fromHex,
+								const char* toHex, int8 snr);
+			int32			LoadTopologyEdges(
+								BMessage* outEdges);
+			void			PruneOldEdges(uint32 maxAgeDays);
+
 			// Maintenance
 			void			PruneOldData(uint32 maxAgeDays);
 			void			PruneOldMessages(uint32 maxAgeDays);

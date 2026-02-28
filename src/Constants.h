@@ -230,6 +230,7 @@ enum {
 
 	// Window navigation (shared across files)
 	MSG_SHOW_NETWORK_MAP = 'nmap',
+	MSG_UPDATE_MAP_DATA = 'umdt',
 	MSG_SHOW_MAP = 'shmp',
 	MSG_TRACE_PATH = 'trcp',
 	MSG_SEND_LOGIN_CMD = 'slgn',

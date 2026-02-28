@@ -96,6 +96,8 @@ DatabaseManager::Open(const char* directory)
 
 	// Prune old SNR data (older than 30 days)
 	PruneOldData(30);
+	// Prune old topology edges (older than 30 days)
+	PruneOldEdges(30);
 
 	fprintf(stderr, "[DatabaseManager] Database opened: %s\n",
 		dbPath.String());
@@ -481,6 +483,87 @@ DatabaseManager::PruneOldMessages(uint32 maxAgeDays)
 
 	fprintf(stderr, "[DatabaseManager] Pruned messages older than %" B_PRIu32
 		" days\n", maxAgeDays);
+}
+
+
+// =============================================================================
+// Topology edges
+// =============================================================================
+
+bool
+DatabaseManager::InsertTopologyEdge(const char* fromHex, const char* toHex,
+	int8 snr)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL)
+		return false;
+
+	const char* sql =
+		"INSERT OR REPLACE INTO topology_edges "
+		"(from_key, to_key, snr, timestamp) VALUES (?, ?, ?, ?)";
+	sqlite3_stmt* stmt = NULL;
+	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) != SQLITE_OK)
+		return false;
+
+	sqlite3_bind_text(stmt, 1, fromHex, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_text(stmt, 2, toHex, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 3, snr);
+	sqlite3_bind_int(stmt, 4, (int32)time(NULL));
+
+	bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
+	sqlite3_finalize(stmt);
+	return ok;
+}
+
+
+int32
+DatabaseManager::LoadTopologyEdges(BMessage* outEdges)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL || outEdges == NULL)
+		return 0;
+
+	const char* sql =
+		"SELECT from_key, to_key, snr, timestamp FROM topology_edges "
+		"ORDER BY timestamp DESC";
+	sqlite3_stmt* stmt = NULL;
+	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) != SQLITE_OK)
+		return 0;
+
+	int32 count = 0;
+	while (sqlite3_step(stmt) == SQLITE_ROW) {
+		const char* fromKey = (const char*)sqlite3_column_text(stmt, 0);
+		const char* toKey = (const char*)sqlite3_column_text(stmt, 1);
+		int8 snr = (int8)sqlite3_column_int(stmt, 2);
+		uint32 ts = (uint32)sqlite3_column_int(stmt, 3);
+
+		outEdges->AddString("from_key", fromKey);
+		outEdges->AddString("to_key", toKey);
+		outEdges->AddInt8("snr", snr);
+		outEdges->AddInt32("timestamp", (int32)ts);
+		count++;
+	}
+	sqlite3_finalize(stmt);
+	return count;
+}
+
+
+void
+DatabaseManager::PruneOldEdges(uint32 maxAgeDays)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL)
+		return;
+
+	int32 cutoff = (int32)((uint32)time(NULL) - (maxAgeDays * 86400));
+
+	const char* sql = "DELETE FROM topology_edges WHERE timestamp < ?";
+	sqlite3_stmt* stmt = NULL;
+	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) == SQLITE_OK) {
+		sqlite3_bind_int(stmt, 1, cutoff);
+		sqlite3_step(stmt);
+		sqlite3_finalize(stmt);
+	}
 }
 
 
@@ -1122,6 +1205,18 @@ DatabaseManager::_CreateTables()
 		"  contact_key TEXT NOT NULL,"
 		"  PRIMARY KEY (group_name, contact_key),"
 		"  FOREIGN KEY (group_name) REFERENCES contact_groups(name) ON DELETE CASCADE"
+		")");
+	if (!ok)
+		return false;
+
+	// Topology edges table — discovered inter-node connections
+	ok = _Execute(
+		"CREATE TABLE IF NOT EXISTS topology_edges ("
+		"  from_key TEXT NOT NULL,"
+		"  to_key TEXT NOT NULL,"
+		"  snr INTEGER DEFAULT 0,"
+		"  timestamp INTEGER NOT NULL,"
+		"  PRIMARY KEY (from_key, to_key)"
 		")");
 
 	return ok;
