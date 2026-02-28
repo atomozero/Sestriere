@@ -729,8 +729,49 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 
 		case MSG_DEVICE_QUERY:
-			fProtocol->SendDeviceQuery();
+		{
+			if (!fHasDeviceInfo) {
+				fProtocol->SendDeviceQuery();
+				break;
+			}
+
+			BString info;
+			info << "Name: " << (fDeviceName[0] ? fDeviceName : "Unknown") << "\n";
+			info << "Board: " << (fDeviceBoard[0] ? fDeviceBoard : "Unknown") << "\n";
+			info << "Firmware: " << (fDeviceFirmware[0] ? fDeviceFirmware : "Unknown") << "\n";
+
+			if (fRadioFreq > 0) {
+				float freqMHz = fRadioFreq / 1000.0f;
+				info << BString().SetToFormat("\nFrequency: %.3f MHz\n", freqMHz);
+				if (fRadioBw > 0) {
+					if (fRadioBw >= 1000000)
+						info << BString().SetToFormat("Bandwidth: %.1f MHz\n", fRadioBw / 1000000.0f);
+					else
+						info << BString().SetToFormat("Bandwidth: %.1f kHz\n", fRadioBw / 1000.0f);
+				}
+				if (fRadioSf > 0)
+					info << BString().SetToFormat("Spreading Factor: SF%d\n", fRadioSf);
+				if (fRadioCr > 0)
+					info << BString().SetToFormat("Coding Rate: 4/%d\n", fRadioCr);
+			}
+			if (fRadioTxPower > 0)
+				info << BString().SetToFormat("TX Power: %d dBm\n", fRadioTxPower);
+
+			info << BString().SetToFormat("\nMax Channels: %d\n", fMaxChannels);
+
+			if (fPublicKey[0] != '\0') {
+				info << "\nPublic Key:\n";
+				info.Append(fPublicKey, 32);
+				info << "\n";
+				info.Append(fPublicKey + 32, 32);
+				info << "\n";
+			}
+
+			BAlert* alert = new BAlert("Device Info", info.String(), "OK");
+			alert->SetShortcut(0, B_ESCAPE);
+			alert->Go(NULL);
 			break;
+		}
 
 		case MSG_GET_BATTERY:
 			fProtocol->SendGetBattery();
