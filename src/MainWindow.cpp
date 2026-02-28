@@ -99,6 +99,8 @@ enum {
 	MSG_REMOVE_CHANNEL = 'rmch',
 	MSG_CREATE_CHANNEL = 'crcn',	// From AddChannelWindow
 	MSG_HANDSHAKE_TIMEOUT = 'hstm',
+	MSG_TRACE_ALL = 'tral',
+	MSG_TRACE_ALL_NEXT = 'trn!',
 };
 
 // Timer intervals
@@ -1173,14 +1175,74 @@ MainWindow::MessageReceived(BMessage* message)
 					}
 				}
 
-				fProtocol->SendTracePath(contact->publicKey);
-				_LogMessage("INFO", BString().SetToFormat(
-					"Trace path sent for %s (%02X%02X%02X%02X%02X%02X)",
-					contact->name,
-					contact->publicKey[0], contact->publicKey[1],
-					contact->publicKey[2], contact->publicKey[3],
-					contact->publicKey[4], contact->publicKey[5]));
+				status_t result = fProtocol->SendTracePath(contact);
+				if (result == B_BAD_VALUE) {
+					_LogMessage("INFO", BString().SetToFormat(
+						"Direct path to %s — cannot trace",
+						contact->name[0] ? contact->name : "(unnamed)"));
+				} else {
+					_LogMessage("INFO", BString().SetToFormat(
+						"Trace path sent for %s (%02X%02X%02X%02X%02X%02X)",
+						contact->name,
+						contact->publicKey[0], contact->publicKey[1],
+						contact->publicKey[2], contact->publicKey[3],
+						contact->publicKey[4], contact->publicKey[5]));
+				}
 			}
+			break;
+		}
+
+		case MSG_TRACE_ALL:
+		{
+			if (!fConnected) {
+				_LogMessage("WARN", "Cannot trace all: radio not connected");
+				break;
+			}
+			int traceable = 0;
+			int skipped = 0;
+			for (int32 i = 0; i < fContacts.CountItems(); i++) {
+				ContactInfo* c = fContacts.ItemAt(i);
+				if (c == NULL || !c->isValid)
+					continue;
+				if (c->outPathLen <= 0) {
+					skipped++;
+					continue;
+				}
+				traceable++;
+			}
+			_LogMessage("INFO", BString().SetToFormat(
+				"Trace ALL: %d traceable, %d skipped (no path)", traceable, skipped));
+			if (traceable > 0) {
+				// Start sequential trace: send first, schedule next with delay
+				BMessage nextMsg(MSG_TRACE_ALL_NEXT);
+				nextMsg.AddInt32("index", 0);
+				PostMessage(&nextMsg);
+			}
+			break;
+		}
+
+		case MSG_TRACE_ALL_NEXT:
+		{
+			int32 startIdx = 0;
+			message->FindInt32("index", &startIdx);
+			for (int32 i = startIdx; i < fContacts.CountItems(); i++) {
+				ContactInfo* c = fContacts.ItemAt(i);
+				if (c == NULL || !c->isValid || c->outPathLen <= 0)
+					continue;
+				// Send trace for this contact
+				status_t result = fProtocol->SendTracePath(c);
+				if (result == B_OK) {
+					_LogMessage("INFO", BString().SetToFormat(
+						"Trace sent: %s (path:%d)",
+						c->name[0] ? c->name : "(unnamed)", c->outPathLen));
+				}
+				// Schedule next contact after 2 seconds (avoid flooding radio)
+				BMessage nextMsg(MSG_TRACE_ALL_NEXT);
+				nextMsg.AddInt32("index", i + 1);
+				BMessageRunner::StartSending(this, &nextMsg, 2000000, 1);
+				return;
+			}
+			_LogMessage("INFO", "Trace ALL complete");
 			break;
 		}
 
@@ -1425,23 +1487,31 @@ MainWindow::MessageReceived(BMessage* message)
 			ssize_t keySize;
 			if (message->FindData("pubkey", B_RAW_TYPE, &keyData, &keySize) == B_OK
 				&& keySize >= (ssize_t)kPubKeyPrefixSize) {
-				// Send trace path as ping mechanism
-				uint8 payload[7];
-				payload[0] = CMD_SEND_TRACE_PATH;
-				memcpy(payload + 1, keyData, kPubKeyPrefixSize);
-				fSerialHandler->SendFrame(payload, 7);
+				// Look up full contact for SendTracePath
+				ContactInfo* contact = _FindContactByPrefix(
+					(const uint8*)keyData, kPubKeyPrefixSize);
 
 				// Record ping start
 				fPingStartTime = system_time();
 				memcpy(fPingTargetKey, keyData, kPubKeyPrefixSize);
 				fPingPending = true;
 
-				ContactInfo* contact = _FindContactByPrefix(
-					(const uint8*)keyData, kPubKeyPrefixSize);
-				_LogMessage("PING", BString().SetToFormat(
-					"Pinging %s...",
-					(contact && contact->name[0])
-						? contact->name : "(unknown)"));
+				if (contact != NULL) {
+					status_t result = fProtocol->SendTracePath(contact);
+					if (result == B_BAD_VALUE) {
+						_LogMessage("PING", BString().SetToFormat(
+							"Direct path to %s — ping not needed",
+							contact->name[0] ? contact->name : "(unknown)"));
+						fPingPending = false;
+					} else {
+						_LogMessage("PING", BString().SetToFormat(
+							"Pinging %s...",
+							contact->name[0] ? contact->name : "(unknown)"));
+					}
+				} else {
+					_LogMessage("WARN", "Cannot ping: contact not found");
+					fPingPending = false;
+				}
 			}
 			break;
 		}
@@ -3298,6 +3368,11 @@ MainWindow::_HandleContact(const uint8* data, size_t length)
 	contact->flags = data[kContactFlagsOffset];
 	contact->outPathLen = (int8)data[kContactPathLenOffset];
 	{
+		int pathBytes = contact->outPathLen;  // 1 byte per hop hash
+		if (pathBytes > 0 && pathBytes <= (int)kContactOutPathMaxSize)
+			memcpy(contact->outPath, data + kContactOutPathOffset, pathBytes);
+	}
+	{
 		char nameBuf[kContactNameSize + 1];
 		memcpy(nameBuf, data + kContactNameOffset, kContactNameSize);
 		nameBuf[kContactNameSize] = '\0';
@@ -3332,9 +3407,21 @@ MainWindow::_HandleContact(const uint8* data, size_t length)
 
 	uint32 now = (uint32)time(NULL);
 	uint32 age = (now > contact->lastSeen) ? (now - contact->lastSeen) : 0;
-	_LogMessage("INFO", BString().SetToFormat("Contact: %s (type:%d flags:0x%02X rssi:%d lastSeen:%u age:%us)",
+
+	// Log outPath hex for topology debugging
+	BString pathHex;
+	if (contact->outPathLen > 0) {
+		pathHex << " outPath=[";
+		for (int32 p = 0; p < contact->outPathLen && p < 16; p++) {
+			if (p > 0) pathHex << ",";
+			pathHex << BString().SetToFormat("%02X", contact->outPath[p]);
+		}
+		pathHex << "]";
+	}
+	_LogMessage("INFO", BString().SetToFormat("Contact: %s (type:%d flags:0x%02X path:%d lastSeen:%u age:%us)%s",
 		contact->name[0] ? contact->name : "(unnamed)",
-		contact->type, contact->flags, contact->outPathLen, contact->lastSeen, age));
+		contact->type, contact->flags, contact->outPathLen, contact->lastSeen, age,
+		pathHex.String()));
 }
 
 

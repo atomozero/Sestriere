@@ -526,6 +526,9 @@ NetworkMapView::SetNodes(const OwningObjectList<ContactInfo>* contacts)
 	for (int32 i = 0; i < oldNodes.CountItems(); i++)
 		delete oldNodes.ItemAt(i);
 
+	// Build topology edges from outPath data in contact frames
+	BuildEdgesFromOutPaths(contacts);
+
 	Invalidate();
 }
 
@@ -1055,6 +1058,144 @@ NetworkMapView::BuildEdgesFromTrace(const TraceRoute& route)
 	}
 
 	Invalidate();
+}
+
+
+void
+NetworkMapView::BuildEdgesFromOutPaths(
+	const OwningObjectList<ContactInfo>* contacts)
+{
+	// Build topology edges from outPath data in contact frames.
+	// outPath contains 1-byte hashes (publicKey[0]) in source→dest order.
+	// Build edge chains: Self → outPath[0] → outPath[1] → ... → Contact
+	if (contacts == NULL)
+		return;
+
+	uint32 now = (uint32)time(NULL);
+	uint8 selfPrefix[kPubKeyPrefixSize];
+	memset(selfPrefix, 0, sizeof(selfPrefix));
+
+	for (int32 i = 0; i < contacts->CountItems(); i++) {
+		ContactInfo* contact = contacts->ItemAt(i);
+		if (contact == NULL || !contact->isValid)
+			continue;
+		if (contact->outPathLen <= 0)
+			continue;
+
+		int32 pathLen = contact->outPathLen;
+		if (pathLen > 16)
+			pathLen = 16;
+
+		// Build edge chain: self → hop1 → hop2 → ... → contact
+		// outPath is already in source→dest order
+		const uint8* prevPrefix = selfPrefix;
+		bool prevIsSelf = true;
+
+		for (int32 h = 0; h < pathLen; h++) {
+			// Match 1-byte hash to a known node
+			MapNode* hopNode = _MatchHopToContact(&contact->outPath[h], 1);
+			if (hopNode == NULL)
+				continue;  // Unknown hop — skip
+
+			// Don't create self→self edge if hop resolves to the contact itself
+			if (memcmp(hopNode->pubKeyPrefix, contact->publicKey,
+					kPubKeyPrefixSize) == 0)
+				continue;
+
+			TopologyEdge* edge = new TopologyEdge();
+			if (prevIsSelf)
+				memset(edge->fromPrefix, 0, sizeof(edge->fromPrefix));
+			else
+				memcpy(edge->fromPrefix, prevPrefix, kPubKeyPrefixSize);
+			memcpy(edge->toPrefix, hopNode->pubKeyPrefix, kPubKeyPrefixSize);
+			edge->snr = 0;  // outPath doesn't carry SNR data
+			edge->timestamp = now;
+			edge->ambiguous = true;  // 1-byte match is inherently ambiguous
+
+			// Replace existing edge for same from→to pair, or add new
+			bool replaced = false;
+			for (int32 e = 0; e < fEdges.CountItems(); e++) {
+				TopologyEdge* existing = fEdges.ItemAt(e);
+				if (existing &&
+					memcmp(existing->fromPrefix, edge->fromPrefix,
+						kPubKeyPrefixSize) == 0 &&
+					memcmp(existing->toPrefix, edge->toPrefix,
+						kPubKeyPrefixSize) == 0) {
+					// Only replace if existing is also ambiguous (don't
+					// overwrite higher-quality trace data edges)
+					if (existing->ambiguous) {
+						*existing = *edge;
+					}
+					delete edge;
+					replaced = true;
+					break;
+				}
+			}
+			if (!replaced)
+				fEdges.AddItem(edge);
+
+			prevPrefix = hopNode->pubKeyPrefix;
+			prevIsSelf = false;
+		}
+
+		// Final edge: last hop → contact
+		if (!prevIsSelf) {
+			TopologyEdge* finalEdge = new TopologyEdge();
+			memcpy(finalEdge->fromPrefix, prevPrefix, kPubKeyPrefixSize);
+			memcpy(finalEdge->toPrefix, contact->publicKey, kPubKeyPrefixSize);
+			finalEdge->snr = 0;
+			finalEdge->timestamp = now;
+			finalEdge->ambiguous = true;
+
+			bool replaced = false;
+			for (int32 e = 0; e < fEdges.CountItems(); e++) {
+				TopologyEdge* existing = fEdges.ItemAt(e);
+				if (existing &&
+					memcmp(existing->fromPrefix, finalEdge->fromPrefix,
+						kPubKeyPrefixSize) == 0 &&
+					memcmp(existing->toPrefix, finalEdge->toPrefix,
+						kPubKeyPrefixSize) == 0) {
+					if (existing->ambiguous) {
+						*existing = *finalEdge;
+					}
+					delete finalEdge;
+					replaced = true;
+					break;
+				}
+			}
+			if (!replaced)
+				fEdges.AddItem(finalEdge);
+		} else if (pathLen > 0) {
+			// All hops were unresolvable, but contact has a path — create
+			// direct self→contact edge as fallback
+			TopologyEdge* directEdge = new TopologyEdge();
+			memset(directEdge->fromPrefix, 0, sizeof(directEdge->fromPrefix));
+			memcpy(directEdge->toPrefix, contact->publicKey, kPubKeyPrefixSize);
+			directEdge->snr = 0;
+			directEdge->timestamp = now;
+			directEdge->ambiguous = true;
+
+			bool replaced = false;
+			for (int32 e = 0; e < fEdges.CountItems(); e++) {
+				TopologyEdge* existing = fEdges.ItemAt(e);
+				if (existing &&
+					memcmp(existing->fromPrefix, directEdge->fromPrefix,
+						kPubKeyPrefixSize) == 0 &&
+					memcmp(existing->toPrefix, directEdge->toPrefix,
+						kPubKeyPrefixSize) == 0) {
+					if (existing->ambiguous) {
+						*existing = *directEdge;
+					}
+					delete directEdge;
+					replaced = true;
+					break;
+				}
+			}
+			if (!replaced)
+				fEdges.AddItem(directEdge);
+		}
+	}
+
 }
 
 
@@ -2078,13 +2219,13 @@ NetworkMapView::_DrawTopologyEdges()
 
 	for (int32 e = 0; e < fEdges.CountItems(); e++) {
 		TopologyEdge* edge = fEdges.ItemAt(e);
-		if (edge == NULL || edge->ambiguous)
+		if (edge == NULL)
 			continue;
 
 		// Find from and to nodes
 		BPoint fromPos;
 		BPoint toPos;
-		float opacity = 0.8f;
+		float opacity = edge->ambiguous ? 0.5f : 0.8f;
 
 		// Check if "from" is self node (all zeros or matching self prefix)
 		uint8 zeroPrefix[kPubKeyPrefixSize];
@@ -2133,10 +2274,32 @@ NetworkMapView::_DrawTopologyEdges()
 		lineColor.alpha = (uint8)(200 * opacity);
 
 		float thickness = _ThicknessForSNR(edge->snr) * fZoom;
+		if (edge->ambiguous)
+			thickness = fmaxf(1.0f, thickness * 0.6f);
 
 		SetHighColor(lineColor);
 		SetPenSize(thickness);
-		StrokeLine(fromPos, toPos);
+
+		if (edge->ambiguous) {
+			// Draw dashed line for ambiguous (outPath-derived) edges
+			BPoint delta = toPos - fromPos;
+			float length = sqrtf(delta.x * delta.x + delta.y * delta.y);
+			if (length > 0) {
+				float dashLen = 6.0f * fZoom;
+				float gapLen = 4.0f * fZoom;
+				float step = dashLen + gapLen;
+				float dx = delta.x / length;
+				float dy = delta.y / length;
+				for (float d = 0; d < length; d += step) {
+					float end = fminf(d + dashLen, length);
+					StrokeLine(
+						BPoint(fromPos.x + dx * d, fromPos.y + dy * d),
+						BPoint(fromPos.x + dx * end, fromPos.y + dy * end));
+				}
+			}
+		} else {
+			StrokeLine(fromPos, toPos);
+		}
 
 		// Draw glow for repeater hub connections
 		if (!fromIsSelf) {
@@ -2616,9 +2779,12 @@ NetworkMapView::_FindRelayForNode(const MapNode* node) const
 {
 	// Find which relay node this one connects through, using discovered edges
 	// Walk backward through edges: find an edge where toPrefix == node's prefix
+	// Prefer non-ambiguous (trace) edges, fall back to ambiguous (outPath) edges
+	MapNode* ambiguousRelay = NULL;
+
 	for (int32 e = 0; e < fEdges.CountItems(); e++) {
 		TopologyEdge* edge = fEdges.ItemAt(e);
-		if (edge == NULL || edge->ambiguous)
+		if (edge == NULL)
 			continue;
 
 		if (memcmp(edge->toPrefix, node->pubKeyPrefix, kPubKeyPrefixSize) == 0) {
@@ -2629,10 +2795,18 @@ NetworkMapView::_FindRelayForNode(const MapNode* node) const
 			if (memcmp(edge->fromPrefix, zeroPrefix, kPubKeyPrefixSize) == 0)
 				return NULL;  // Connected to self, not relayed
 
-			return _FindNodeByPrefix(edge->fromPrefix);
+			MapNode* relay = _FindNodeByPrefix(edge->fromPrefix);
+			if (relay == NULL)
+				continue;
+
+			if (!edge->ambiguous)
+				return relay;  // High-quality match, return immediately
+
+			if (ambiguousRelay == NULL)
+				ambiguousRelay = relay;  // Save as fallback
 		}
 	}
-	return NULL;
+	return ambiguousRelay;
 }
 
 
@@ -2852,6 +3026,14 @@ void
 NetworkMapWindow::UpdateFromContacts(const OwningObjectList<ContactInfo>* contacts)
 {
 	fMapView->SetNodes(contacts);
+}
+
+
+void
+NetworkMapWindow::BuildEdgesFromOutPaths(
+	const OwningObjectList<ContactInfo>* contacts)
+{
+	fMapView->BuildEdgesFromOutPaths(contacts);
 }
 
 

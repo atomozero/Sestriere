@@ -162,6 +162,8 @@ public:
 			void			SetTraceRoute(const TraceRoute& route);
 			void			ClearTraceRoutes();
 			void			BuildEdgesFromTrace(const TraceRoute& route);
+			void			BuildEdgesFromOutPaths(
+								const OwningObjectList<ContactInfo>* contacts);
 			void			LoadSavedEdges();
 			void			ExpireStaleEdges();
 			int32			CountEdges() const { return fEdges.CountItems(); }
@@ -245,6 +247,8 @@ public:
 	virtual bool			QuitRequested();
 
 			void			UpdateFromContacts(const OwningObjectList<ContactInfo>* contacts);
+			void			BuildEdgesFromOutPaths(
+								const OwningObjectList<ContactInfo>* contacts);
 			void			SetSelfInfo(const char* name);
 			void			SetRepeaterTopology(const char* selfName,
 								const RepeaterNodeInfo* nodes, int32 nodeCount,
