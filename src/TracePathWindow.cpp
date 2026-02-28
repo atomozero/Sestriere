@@ -11,6 +11,7 @@
 #include <Button.h>
 #include <LayoutBuilder.h>
 #include <ListView.h>
+#include <MessageRunner.h>
 #include <ScrollView.h>
 #include <StringItem.h>
 #include <StringView.h>
@@ -22,6 +23,8 @@
 
 
 static const uint32 MSG_START_TRACE = 'sttr';
+static const uint32 MSG_TRACE_TIMEOUT = 'trto';
+static const bigtime_t kTraceTimeoutUs = 30000000LL;  // 30 seconds
 
 
 TracePathWindow::TracePathWindow(BWindow* parent, const ContactInfo* contact)
@@ -36,7 +39,8 @@ TracePathWindow::TracePathWindow(BWindow* parent, const ContactInfo* contact)
 	fCloseButton(NULL),
 	fStatusLabel(NULL),
 	fHops(10),
-	fTracing(false)
+	fTracing(false),
+	fTimeoutRunner(NULL)
 {
 	if (contact != NULL)
 		fContact = *contact;
@@ -86,6 +90,7 @@ TracePathWindow::TracePathWindow(BWindow* parent, const ContactInfo* contact)
 
 TracePathWindow::~TracePathWindow()
 {
+	delete fTimeoutRunner;
 }
 
 
@@ -104,6 +109,11 @@ TracePathWindow::MessageReceived(BMessage* message)
 	switch (message->what) {
 		case MSG_START_TRACE:
 			_OnStartTrace();
+			break;
+
+		case MSG_TRACE_TIMEOUT:
+			if (fTracing)
+				SetTraceComplete(false);
 			break;
 
 		default:
@@ -125,16 +135,20 @@ TracePathWindow::AddTraceHop(const TraceHop& hop)
 void
 TracePathWindow::SetTraceComplete(bool success)
 {
+	// Cancel timeout timer
+	delete fTimeoutRunner;
+	fTimeoutRunner = NULL;
+
 	fTracing = false;
 	fTraceButton->SetEnabled(true);
-	fTraceButton->SetLabel("Start Trace");
+	fTraceButton->SetLabel("Retry Trace");
 
 	if (success) {
 		BString status;
 		status.SetToFormat("Trace complete: %d hops", (int)fHops.CountItems());
 		fStatusLabel->SetText(status.String());
 	} else {
-		fStatusLabel->SetText("Trace failed or timed out");
+		fStatusLabel->SetText("No trace response (30s timeout)");
 	}
 }
 
@@ -155,8 +169,11 @@ TracePathWindow::ParseTraceData(const uint8* data, size_t length)
 	// pathLen=1: single 1-byte hash (legacy)
 	// pathLen>=4: N hops × 4-byte pubkey prefix (numHops = pathLen / 4)
 
-	if (length < 12)
+	if (length < 12) {
+		// Direct path or too short — still mark complete
+		SetTraceComplete(false);
 		return;
+	}
 
 	uint8 pathLen = data[2];
 
@@ -212,8 +229,119 @@ TracePathWindow::ParseTraceData(const uint8* data, size_t length)
 		AddTraceHop(destHop);
 	}
 
-	// Mark trace as complete
-	SetTraceComplete(numHops > 0);
+	// Mark trace as complete — even 0 hops is a valid response (direct path)
+	if (numHops == 0) {
+		fStatusLabel->SetText("Direct path — no intermediate hops");
+		fTracing = false;
+		fTraceButton->SetEnabled(true);
+		fTraceButton->SetLabel("Retry Trace");
+		delete fTimeoutRunner;
+		fTimeoutRunner = NULL;
+	} else {
+		SetTraceComplete(true);
+	}
+}
+
+
+void
+TracePathWindow::SetContact(const ContactInfo* contact)
+{
+	if (contact == NULL)
+		return;
+
+	// Cancel any in-progress trace
+	delete fTimeoutRunner;
+	fTimeoutRunner = NULL;
+	fTracing = false;
+
+	fContact = *contact;
+	BString titleStr;
+	titleStr.SetToFormat("Trace path to: %s",
+		fContact.name[0] ? fContact.name : "Unknown");
+	fTargetLabel->SetText(titleStr.String());
+
+	// Clear previous results
+	fHops.MakeEmpty();
+	_UpdateHopList();
+
+	fTraceButton->SetEnabled(true);
+	fTraceButton->SetLabel("Start Trace");
+	fStatusLabel->SetText("Press Start to begin trace");
+}
+
+
+void
+TracePathWindow::StartExternalTrace(const ContactInfo* contact)
+{
+	// Cancel any in-progress trace (timeout, state)
+	delete fTimeoutRunner;
+	fTimeoutRunner = NULL;
+
+	// Update contact info (window may be reused for a different contact)
+	if (contact != NULL) {
+		fContact = *contact;
+		BString titleStr;
+		titleStr.SetToFormat("Trace path to: %s",
+			fContact.name[0] ? fContact.name : "Unknown");
+		fTargetLabel->SetText(titleStr.String());
+	}
+
+	// Clear previous results
+	fHops.MakeEmpty();
+	_UpdateHopList();
+
+	// Set tracing state — trace command already sent by MainWindow
+	fTracing = true;
+	fTraceButton->SetEnabled(false);
+	fTraceButton->SetLabel("Tracing...");
+	fStatusLabel->SetText("Trace in progress...");
+
+	// Start timeout timer
+	BMessage timeoutMsg(MSG_TRACE_TIMEOUT);
+	fTimeoutRunner = new BMessageRunner(this, &timeoutMsg,
+		kTraceTimeoutUs, 1);
+}
+
+
+void
+TracePathWindow::ResolveHopNames(const OwningObjectList<ContactInfo>* contacts)
+{
+	if (contacts == NULL)
+		return;
+
+	for (int32 i = 0; i < fHops.CountItems(); i++) {
+		TraceHop* hop = fHops.ItemAt(i);
+		if (hop == NULL)
+			continue;
+
+		// Skip if prefix is all zeros (e.g. "Destination" hop)
+		bool hasPrefix = false;
+		for (size_t j = 0; j < 4; j++) {
+			if (hop->pubKeyPrefix[j] != 0) {
+				hasPrefix = true;
+				break;
+			}
+		}
+		if (!hasPrefix)
+			continue;
+
+		// Match first 4 bytes of pubkey against contacts
+		for (int32 c = 0; c < contacts->CountItems(); c++) {
+			ContactInfo* contact = contacts->ItemAt(c);
+			if (contact == NULL || !contact->isValid)
+				continue;
+
+			if (memcmp(contact->publicKey, hop->pubKeyPrefix, 4) == 0) {
+				snprintf(hop->name, sizeof(hop->name), "%s (%02X%02X%02X%02X)",
+					contact->name,
+					hop->pubKeyPrefix[0], hop->pubKeyPrefix[1],
+					hop->pubKeyPrefix[2], hop->pubKeyPrefix[3]);
+				break;
+			}
+		}
+	}
+
+	_UpdateHopList();
 }
 
 
@@ -223,16 +351,8 @@ TracePathWindow::_OnStartTrace()
 	if (fTracing)
 		return;
 
-	// Clear previous results
-	fHops.MakeEmpty();
-	_UpdateHopList();
-
-	fTracing = true;
-	fTraceButton->SetEnabled(false);
-	fTraceButton->SetLabel("Tracing...");
-	fStatusLabel->SetText("Sending trace request...");
-
-	// Send trace path request to parent window
+	// Send trace path request to parent window —
+	// MainWindow will call StartExternalTrace() back via MSG_TRACE_PATH
 	if (fParent != NULL) {
 		BMessage msg(MSG_TRACE_PATH);
 		msg.AddData("pubkey", B_RAW_TYPE, fContact.publicKey, kPubKeyPrefixSize);

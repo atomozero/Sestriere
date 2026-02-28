@@ -42,7 +42,7 @@ Unified dashboard with device status, radio health metrics, network health score
 - **Contact Management** -- Search, sync, export/import, right-click context menu
 
 ### Visualization
-- **Network Map** -- Force-directed topology with SNR-colored links, animated flow dots, trace route visualization, and auto-trace
+- **Network Map** -- Force-directed topology with SNR-colored links, animated flow dots, trace route visualization, auto-trace, full mesh discovery, and edge persistence
 - **Geographic Map** -- Lat/lon map with zoom, pan, grid, compass, scale bar, and hop-count colored connections
 - **Telemetry Dashboard** -- Battery, storage, radio stats graphs with time ranges up to 7 days, CSV export
 - **Mission Control** -- Unified dashboard: health score arc, SNR/RSSI trend, packet rate histogram, mini topology, session timeline, activity feed, and alert banners
@@ -55,7 +55,9 @@ Unified dashboard with device status, radio health metrics, network health score
 ### Device Control
 - **Settings** -- Node name, location, TX power, 12 radio presets (frequency, bandwidth, SF, CR)
 - **Repeater Admin** -- Remote administration of repeaters/rooms after login (stats, contacts, reboot, factory reset)
-- **Battery & Storage Monitoring** -- Real-time voltage and storage status
+- **Battery & Storage Monitoring** -- Real-time voltage and storage status with LiPo/LiFePO4/NMC chemistry curves
+- **Serial Monitor** -- Terminal-style CLI interaction for repeater/standalone devices
+- **Repeater Monitor** -- Structured repeater log analysis with per-node stats and topology extraction
 
 ### MQTT Integration
 - **MQTT Bridge** -- Relay messages to MQTT broker (meshcoreitalia.it)
@@ -150,15 +152,17 @@ Sestriere/
 ├── src/                            # Source code
 │   ├── Makefile                    # Build system
 │   ├── Sestriere.cpp               # BApplication entry point
-│   ├── MainWindow.cpp/h            # Main window + protocol handler
+│   ├── MainWindow.cpp/h            # Main window (UI + event routing)
+│   ├── ProtocolHandler.cpp/h       # Protocol parsing (extracted from MainWindow)
 │   ├── SerialHandler.cpp/h         # POSIX serial I/O (BLooper)
-│   ├── DatabaseManager.cpp/h       # SQLite database (messages, SNR, telemetry)
+│   ├── DatabaseManager.cpp/h       # SQLite database (messages, SNR, telemetry, groups)
 │   ├── ChatView.cpp/h              # Telegram-style message display
 │   ├── ChatHeaderView.cpp/h        # Chat header with contact info
 │   ├── MessageView.cpp/h           # Chat bubble rendering
-│   ├── ContactItem.cpp/h           # Contact list item with status dots
+│   ├── ContactItem.cpp/h           # Contact list item with status dots & groups
 │   ├── ContactInfoPanel.cpp/h      # Right-side contact detail panel
 │   ├── SNRChartView.cpp/h          # SNR history chart
+│   ├── AddChannelWindow.cpp/h      # Channel creation dialog
 │   ├── TopBarView.cpp/h            # Unified top bar (icons + status)
 │   ├── GrowingTextView.cpp/h       # Auto-growing multi-line input
 │   ├── SettingsWindow.cpp/h        # Device & Radio settings (12 presets)
@@ -171,12 +175,19 @@ Sestriere/
 │   ├── TracePathWindow.cpp/h       # Route tracing visualization
 │   ├── LoginWindow.cpp/h           # Repeater/Room authentication
 │   ├── ContactExportWindow.cpp/h   # Contact import/export via clipboard
+│   ├── ProfileWindow.cpp/h         # Profile export/import (JSON)
+│   ├── SerialMonitorWindow.cpp/h   # Terminal-style serial CLI monitor
+│   ├── RepeaterMonitorView.cpp/h   # Structured repeater log viewer (BView)
+│   ├── RepeaterMonitorWindow.cpp/h # Repeater monitor window
 │   ├── DebugLogWindow.cpp/h        # Raw protocol debug log
 │   ├── MqttClient.cpp/h            # MQTT bridge integration
 │   ├── MqttLogWindow.cpp/h         # MQTT event log
 │   ├── NotificationManager.cpp/h   # Desktop notifications
+│   ├── DeskbarReplicant.cpp/h      # Deskbar tray integration
 │   ├── Types.h                     # Protocol structures & radio presets
-│   └── Constants.h                 # Application constants
+│   ├── Constants.h                 # Application constants & thresholds
+│   ├── Compat.h                    # BObjectList API compatibility
+│   └── Utils.h                     # Shared utilities (FormatUptime, ParseHex, etc.)
 └── haiku-patches/                  # USB driver patches
 ```
 
@@ -211,7 +222,10 @@ Sestriere/
         ├─ TracePathWindow
         ├─ LoginWindow
         ├─ MqttClient (bridge)
-        └─ MqttLogWindow
+        ├─ MqttLogWindow
+        ├─ SerialMonitorWindow
+        ├─ RepeaterMonitorWindow
+        └─ ProfileWindow
 ```
 
 ## License

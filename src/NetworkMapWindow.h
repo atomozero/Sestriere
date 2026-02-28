@@ -151,6 +151,7 @@ public:
 								const RepeaterLink* links, int32 linkCount);
 			void			SetShowLabels(bool show);
 			void			SetShowSignalStrength(bool show);
+			void			SetHideInactive(bool hide);
 			void			SetZoom(float zoom);
 			void			TriggerNodePulse(const uint8* pubKeyPrefix);
 			void			UpdateNodeSNR(const uint8* pubKeyPrefix,
@@ -179,6 +180,8 @@ private:
 			void			_DrawNode(const MapNode& node);
 			void			_DrawConnection(BPoint from, BPoint to,
 								const MapNode* node);
+			void			_DrawUnknownPath(BPoint from, BPoint to,
+								const MapNode* node);
 			void			_DrawLinkLabel(BPoint midPoint,
 								const MapNode* node);
 			void			_DrawFlowDots(BPoint from, BPoint to,
@@ -190,6 +193,11 @@ private:
 			void			_DrawLinkQualityLegend();
 			void			_DrawStats();
 			void			_ShowNodeContextMenu(BPoint where, MapNode* node);
+
+	inline	bool			_IsNodeHidden(const MapNode& node) const
+								{ return fHideInactive
+									&& (node.status == STATUS_AWAY
+										|| node.status == STATUS_OFFLINE); }
 
 			float			_RadiusForNode(const MapNode& node) const;
 			float			_OpacityForNode(const MapNode& node) const;
@@ -211,6 +219,7 @@ private:
 			float			fZoom;
 			bool			fShowLabels;
 			bool			fShowSignalStrength;
+			bool			fHideInactive;
 
 			MapNode*		fSelectedNode;
 			BPoint			fDragStart;
@@ -260,6 +269,7 @@ private:
 			BCheckBox*		fShowLabelsCheck;
 			BCheckBox*		fShowSignalCheck;
 			BCheckBox*		fAutoTraceCheck;
+			BCheckBox*		fHideInactiveCheck;
 			BSlider*		fZoomSlider;
 			BButton*		fRefreshButton;
 			BButton*		fMapNetworkButton;

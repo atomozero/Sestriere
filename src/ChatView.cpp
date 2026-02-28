@@ -15,6 +15,7 @@
 
 #include <cstring>
 
+#include "Constants.h"
 #include "MessageView.h"
 
 
@@ -91,6 +92,23 @@ ChatView::MouseDown(BPoint where)
 		ConvertToScreen(&where);
 		menu->Go(where, true, true, true);
 		return;
+	}
+
+	// Check for left-click on "X hops" link
+	if (buttons & B_PRIMARY_MOUSE_BUTTON) {
+		int32 index = IndexOf(where);
+		if (index >= 0) {
+			MessageView* item = dynamic_cast<MessageView*>(ItemAt(index));
+			if (item != NULL && item->HasClickableHops()
+				&& item->HopsClickRect().Contains(where)) {
+				// Post trace path request to parent window
+				BMessage msg(MSG_TRACE_PATH);
+				msg.AddData("pubkey", B_RAW_TYPE,
+					item->PubKeyPrefix(), kPubKeyPrefixSize);
+				Window()->PostMessage(&msg);
+				return;
+			}
+		}
 	}
 
 	BListView::MouseDown(where);

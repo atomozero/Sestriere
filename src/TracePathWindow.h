@@ -15,6 +15,7 @@
 
 class BButton;
 class BListView;
+class BMessageRunner;
 class BStringView;
 
 // Single hop in a trace path
@@ -45,6 +46,16 @@ public:
 			// Parse trace data from device
 			void			ParseTraceData(const uint8* data, size_t length);
 
+			// Start trace externally (from ChatView click) — sends immediately
+			void			StartExternalTrace(const ContactInfo* contact);
+
+			// Update target contact without starting trace (from menu)
+			void			SetContact(const ContactInfo* contact);
+
+			// Resolve hop names from contact list
+			void			ResolveHopNames(
+								const OwningObjectList<ContactInfo>* contacts);
+
 private:
 			void			_OnStartTrace();
 			void			_UpdateHopList();
@@ -62,6 +73,7 @@ private:
 
 			OwningObjectList<TraceHop>	fHops;
 			bool			fTracing;
+			BMessageRunner*	fTimeoutRunner;
 };
 
 #endif // TRACEPATHWINDOW_H

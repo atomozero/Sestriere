@@ -1,7 +1,7 @@
 # SESTRIERE — User Manual
 
 **MeshCore Companion for Haiku OS**
-Version 1.4 | February 2026
+Version 1.5 beta | February 2026
 
 ---
 
@@ -23,10 +23,12 @@ Version 1.4 | February 2026
 14. [Mission Control Dashboard](#14-mission-control-dashboard)
 15. [MQTT Integration](#15-mqtt-integration)
 16. [Device Administration](#16-device-administration)
-17. [Profile Export and Import](#17-profile-export-and-import)
-18. [Radio Configuration](#18-radio-configuration)
-19. [Notifications and Deskbar](#19-notifications-and-deskbar)
-20. [Keyboard Shortcuts](#20-keyboard-shortcuts)
+17. [Serial Monitor](#17-serial-monitor)
+18. [Repeater Monitor](#18-repeater-monitor)
+19. [Profile Export and Import](#19-profile-export-and-import)
+20. [Radio Configuration](#20-radio-configuration)
+21. [Notifications and Deskbar](#21-notifications-and-deskbar)
+22. [Keyboard Shortcuts](#22-keyboard-shortcuts)
 - [Appendix A: Radio Presets Reference](#appendix-a-radio-presets-reference)
 - [Appendix B: MeshCore Protocol Reference](#appendix-b-meshcore-protocol-reference)
 
@@ -390,21 +392,45 @@ Groups are stored in SQLite tables (`contact_groups`, `contact_group_members`) a
 
 **View > Network Map** (Cmd+M)
 
-The Network Map shows a topology visualization of your mesh network.
+The Network Map shows a force-directed topology visualization of your mesh network.
 
 ### Features
 
 - All contacts displayed as **animated nodes** with type-colored circles
-- **Links** between nodes colored by signal quality (green = good, red = poor)
+- **Links** between nodes colored by signal quality (green = excellent, yellow = fair, red = poor)
+- **Line thickness** proportional to link quality (thicker = better SNR)
+- **SNR labels** displayed as color-coded pills at connection midpoints
+- **Animated flow dots** along connections for online/recent nodes
 - **Pulse animation** when a node sends or receives a message
-- **Discovery mode**: systematically traces all reachable nodes
-- Shows **multi-hop paths** with quality indicators
+- **Trace route visualization** with multi-hop paths and per-hop SNR
+- **Topology edge persistence** — discovered edges saved to SQLite with 30-day expiry
+- **Contact name resolution** — nodes show contact names instead of hex prefixes
+- **Repeater node merging** — companion's own repeater merged with center "Me" node
+- **Resizable to fullscreen** — window can be maximized to full screen width
+
+### Topology Discovery
+
+Click **Map Network** to run a full mesh topology discovery. Sestriere traces all known nodes and builds a complete map of how they connect.
+
+- **Auto-Trace** checkbox enables periodic background trace routes (every 30 seconds) for selected or multi-hop nodes
+- Discovered links persist in the database and are reloaded on next session
+- Links older than 30 days are automatically pruned
 
 ### Interaction
 
 - Right-click a node for: **Open Chat**, **Trace Path**, **Node Info**
+- Click a node to see SNR, RSSI, and path info in the info panel
 - Watch live link quality updates as messages flow through the network
 - Track path changes and signal degradation over time
+
+### Legend
+
+The bottom-left corner shows a link quality legend with colored line samples:
+- **Green** — Excellent (SNR > 5 dB)
+- **Yellow-green** — Good (0 to 5 dB)
+- **Yellow** — Fair (-5 to 0 dB)
+- **Orange** — Poor (-10 to -5 dB)
+- **Red** — Bad (< -10 dB)
 
 ---
 
@@ -591,7 +617,59 @@ When logged in, you can type CLI commands directly in the chat input. These are 
 
 ---
 
-## 17. Profile Export and Import
+## 17. Serial Monitor
+
+**Connection > Serial Monitor**
+
+The Serial Monitor provides a terminal-style interface for direct CLI interaction with repeater or standalone devices that are not running the companion firmware.
+
+### When to Use
+
+When connecting to a device, Sestriere performs a handshake to detect whether the device speaks the MeshCore Companion Protocol. If the handshake times out, the device is likely a repeater with only a serial CLI console. In this case, Sestriere offers to open the Serial Monitor instead.
+
+### Features
+
+- **Terminal output** — Scrollable monospace text view showing device serial output
+- **Command input** — Text field at the bottom for sending CLI commands
+- **Save log** — Export the entire session log to a text file via save dialog
+- **Clear** — Clear the terminal output
+- **Auto-pruning** — Output limited to 512 KB to prevent memory issues
+
+### Usage
+
+1. Connect to a repeater or standalone device
+2. If the companion handshake fails, accept the Serial Monitor prompt
+3. Type CLI commands in the input field and press Enter or click Send
+4. View device output in the scrollable terminal area
+
+---
+
+## 18. Repeater Monitor
+
+**View > Repeater Monitor**
+
+The Repeater Monitor provides structured analysis of repeater log output, automatically parsing packet entries into a sortable table.
+
+### Auto-Detection
+
+When connected via Serial Monitor to a device that outputs MeshCore repeater log lines, the Repeater Monitor activates automatically and begins parsing the log.
+
+### Features
+
+- **Packet table** — Sortable columns: Time, Direction (TX/RX), Source, Destination, Route, SNR, RSSI, Summary
+- **Per-node statistics** — Separate table showing per-node metrics: packet count, average SNR/RSSI, TX/RX breakdown
+- **Auto role detection** — Nodes classified as direct or forwarded based on route field
+- **SNR/RSSI graph** — Visual signal quality over time
+- **Text search** — Filter packets by node name or content
+- **Network Map integration** — Topology data (nodes and links) extracted from log and visualized on the Network Map
+
+### Topology Extraction
+
+The Repeater Monitor tracks directional links between nodes (who talks to whom) and feeds this data to the Network Map for visualization. Each observed packet creates or updates a link with SNR information.
+
+---
+
+## 19. Profile Export and Import
 
 **Contacts > Export/Import Profile**
 
@@ -636,7 +714,7 @@ Bulk configuration transfer using JSON format.
 
 ---
 
-## 18. Radio Configuration
+## 20. Radio Configuration
 
 **Settings > Device & Radio**
 
@@ -667,7 +745,7 @@ Select from 11 pre-configured presets in the settings dialog. See Appendix A.
 
 ---
 
-## 19. Notifications and Deskbar
+## 21. Notifications and Deskbar
 
 ### Desktop Notifications
 
@@ -696,7 +774,7 @@ Remove via **Settings > Remove from Deskbar**.
 
 ---
 
-## 20. Keyboard Shortcuts
+## 22. Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
@@ -817,6 +895,7 @@ Sestriere stores all persistent data in SQLite:
 | `mute_settings` | Muted contact/channel flags |
 | `contact_groups` | Group name definitions |
 | `contact_group_members` | Contact-to-group assignments |
+| `topology_edges` | Network map link persistence (30-day expiry) |
 
 Database location: `~/config/settings/Sestriere/sestriere.db`
 

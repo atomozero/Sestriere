@@ -313,6 +313,9 @@ enum {
 
 	// Repeater packet flow animation
 	MSG_REPEATER_PACKET_FLOW = 'rpfl',
+
+	// Network Map
+	MSG_TOGGLE_HIDE_INACTIVE = 'nmhi',
 };
 
 // =============================================================================

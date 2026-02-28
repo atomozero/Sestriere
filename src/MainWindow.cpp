@@ -1122,6 +1122,10 @@ MainWindow::MessageReceived(BMessage* message)
 				fTracePathWindow = new TracePathWindow(this, contact);
 				fTracePathWindow->Show();
 			} else {
+				if (fTracePathWindow->LockLooper()) {
+					fTracePathWindow->SetContact(contact);
+					fTracePathWindow->UnlockLooper();
+				}
 				_ShowWindow(fTracePathWindow);
 			}
 			break;
@@ -1129,28 +1133,53 @@ MainWindow::MessageReceived(BMessage* message)
 
 		case MSG_TRACE_PATH:
 		{
-			// Handle trace path request from TracePathWindow or NetworkMapWindow
+			// Handle trace path request from TracePathWindow, ChatView, or NetworkMapWindow
 			const void* pubkey;
 			ssize_t size;
 			if (message->FindData("pubkey", B_RAW_TYPE, &pubkey, &size) == B_OK) {
+				const uint8* pk = (const uint8*)pubkey;
+
+				// Look up full contact — SendTracePath needs full 32-byte key
+				ContactInfo* contact = _FindContactByPrefix(pk,
+					(size >= (ssize_t)kPubKeyPrefixSize) ? kPubKeyPrefixSize : size);
+
+				if (contact == NULL) {
+					_LogMessage("WARN", BString().SetToFormat(
+						"Cannot trace: no contact for prefix %02X%02X%02X%02X%02X%02X (size=%d)",
+						pk[0], pk[1], pk[2], pk[3], pk[4], pk[5], (int)size));
+					break;
+				}
+
 				// Only show TracePathWindow if NOT from automated discovery
 				bool silent = false;
 				message->FindBool("silent", &silent);
 
 				if (!silent) {
-					ContactInfo* contact = _FindContactByPrefix(
-						(const uint8*)pubkey, kPubKeyPrefixSize);
+					if (!fConnected) {
+						_LogMessage("WARN", "Cannot trace: radio not connected");
+						break;
+					}
+
 					if (fTracePathWindow == NULL) {
 						fTracePathWindow = new TracePathWindow(this, contact);
 						fTracePathWindow->Show();
 					} else {
 						_ShowWindow(fTracePathWindow);
 					}
+
+					if (fTracePathWindow->LockLooper()) {
+						fTracePathWindow->StartExternalTrace(contact);
+						fTracePathWindow->UnlockLooper();
+					}
 				}
 
-				// Use ProtocolHandler for correct frame format
-				fProtocol->SendTracePath((const uint8*)pubkey);
-				_LogMessage("INFO", "Sending trace path request...");
+				fProtocol->SendTracePath(contact->publicKey);
+				_LogMessage("INFO", BString().SetToFormat(
+					"Trace path sent for %s (%02X%02X%02X%02X%02X%02X)",
+					contact->name,
+					contact->publicKey[0], contact->publicKey[1],
+					contact->publicKey[2], contact->publicKey[3],
+					contact->publicKey[4], contact->publicKey[5]));
 			}
 			break;
 		}
@@ -4315,12 +4344,22 @@ MainWindow::_HandlePushTraceData(const uint8* data, size_t length)
 		return;
 	}
 
-	_LogMessage("INFO", "Trace path data received");
+	uint8 pl = data[2];
+	uint8 nh = (pl <= 1) ? pl : (pl / 4);
+	_LogMessage("INFO", BString().SetToFormat(
+		"Trace data received: pathLen=%d, numHops=%d, frameLen=%d",
+		(int)pl, (int)nh, (int)length));
 
 	// Forward to TracePathWindow if open (must lock the window first!)
-	if (_LockIfVisible(fTracePathWindow)) {
+	if (fTracePathWindow == NULL) {
+		_LogMessage("WARN", "TracePathWindow is NULL, cannot forward");
+	} else if (_LockIfVisible(fTracePathWindow)) {
+		_LogMessage("INFO", "Forwarding trace data to TracePathWindow");
 		fTracePathWindow->ParseTraceData(data, length);
+		fTracePathWindow->ResolveHopNames(&fContacts);
 		fTracePathWindow->UnlockLooper();
+	} else {
+		_LogMessage("WARN", "TracePathWindow not visible or could not lock");
 	}
 
 	// Forward to NetworkMapWindow for trace route visualization

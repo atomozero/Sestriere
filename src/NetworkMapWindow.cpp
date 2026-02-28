@@ -67,7 +67,7 @@ static const uint32 MSG_DISCOVERY_TICK = 'dctk';
 static const bigtime_t kMapRefreshInterval = 3000000;   // 3 seconds
 static const bigtime_t kAutoTraceInterval = 30000000;   // 30 seconds
 static const bigtime_t kAnimationInterval = 50000;      // 50ms = 20fps
-static const bigtime_t kDiscoveryTickInterval = 2000000; // 2 seconds between trace requests
+static const bigtime_t kDiscoveryTickInterval = 10000000; // 10 seconds between trace requests (radio has ~3 slot limit)
 static const uint32 kEdgeExpireSeconds = 600;            // 10 minutes edge lifetime
 static const uint32 kAutoTraceSkipSeconds = 300;         // 5 min: skip recently traced nodes
 
@@ -134,6 +134,7 @@ NetworkMapView::NetworkMapView()
 	fZoom(1.0f),
 	fShowLabels(true),
 	fShowSignalStrength(true),
+	fHideInactive(false),
 	fSelectedNode(NULL),
 	fDragStart(0, 0),
 	fDragging(false),
@@ -294,6 +295,10 @@ NetworkMapView::Draw(BRect updateRect)
 		if (node == NULL)
 			continue;
 
+		// Skip inactive nodes when filter is active
+		if (_IsNodeHidden(*node))
+			continue;
+
 		// Check if this node has discovered edges (to or from it)
 		bool hasEdge = false;
 		for (int32 e = 0; e < fEdges.CountItems(); e++) {
@@ -307,8 +312,13 @@ NetworkMapView::Draw(BRect updateRect)
 		}
 
 		if (!hasEdge) {
-			// No discovered edge — draw connection to center
-			_DrawConnection(fCenter, node->position, node);
+			if (node->hops <= 1) {
+				// Direct contact — draw solid connection to center
+				_DrawConnection(fCenter, node->position, node);
+			} else {
+				// Multi-hop but path unknown — draw faint "?" indicator
+				_DrawUnknownPath(fCenter, node->position, node);
+			}
 		}
 	}
 
@@ -324,7 +334,7 @@ NetworkMapView::Draw(BRect updateRect)
 	// Draw all other nodes
 	for (int32 i = 0; i < fNodes.CountItems(); i++) {
 		MapNode* node = fNodes.ItemAt(i);
-		if (node != NULL) {
+		if (node != NULL && !_IsNodeHidden(*node)) {
 			_DrawNode(*node);
 		}
 	}
@@ -762,6 +772,14 @@ NetworkMapView::SetShowSignalStrength(bool show)
 
 
 void
+NetworkMapView::SetHideInactive(bool hide)
+{
+	fHideInactive = hide;
+	Invalidate();
+}
+
+
+void
 NetworkMapView::SetZoom(float zoom)
 {
 	fZoom = zoom;
@@ -1187,6 +1205,10 @@ NetworkMapView::_CalculatePositions()
 	for (int32 i = 0; i < count; i++) {
 		MapNode* node = fNodes.ItemAt(i);
 		if (node == NULL)
+			continue;
+
+		// Skip hidden nodes from layout so visible nodes redistribute evenly
+		if (_IsNodeHidden(*node))
 			continue;
 
 		if (node->hops <= 1)
@@ -1701,6 +1723,77 @@ NetworkMapView::_DrawConnection(BPoint from, BPoint to, const MapNode* node)
 
 
 void
+NetworkMapView::_DrawUnknownPath(BPoint from, BPoint to, const MapNode* node)
+{
+	if (node == NULL)
+		return;
+
+	float opacity = _OpacityForNode(*node) * 0.4f;
+
+	// Very faint thin dashed line
+	rgb_color lineColor = kLinkUnknown;
+	lineColor.alpha = (uint8)(80 * opacity);
+	SetHighColor(lineColor);
+	SetPenSize(1.0f * fZoom);
+
+	float dx = to.x - from.x;
+	float dy = to.y - from.y;
+	float len = sqrtf(dx * dx + dy * dy);
+	float dashLen = 8.0f;
+	int dashes = (int)(len / dashLen);
+	if (dashes < 1) dashes = 1;
+
+	for (int i = 0; i < dashes; i += 2) {
+		float t1 = (float)i / dashes;
+		float t2 = (float)(i + 1) / dashes;
+		StrokeLine(
+			BPoint(from.x + dx * t1, from.y + dy * t1),
+			BPoint(from.x + dx * t2, from.y + dy * t2));
+	}
+
+	SetPenSize(1.0f);
+
+	// Draw "?" label at midpoint to indicate unknown path
+	BPoint mid((from.x + to.x) / 2, (from.y + to.y) / 2);
+
+	BFont font;
+	GetFont(&font);
+	font.SetSize(10);
+	font.SetFace(B_BOLD_FACE);
+	SetFont(&font);
+
+	char label[16];
+	snprintf(label, sizeof(label), "? %d hops", node->hops);
+	float labelWidth = StringWidth(label);
+	float labelX = mid.x - labelWidth / 2;
+	float labelY = mid.y + 4;
+
+	// Background pill
+	rgb_color bg = ui_color(B_PANEL_BACKGROUND_COLOR);
+	bg.alpha = (uint8)(180 * opacity);
+	SetHighColor(bg);
+	FillRoundRect(BRect(labelX - 4, labelY - 11, labelX + labelWidth + 4, labelY + 3),
+		4, 4);
+
+	// Border
+	rgb_color borderColor = kLinkUnknown;
+	borderColor.alpha = (uint8)(120 * opacity);
+	SetHighColor(borderColor);
+	StrokeRoundRect(BRect(labelX - 4, labelY - 11, labelX + labelWidth + 4, labelY + 3),
+		4, 4);
+
+	// Text
+	rgb_color textColor = ui_color(B_PANEL_TEXT_COLOR);
+	textColor.alpha = (uint8)(180 * opacity);
+	SetHighColor(textColor);
+	DrawString(label, BPoint(labelX, labelY));
+
+	font.SetFace(0);
+	SetFont(&font);
+}
+
+
+void
 NetworkMapView::_DrawLinkLabel(BPoint midPoint, const MapNode* node)
 {
 	if (node == NULL || !node->hasSNRData)
@@ -2005,6 +2098,8 @@ NetworkMapView::_DrawTopologyEdges()
 			MapNode* fromNode = _FindNodeByPrefix(edge->fromPrefix);
 			if (fromNode == NULL)
 				continue;
+			if (_IsNodeHidden(*fromNode))
+				continue;
 			fromPos = fromNode->position;
 			opacity *= _OpacityForNode(*fromNode);
 		}
@@ -2019,6 +2114,8 @@ NetworkMapView::_DrawTopologyEdges()
 		} else {
 			toNode = _FindNodeByPrefix(edge->toPrefix);
 			if (toNode == NULL)
+				continue;
+			if (_IsNodeHidden(*toNode))
 				continue;
 			toPos = toNode->position;
 			opacity *= _OpacityForNode(*toNode);
@@ -2297,6 +2394,7 @@ NetworkMapView::_DrawStats()
 	int32 total = fNodes.CountItems();
 	int32 online = 0;
 	int32 repeaters = 0;
+	int32 hidden = 0;
 	for (int32 i = 0; i < fNodes.CountItems(); i++) {
 		MapNode* node = fNodes.ItemAt(i);
 		if (node == NULL)
@@ -2305,19 +2403,29 @@ NetworkMapView::_DrawStats()
 			online++;
 		if (node->nodeType == NODE_REPEATER)
 			repeaters++;
+		if (_IsNodeHidden(*node))
+			hidden++;
 	}
 
 	int32 edges = fEdges.CountItems();
 
-	char stats[128];
-	if (edges > 0)
-		snprintf(stats, sizeof(stats), "Nodes: %d (%d online, %d repeaters) — %d edges",
+	char stats[160];
+	if (hidden > 0) {
+		snprintf(stats, sizeof(stats),
+			"Nodes: %d (%d online, %d hidden)",
+			(int)total, (int)online, (int)hidden);
+	} else if (edges > 0) {
+		snprintf(stats, sizeof(stats),
+			"Nodes: %d (%d online, %d repeaters) \xe2\x80\x94 %d edges",
 			(int)total, (int)online, (int)repeaters, (int)edges);
-	else if (repeaters > 0)
-		snprintf(stats, sizeof(stats), "Nodes: %d total, %d online, %d repeaters",
+	} else if (repeaters > 0) {
+		snprintf(stats, sizeof(stats),
+			"Nodes: %d total, %d online, %d repeaters",
 			(int)total, (int)online, (int)repeaters);
-	else
-		snprintf(stats, sizeof(stats), "Nodes: %d total, %d online", (int)total, (int)online);
+	} else {
+		snprintf(stats, sizeof(stats),
+			"Nodes: %d total, %d online", (int)total, (int)online);
+	}
 
 	SetHighColor(kLabelColor);
 	DrawString(stats, BPoint(10, 20));
@@ -2543,6 +2651,7 @@ NetworkMapWindow::NetworkMapWindow(BWindow* parent)
 	fShowLabelsCheck(NULL),
 	fShowSignalCheck(NULL),
 	fAutoTraceCheck(NULL),
+	fHideInactiveCheck(NULL),
 	fZoomSlider(NULL),
 	fRefreshButton(NULL),
 	fMapNetworkButton(NULL),
@@ -2578,6 +2687,10 @@ NetworkMapWindow::NetworkMapWindow(BWindow* parent)
 		new BMessage(MSG_TOGGLE_AUTO_TRACE));
 	fAutoTraceCheck->SetValue(B_CONTROL_OFF);
 
+	fHideInactiveCheck = new BCheckBox("hide_inactive", "Hide inactive",
+		new BMessage(MSG_TOGGLE_HIDE_INACTIVE));
+	fHideInactiveCheck->SetValue(B_CONTROL_OFF);
+
 	fZoomSlider = new BSlider("zoom", NULL,
 		new BMessage(MSG_ZOOM_CHANGED), 50, 150, B_HORIZONTAL);
 	fZoomSlider->SetValue(100);
@@ -2604,6 +2717,7 @@ NetworkMapWindow::NetworkMapWindow(BWindow* parent)
 			.Add(fShowLabelsCheck)
 			.Add(fShowSignalCheck)
 			.Add(fAutoTraceCheck)
+			.Add(fHideInactiveCheck)
 			.AddStrut(10)
 			.Add(new BStringView("zoom_label", "Zoom:"))
 			.Add(fZoomSlider, 0.2)
@@ -2672,6 +2786,10 @@ NetworkMapWindow::MessageReceived(BMessage* message)
 
 		case MSG_TOGGLE_SIGNAL:
 			fMapView->SetShowSignalStrength(fShowSignalCheck->Value() == B_CONTROL_ON);
+			break;
+
+		case MSG_TOGGLE_HIDE_INACTIVE:
+			fMapView->SetHideInactive(fHideInactiveCheck->Value() == B_CONTROL_ON);
 			break;
 
 		case MSG_ZOOM_CHANGED:
@@ -2975,9 +3093,9 @@ NetworkMapWindow::_DiscoveryTick()
 	}
 
 	if (fDiscoveryQueue.CountItems() == 0) {
-		// All requests sent — wait for radio responses (up to 15 ticks = 30s)
+		// All requests sent — wait for radio responses (up to 3 ticks = 30s)
 		fDiscoveryWaitTicks++;
-		if (fDiscoveryWaitTicks <= 15) {
+		if (fDiscoveryWaitTicks <= 3) {
 			char status[64];
 			snprintf(status, sizeof(status),
 				"Waiting for responses... (%d edges so far)",

@@ -9,6 +9,7 @@
 #define MESSAGEVIEW_H
 
 #include <ListItem.h>
+#include <Rect.h>
 #include <String.h>
 
 #include <vector>
@@ -30,6 +31,12 @@ public:
 			uint32			Timestamp() const { return fTimestamp; }
 			const char*		Text() const { return fText.String(); }
 			const char*		SenderName() const { return fSenderName.String(); }
+			uint8			PathLen() const { return fPathLen; }
+			const uint8*	PubKeyPrefix() const { return fPubKeyPrefix; }
+			BRect			HopsClickRect() const { return fHopsClickRect; }
+			bool			HasClickableHops() const
+								{ return !fOutgoing && fPathLen > 0
+									&& fPathLen != kPathLenDirect; }
 
 			void			SetDeliveryStatus(uint8 status, uint32 rtt = 0);
 			uint8			DeliveryStatus() const { return fDeliveryStatus; }
@@ -50,6 +57,8 @@ private:
 			uint8			fDeliveryStatus;
 			uint32			fRoundTripMs;
 			uint8			fTxtType;
+			uint8			fPubKeyPrefix[6];
+			BRect			fHopsClickRect;
 
 			float			fBaselineOffset;
 };

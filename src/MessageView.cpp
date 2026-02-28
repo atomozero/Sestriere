@@ -68,8 +68,10 @@ MessageView::MessageView(const ChatMessage& message, const char* senderName)
 	fDeliveryStatus(message.deliveryStatus),
 	fRoundTripMs(message.roundTripMs),
 	fTxtType(message.txtType),
+	fHopsClickRect(),
 	fBaselineOffset(0)
 {
+	memcpy(fPubKeyPrefix, message.pubKeyPrefix, sizeof(fPubKeyPrefix));
 }
 
 
@@ -278,7 +280,40 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	float metaX = bubbleRect.right - kBubblePadding - totalMetaWidth;
 	float metaY = bubbleRect.bottom - kBubblePadding / 2;
 
-	owner->DrawString(displayMeta.String(), BPoint(metaX, metaY));
+	// For incoming multi-hop: split rendering to make "X hops" clickable
+	bool clickableHops = HasClickableHops();
+	if (clickableHops) {
+		// Draw time + separator in normal meta color
+		BString timePart;
+		timePart.SetToFormat("%s \xC2\xB7 ", timeStr);
+		owner->SetHighColor(MetaTextColor());
+		owner->DrawString(timePart.String(), BPoint(metaX, metaY));
+
+		float timePartWidth = metaFont.StringWidth(timePart.String());
+
+		// Draw "X hops" in link color with underline
+		BString hopsPart;
+		hopsPart.SetToFormat("%d hops", fPathLen);
+		float hopsWidth = metaFont.StringWidth(hopsPart.String());
+
+		float hopsX = metaX + timePartWidth;
+		owner->SetHighColor(ui_color(B_CONTROL_HIGHLIGHT_COLOR));
+		owner->DrawString(hopsPart.String(), BPoint(hopsX, metaY));
+
+		// Draw underline
+		font_height mfh;
+		metaFont.GetHeight(&mfh);
+		float underlineY = metaY + mfh.descent * 0.5f;
+		owner->StrokeLine(BPoint(hopsX, underlineY),
+			BPoint(hopsX + hopsWidth, underlineY));
+
+		// Save click rect in list view coordinates (frame-relative)
+		fHopsClickRect.Set(hopsX, metaY - mfh.ascent,
+			hopsX + hopsWidth, metaY + mfh.descent);
+	} else {
+		fHopsClickRect = BRect();
+		owner->DrawString(displayMeta.String(), BPoint(metaX, metaY));
+	}
 
 	// Draw SNR value with color coding
 	if (showSnr) {
