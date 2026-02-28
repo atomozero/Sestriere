@@ -104,7 +104,7 @@ static const rgb_color kEdgeDiscoveredColor = {100, 180, 255, 200}; // Blue for 
 static const rgb_color kHubGlowColor = {255, 180, 50, 40};         // Amber glow for repeater hubs
 
 // Node sizes
-static const float kSelfNodeRadius = 24.0f;
+static const float kSelfNodeRadius = 14.0f;
 static const float kNodeRadiusMin = 10.0f;
 static const float kNodeRadiusMax = 18.0f;
 static const float kMinDistance = 80.0f;
@@ -1560,13 +1560,13 @@ NetworkMapView::_DrawSelfNode()
 	if (fShowLabels) {
 		BFont font;
 		GetFont(&font);
-		font.SetSize(12);
+		font.SetSize(10);
 		font.SetFace(B_BOLD_FACE);
 		SetFont(&font);
 
 		float labelWidth = StringWidth(fSelfNode.name);
 		float labelX = fCenter.x - labelWidth / 2;
-		float labelY = fCenter.y + radius + 18;
+		float labelY = fCenter.y + radius + 14;
 
 		// Background
 		SetHighColor(kLabelBgColor);
@@ -2844,7 +2844,7 @@ NetworkMapView::_FindRelayForNode(const MapNode* node) const
 
 NetworkMapWindow::NetworkMapWindow(BWindow* parent)
 	:
-	BWindow(BRect(0, 0, 700, 550), "Network Map",
+	BWindow(BRect(0, 0, 750, 580), "Network Map",
 		B_TITLED_WINDOW_LOOK, B_NORMAL_WINDOW_FEEL,
 		B_CLOSE_ON_ESCAPE),
 	fParent(parent),
