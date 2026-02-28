@@ -1010,8 +1010,9 @@ PacketAnalyzerWindow::_DecodePacket(CapturedPacket& packet,
 		{
 			if (rawLength >= 12) {
 				uint8 pathLen = rawData[2];
+				uint8 numHops = (pathLen <= 1) ? pathLen : (pathLen / 4);
 				snprintf(packet.summary, sizeof(packet.summary),
-					"Trace: %u hops", pathLen);
+					"Trace: %u hops", numHops);
 			} else {
 				strlcpy(packet.summary, "Trace path data",
 					sizeof(packet.summary));
@@ -1711,9 +1712,10 @@ PacketAnalyzerWindow::_FormatDecodedSection(const CapturedPacket* packet,
 				"through the mesh.\n";
 
 			if (packet->payloadSize >= 12) {
-				char buf[32];
-				snprintf(buf, sizeof(buf), "  Hops:     %u\n",
-					packet->payload[2]);
+				uint8 pathLen = packet->payload[2];
+				uint8 numHops = (pathLen <= 1) ? pathLen : (pathLen / 4);
+				char buf[64];
+				snprintf(buf, sizeof(buf), "  Hops:     %u\n", numHops);
 				output << buf;
 			}
 			break;

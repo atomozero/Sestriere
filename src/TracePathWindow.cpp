@@ -142,62 +142,78 @@ TracePathWindow::SetTraceComplete(bool success)
 void
 TracePathWindow::ParseTraceData(const uint8* data, size_t length)
 {
-	// PUSH_TRACE_DATA format (per MeshCore Companion Protocol):
+	// PUSH_TRACE_DATA format:
 	// [0]     = code (0x89)
 	// [1]     = reserved
-	// [2]     = path_len (number of hops)
+	// [2]     = pathLen (byte count of hop data, NOT hop count)
 	// [3]     = flags
-	// [4-7]   = tag (int32)
-	// [8-11]  = auth_code (int32)
-	// [12..12+path_len-1]   = path_hashes (1 byte per hop)
-	// [12+path_len..12+2*path_len] = path_snrs (path_len+1 SNR values, int8 *4)
+	// [4-7]   = tag (uint32)
+	// [8-11]  = authCode (uint32)
+	// [12..12+pathLen-1]  = hop identifiers
+	// [12+pathLen..]      = SNR bytes (numHops + 1 values)
+	//
+	// pathLen=1: single 1-byte hash (legacy)
+	// pathLen>=4: N hops × 4-byte pubkey prefix (numHops = pathLen / 4)
 
 	if (length < 12)
 		return;
 
 	uint8 pathLen = data[2];
-	// uint8 flags = data[3];
 
-	// Need at least: 12 header + pathLen hashes + (pathLen+1) SNRs
-	size_t expectedLen = 12 + pathLen + pathLen + 1;
+	uint8 numHops;
+	uint8 hopSize;
+	if (pathLen <= 1) {
+		numHops = pathLen;
+		hopSize = 1;
+	} else {
+		hopSize = 4;
+		numHops = pathLen / hopSize;
+	}
+
 	size_t hashOffset = 12;
-	size_t snrOffset = 12 + pathLen;
+	size_t snrOffset = hashOffset + pathLen;
 
 	// Clear previous hops for a fresh trace result
 	fHops.MakeEmpty();
 
-	for (uint8 i = 0; i < pathLen; i++) {
+	for (uint8 i = 0; i < numHops; i++) {
 		TraceHop hop;
 		memset(hop.pubKeyPrefix, 0, sizeof(hop.pubKeyPrefix));
 
-		// Store path hash in first byte of pubKeyPrefix for display
-		if (hashOffset + i < length)
-			hop.pubKeyPrefix[0] = data[hashOffset + i];
+		size_t hopStart = hashOffset + (size_t)i * hopSize;
+		if (hopStart + hopSize <= length) {
+			if (hopSize == 4) {
+				memcpy(hop.pubKeyPrefix, data + hopStart, 4);
+				snprintf(hop.name, sizeof(hop.name),
+					"Hop #%d (%02X%02X%02X%02X)", i + 1,
+					hop.pubKeyPrefix[0], hop.pubKeyPrefix[1],
+					hop.pubKeyPrefix[2], hop.pubKeyPrefix[3]);
+			} else {
+				hop.pubKeyPrefix[0] = data[hopStart];
+				snprintf(hop.name, sizeof(hop.name),
+					"Hop #%d (hash: 0x%02X)", i + 1, hop.pubKeyPrefix[0]);
+			}
+		}
 
-		// SNR value for this hop (int8, ×4)
 		if (snrOffset + i < length)
 			hop.snr = (int8)data[snrOffset + i];
-
-		// Format hop name from hash byte
-		snprintf(hop.name, sizeof(hop.name), "Hop #%d (hash: 0x%02X)",
-			i + 1, hop.pubKeyPrefix[0]);
 
 		hop.timestamp = (uint32)real_time_clock();
 		AddTraceHop(hop);
 	}
 
 	// Last SNR entry is the destination's SNR
-	if (pathLen > 0 && snrOffset + pathLen < length) {
+	if (numHops > 0 && snrOffset + numHops < length) {
 		TraceHop destHop;
 		memset(destHop.pubKeyPrefix, 0, sizeof(destHop.pubKeyPrefix));
-		destHop.snr = (int8)data[snrOffset + pathLen];
+		destHop.snr = (int8)data[snrOffset + numHops];
 		snprintf(destHop.name, sizeof(destHop.name), "Destination");
 		destHop.timestamp = (uint32)real_time_clock();
 		AddTraceHop(destHop);
 	}
 
 	// Mark trace as complete
-	SetTraceComplete(pathLen > 0 || length >= expectedLen);
+	SetTraceComplete(numHops > 0);
 }
 
 

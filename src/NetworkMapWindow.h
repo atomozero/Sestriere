@@ -77,22 +77,25 @@ struct MapNode {
 
 // Trace path hop for visualization
 struct TracePathHop {
-	uint8		hash;		// Hop hash byte
-	int8		snr;		// SNR * 4 for this hop
+	uint8		hopPrefix[4];	// 4-byte pubkey prefix identifying this hop
+	int8		snr;			// Raw SNR byte for this hop
+
+	TracePathHop() : snr(0) {
+		memset(hopPrefix, 0, sizeof(hopPrefix));
+	}
 };
 
 // Stored trace route for a contact
 struct TraceRoute {
 	uint8		destKeyPrefix[kPubKeyPrefixSize];
-	uint8		pathLen;
+	uint8		numHops;			// Number of intermediate hops
 	TracePathHop	hops[16];		// Max 16 hops
-	int8		destSnr;			// SNR at destination
+	int8		destSnr;			// Raw destination SNR byte
 	uint32		timestamp;			// When trace was performed
 	float		animPhase;			// Animation phase for trace highlight
 
-	TraceRoute() : pathLen(0), destSnr(0), timestamp(0), animPhase(0) {
+	TraceRoute() : numHops(0), destSnr(0), timestamp(0), animPhase(0) {
 		memset(destKeyPrefix, 0, sizeof(destKeyPrefix));
-		memset(hops, 0, sizeof(hops));
 	}
 };
 
@@ -163,6 +166,8 @@ public:
 			int32			CountEdges() const { return fEdges.CountItems(); }
 
 			MapNode*		GetSelectedNode() const { return fSelectedNode; }
+			MapNode*		FindNodeByHopPrefix(const uint8* hopPrefix,
+								size_t prefixLen) const;
 			int32			GetMultiHopNodes(
 								BObjectList<MapNode>* outList) const;
 			int32			GetOnlineNodes(
@@ -195,8 +200,8 @@ private:
 			float			_ThicknessForSNR(int8 snr) const;
 			rgb_color		_StatusColor(NodeStatus status) const;
 			float			_DistanceForRssi(int8 rssi) const;
-			uint8			_HashForContact(const uint8* pubKeyPrefix) const;
-			MapNode*		_MatchHopToContact(uint8 hopHash) const;
+			MapNode*		_MatchHopToContact(const uint8* hopPrefix,
+									size_t prefixLen) const;
 			MapNode*		_FindNodeByPrefix(const uint8* prefix) const;
 			MapNode*		_FindRelayForNode(const MapNode* node) const;
 

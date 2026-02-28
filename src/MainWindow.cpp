@@ -4334,7 +4334,8 @@ MainWindow::_HandlePushTraceData(const uint8* data, size_t length)
 		bigtime_t rtt = system_time() - fPingStartTime;
 		fPingPending = false;
 
-		uint8 hops = (length >= 3) ? data[2] : 0;
+		uint8 pathLen = (length >= 3) ? data[2] : 0;
+		uint8 hops = (pathLen <= 1) ? pathLen : (pathLen / 4);
 		ContactInfo* target = _FindContactByPrefix(
 			fPingTargetKey, kPubKeyPrefixSize);
 		const char* name = (target && target->name[0])
@@ -4356,9 +4357,10 @@ MainWindow::_HandlePushTraceData(const uint8* data, size_t length)
 
 	// Log trace path summary
 	if (length >= 12) {
-		uint8 pathLen = data[2];
+		uint8 pl = data[2];
+		uint8 nh = (pl <= 1) ? pl : (pl / 4);
 		_LogMessage("TRACE", BString().SetToFormat(
-			"Trace path: %d hops, flags=0x%02X", pathLen, data[3]));
+			"Trace path: %d hops, flags=0x%02X", nh, data[3]));
 	}
 }
 

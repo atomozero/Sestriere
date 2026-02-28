@@ -934,36 +934,31 @@ NetworkMapView::ClearTraceRoutes()
 void
 NetworkMapView::BuildEdgesFromTrace(const TraceRoute& route)
 {
-	// Build topology edges from trace route data by matching hop hashes
+	// Build topology edges from trace data by matching 4-byte hop prefixes
 	// to known contacts. Creates edges: Self→Hop1, Hop1→Hop2, ..., HopN→Dest
-	if (route.pathLen == 0)
+	if (route.numHops == 0)
 		return;
 
 	uint32 now = (uint32)time(NULL);
 
+	// Determine match length: 4 bytes for multi-hop, 1 for legacy single-byte
+	size_t matchLen = (route.numHops == 1 &&
+		route.hops[0].hopPrefix[1] == 0 &&
+		route.hops[0].hopPrefix[2] == 0 &&
+		route.hops[0].hopPrefix[3] == 0) ? 1 : 4;
+
 	// Build chain: self → hop1 → hop2 → ... → dest
-	// "from" starts as self (zeros = self node)
 	uint8 selfPrefix[kPubKeyPrefixSize];
 	memset(selfPrefix, 0, sizeof(selfPrefix));
 
 	const uint8* prevPrefix = selfPrefix;
 	bool prevIsSelf = true;
 
-	for (uint8 h = 0; h < route.pathLen; h++) {
-		MapNode* hopNode = _MatchHopToContact(route.hops[h].hash);
+	for (uint8 h = 0; h < route.numHops; h++) {
+		MapNode* hopNode = _MatchHopToContact(
+			route.hops[h].hopPrefix, matchLen);
 		if (hopNode == NULL)
 			continue;  // Unknown hop — skip
-
-		// Check for hash collision (multiple contacts match same hash)
-		bool ambiguous = false;
-		int matchCount = 0;
-		for (int32 n = 0; n < fNodes.CountItems(); n++) {
-			MapNode* check = fNodes.ItemAt(n);
-			if (check && _HashForContact(check->pubKeyPrefix) == route.hops[h].hash)
-				matchCount++;
-		}
-		if (matchCount > 1)
-			ambiguous = true;
 
 		// Create edge from previous node to this hop
 		TopologyEdge* edge = new TopologyEdge();
@@ -972,9 +967,9 @@ NetworkMapView::BuildEdgesFromTrace(const TraceRoute& route)
 		else
 			memcpy(edge->fromPrefix, prevPrefix, kPubKeyPrefixSize);
 		memcpy(edge->toPrefix, hopNode->pubKeyPrefix, kPubKeyPrefixSize);
-		edge->snr = route.hops[h].snr / 4;
+		edge->snr = route.hops[h].snr;
 		edge->timestamp = now;
-		edge->ambiguous = ambiguous;
+		edge->ambiguous = (matchLen == 1);  // 1-byte match is inherently ambiguous
 
 		// Replace existing edge for same from→to pair, or add new
 		bool replaced = false;
@@ -1002,7 +997,7 @@ NetworkMapView::BuildEdgesFromTrace(const TraceRoute& route)
 		TopologyEdge* finalEdge = new TopologyEdge();
 		memcpy(finalEdge->fromPrefix, prevPrefix, kPubKeyPrefixSize);
 		memcpy(finalEdge->toPrefix, destNode->pubKeyPrefix, kPubKeyPrefixSize);
-		finalEdge->snr = route.destSnr / 4;
+		finalEdge->snr = route.destSnr;
 		finalEdge->timestamp = now;
 
 		bool replaced = false;
@@ -1106,6 +1101,14 @@ NetworkMapView::ExpireStaleEdges()
 		if (edge && now - edge->timestamp > kEdgeExpireSeconds)
 			fEdges.RemoveItemAt(i);
 	}
+}
+
+
+MapNode*
+NetworkMapView::FindNodeByHopPrefix(const uint8* hopPrefix,
+	size_t prefixLen) const
+{
+	return _MatchHopToContact(hopPrefix, prefixLen);
 }
 
 
@@ -1871,7 +1874,7 @@ NetworkMapView::_DrawTraceRoutes()
 
 	for (int32 r = 0; r < fTraceRoutes.CountItems(); r++) {
 		TraceRoute* route = fTraceRoutes.ItemAt(r);
-		if (route == NULL || route->pathLen == 0)
+		if (route == NULL || route->numHops == 0)
 			continue;
 
 		// Find destination node
@@ -1900,7 +1903,7 @@ NetworkMapView::_DrawTraceRoutes()
 		BPoint pathStart = fCenter;
 		BPoint pathEnd = destNode->position;
 
-		if (route->pathLen <= 1) {
+		if (route->numHops <= 1) {
 			// Direct path — single highlighted line
 			rgb_color traceColor = kTraceRouteColor;
 			traceColor.alpha = (uint8)(180 * traceFade);
@@ -1913,8 +1916,8 @@ NetworkMapView::_DrawTraceRoutes()
 			float dy = pathEnd.y - pathStart.y;
 
 			BPoint prev = pathStart;
-			for (uint8 h = 0; h < route->pathLen; h++) {
-				float t = (float)(h + 1) / (route->pathLen + 1);
+			for (uint8 h = 0; h < route->numHops; h++) {
+				float t = (float)(h + 1) / (route->numHops + 1);
 				// Offset each hop slightly perpendicular for visibility
 				float perpX = -dy * 0.08f;
 				float perpY = dx * 0.08f;
@@ -1925,7 +1928,7 @@ NetworkMapView::_DrawTraceRoutes()
 					pathStart.y + dy * t + perpY * hopOffset);
 
 				// SNR color for this hop segment
-				int8 hopSnr = route->hops[h].snr / 4;
+				int8 hopSnr = route->hops[h].snr;
 				rgb_color segColor = _ColorForSNR(hopSnr);
 				segColor.alpha = (uint8)(160 * traceFade);
 
@@ -1957,7 +1960,7 @@ NetworkMapView::_DrawTraceRoutes()
 			}
 
 			// Final segment to destination
-			int8 destSnr = route->destSnr / 4;
+			int8 destSnr = route->destSnr;
 			rgb_color destSegColor = _ColorForSNR(destSnr);
 			destSegColor.alpha = (uint8)(160 * traceFade);
 			SetHighColor(destSegColor);
@@ -2467,35 +2470,24 @@ NetworkMapView::_DistanceForRssi(int8 rssi) const
 }
 
 
-uint8
-NetworkMapView::_HashForContact(const uint8* pubKeyPrefix) const
-{
-	// MeshCore path hash is typically derived from pubkey[0]
-	return pubKeyPrefix[0];
-}
-
-
 MapNode*
-NetworkMapView::_MatchHopToContact(uint8 hopHash) const
+NetworkMapView::_MatchHopToContact(const uint8* hopPrefix,
+	size_t prefixLen) const
 {
-	// Find a contact whose hash matches the hop hash
-	// Returns NULL if no match or ambiguous (multiple matches)
-	MapNode* match = NULL;
-	int matchCount = 0;
+	// Match a hop's 4-byte (or 1-byte) prefix against known contacts
+	if (prefixLen == 0)
+		return NULL;
 
 	for (int32 i = 0; i < fNodes.CountItems(); i++) {
 		MapNode* node = fNodes.ItemAt(i);
 		if (node == NULL)
 			continue;
 
-		if (_HashForContact(node->pubKeyPrefix) == hopHash) {
-			match = node;
-			matchCount++;
-		}
+		if (memcmp(node->pubKeyPrefix, hopPrefix, prefixLen) == 0)
+			return node;
 	}
 
-	// If ambiguous (multiple matches), still return first — caller checks
-	return match;
+	return NULL;
 }
 
 
@@ -2798,49 +2790,87 @@ NetworkMapWindow::HandleTraceData(const uint8* data, size_t length)
 	// PUSH_TRACE_DATA format:
 	// [0]     = code (0x89)
 	// [1]     = reserved
-	// [2]     = path_len
+	// [2]     = pathLen (byte count of hop data, NOT hop count)
 	// [3]     = flags
-	// [4-7]   = tag (int32) — contains dest pubkey prefix bytes
-	// [8-11]  = auth_code (int32)
-	// [12..12+pathLen-1]      = path_hashes
-	// [12+pathLen..12+2*pathLen] = path_snrs (pathLen+1 values)
+	// [4-7]   = tag (uint32)
+	// [8-11]  = authCode (uint32)
+	// [12..12+pathLen-1]  = hop identifiers
+	// [12+pathLen..]      = SNR bytes (numHops + 1 values)
+	//
+	// Hop format depends on pathLen:
+	// - pathLen=1: single 1-byte hash (legacy single-hop)
+	// - pathLen>=4: N hops × 4-byte pubkey prefix (numHops = pathLen / 4)
 
 	if (length < 12)
 		return;
 
 	uint8 pathLen = data[2];
-	if (pathLen > 16) pathLen = 16;
+
+	// Determine number of hops and hop identifier size
+	uint8 numHops;
+	uint8 hopSize;
+	if (pathLen <= 1) {
+		numHops = pathLen;	// 0 or 1
+		hopSize = 1;		// single-byte hash
+	} else {
+		hopSize = 4;		// 4-byte pubkey prefix per hop
+		numHops = pathLen / hopSize;
+	}
+	if (numHops > 16) numHops = 16;
 
 	TraceRoute route;
-	route.pathLen = pathLen;
+	route.numHops = numHops;
 	route.timestamp = (uint32)time(NULL);
 
-	// Use tracked pending trace target for correct dest identification
-	if (fHasPendingTrace) {
+	// Identify destination: try tag bytes [4-7] as 4-byte prefix match
+	// against known contacts (most reliable), fall back to pending trace
+	bool destFound = false;
+	if (length >= 8) {
+		MapNode* destByTag = fMapView->FindNodeByHopPrefix(data + 4, 4);
+		if (destByTag != NULL) {
+			memcpy(route.destKeyPrefix, destByTag->pubKeyPrefix, kPubKeyPrefixSize);
+			destFound = true;
+		}
+	}
+
+	if (!destFound && fHasPendingTrace) {
 		memcpy(route.destKeyPrefix, fPendingTracePrefix, kPubKeyPrefixSize);
-		fHasPendingTrace = false;
-	} else {
-		// For non-discovery traces (auto-trace, manual), use selected node
+		destFound = true;
+	}
+
+	if (!destFound) {
 		MapNode* selectedNode = fMapView->GetSelectedNode();
 		if (selectedNode != NULL)
 			memcpy(route.destKeyPrefix, selectedNode->pubKeyPrefix, kPubKeyPrefixSize);
-		else if (length >= 8)
-			memcpy(route.destKeyPrefix, data + 4, 4);  // fallback: tag (partial)
 	}
 
-	size_t hashOffset = 12;
-	size_t snrOffset = 12 + pathLen;
+	fHasPendingTrace = false;
 
-	for (uint8 i = 0; i < pathLen && i < 16; i++) {
-		if (hashOffset + i < length)
-			route.hops[i].hash = data[hashOffset + i];
+	// Parse hop identifiers
+	size_t hashOffset = 12;
+	for (uint8 i = 0; i < numHops; i++) {
+		size_t hopStart = hashOffset + (size_t)i * hopSize;
+		if (hopStart + hopSize > length)
+			break;
+
+		if (hopSize == 4) {
+			memcpy(route.hops[i].hopPrefix, data + hopStart, 4);
+		} else {
+			// Legacy 1-byte hash — store in first byte
+			route.hops[i].hopPrefix[0] = data[hopStart];
+		}
+	}
+
+	// Parse SNR bytes (after hop data)
+	size_t snrOffset = hashOffset + pathLen;
+	for (uint8 i = 0; i < numHops; i++) {
 		if (snrOffset + i < length)
 			route.hops[i].snr = (int8)data[snrOffset + i];
 	}
 
-	// Destination SNR
-	if (snrOffset + pathLen < length)
-		route.destSnr = (int8)data[snrOffset + pathLen];
+	// Destination SNR (last SNR byte)
+	if (snrOffset + numHops < length)
+		route.destSnr = (int8)data[snrOffset + numHops];
 
 	fMapView->SetTraceRoute(route);
 
