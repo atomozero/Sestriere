@@ -18,6 +18,7 @@
 #include <MessageRunner.h>
 #include <PopUpMenu.h>
 #include <MenuItem.h>
+#include <Screen.h>
 #include <ScrollView.h>
 #include <SeparatorView.h>
 #include <Slider.h>
@@ -2618,8 +2619,12 @@ NetworkMapWindow::NetworkMapWindow(BWindow* parent)
 		.End()
 	.End();
 
-	// Set minimum size
+	// Set minimum size and allow fullscreen zoom
 	SetSizeLimits(500, B_SIZE_UNLIMITED, 400, B_SIZE_UNLIMITED);
+
+	BScreen screen(this);
+	BRect screenFrame = screen.Frame();
+	SetZoomLimits(screenFrame.Width(), screenFrame.Height());
 
 	// Center on parent
 	if (parent != NULL)
