@@ -18,7 +18,6 @@
 #include <MessageRunner.h>
 #include <PopUpMenu.h>
 #include <MenuItem.h>
-#include <Screen.h>
 #include <ScrollView.h>
 #include <SeparatorView.h>
 #include <Slider.h>
@@ -2537,7 +2536,7 @@ NetworkMapWindow::NetworkMapWindow(BWindow* parent)
 	:
 	BWindow(BRect(0, 0, 700, 550), "Network Map",
 		B_TITLED_WINDOW_LOOK, B_NORMAL_WINDOW_FEEL,
-		B_AUTO_UPDATE_SIZE_LIMITS | B_CLOSE_ON_ESCAPE),
+		B_CLOSE_ON_ESCAPE),
 	fParent(parent),
 	fMapView(NULL),
 	fInfoLabel(NULL),
@@ -2619,12 +2618,9 @@ NetworkMapWindow::NetworkMapWindow(BWindow* parent)
 		.End()
 	.End();
 
-	// Set minimum size and allow fullscreen zoom
+	// Allow unlimited resize (layout children may constrain otherwise)
+	fMapView->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
 	SetSizeLimits(500, B_SIZE_UNLIMITED, 400, B_SIZE_UNLIMITED);
-
-	BScreen screen(this);
-	BRect screenFrame = screen.Frame();
-	SetZoomLimits(screenFrame.Width(), screenFrame.Height());
 
 	// Center on parent
 	if (parent != NULL)
