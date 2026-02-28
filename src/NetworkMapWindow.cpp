@@ -303,7 +303,7 @@ NetworkMapView::Draw(BRect updateRect)
 		bool hasEdge = false;
 		for (int32 e = 0; e < fEdges.CountItems(); e++) {
 			TopologyEdge* edge = fEdges.ItemAt(e);
-			if (edge && !edge->ambiguous &&
+			if (edge &&
 				(memcmp(edge->toPrefix, node->pubKeyPrefix, kPubKeyPrefixSize) == 0
 				|| memcmp(edge->fromPrefix, node->pubKeyPrefix, kPubKeyPrefixSize) == 0)) {
 				hasEdge = true;
