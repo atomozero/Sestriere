@@ -158,11 +158,14 @@ public:
 			void			SetTraceRoute(const TraceRoute& route);
 			void			ClearTraceRoutes();
 			void			BuildEdgesFromTrace(const TraceRoute& route);
+			void			LoadSavedEdges();
 			void			ExpireStaleEdges();
 			int32			CountEdges() const { return fEdges.CountItems(); }
 
 			MapNode*		GetSelectedNode() const { return fSelectedNode; }
 			int32			GetMultiHopNodes(
+								BObjectList<MapNode>* outList) const;
+			int32			GetOnlineNodes(
 								BObjectList<MapNode>* outList) const;
 
 private:
@@ -267,6 +270,11 @@ private:
 			BObjectList<MapNode>	fDiscoveryQueue;
 			int32			fDiscoveryTotal;
 			bool			fDiscoveryActive;
+			int32			fDiscoveryWaitTicks;
+
+			// Pending trace target for correct destKeyPrefix matching
+			uint8			fPendingTracePrefix[kPubKeyPrefixSize];
+			bool			fHasPendingTrace;
 };
 
 #endif // NETWORKMAPWINDOW_H

@@ -862,6 +862,23 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_UPDATE_MAP_DATA:
+		{
+			// Update map data without showing/activating the window
+			if (fNetworkMapWindow != NULL) {
+				if (fCardView != NULL
+					&& fCardView->CardLayout()->VisibleIndex() == 1) {
+					_UpdateRepeaterMap();
+				} else {
+					if (fNetworkMapWindow->LockLooper()) {
+						fNetworkMapWindow->UpdateFromContacts(&fContacts);
+						fNetworkMapWindow->UnlockLooper();
+					}
+				}
+			}
+			break;
+		}
+
 		case MSG_SHOW_DEVICE_SETTINGS:
 		{
 			if (fSettingsWindow == NULL) {
@@ -1116,25 +1133,24 @@ MainWindow::MessageReceived(BMessage* message)
 			const void* pubkey;
 			ssize_t size;
 			if (message->FindData("pubkey", B_RAW_TYPE, &pubkey, &size) == B_OK) {
-				// Find contact for this pubkey
-				ContactInfo* contact = _FindContactByPrefix((const uint8*)pubkey, kPubKeyPrefixSize);
+				// Only show TracePathWindow if NOT from automated discovery
+				bool silent = false;
+				message->FindBool("silent", &silent);
 
-				// Create/show trace window if not open
-				if (fTracePathWindow == NULL) {
-					fTracePathWindow = new TracePathWindow(this, contact);
-					fTracePathWindow->Show();
-				} else {
-					_ShowWindow(fTracePathWindow);
+				if (!silent) {
+					ContactInfo* contact = _FindContactByPrefix(
+						(const uint8*)pubkey, kPubKeyPrefixSize);
+					if (fTracePathWindow == NULL) {
+						fTracePathWindow = new TracePathWindow(this, contact);
+						fTracePathWindow->Show();
+					} else {
+						_ShowWindow(fTracePathWindow);
+					}
 				}
 
-				// Send trace request to device
-				if (fSerialHandler->IsConnected()) {
-					uint8 payload[7];
-					payload[0] = CMD_SEND_TRACE_PATH;
-					memcpy(payload + 1, pubkey, 6);
-					fSerialHandler->SendFrame(payload, 7);
-					_LogMessage("INFO", "Sending trace path request...");
-				}
+				// Use ProtocolHandler for correct frame format
+				fProtocol->SendTracePath((const uint8*)pubkey);
+				_LogMessage("INFO", "Sending trace path request...");
 			}
 			break;
 		}

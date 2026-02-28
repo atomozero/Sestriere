@@ -8,6 +8,7 @@
 #include "NetworkMapWindow.h"
 
 #include "Constants.h"
+#include "DatabaseManager.h"
 #include "RepeaterMonitorView.h"
 
 #include <Application.h>
@@ -28,6 +29,24 @@
 #include <cstring>
 #include <ctime>
 
+
+static void
+_PrefixToHex(const uint8* prefix, char* outHex, size_t prefixLen)
+{
+	for (size_t i = 0; i < prefixLen; i++)
+		snprintf(outHex + i * 2, 3, "%02x", prefix[i]);
+}
+
+
+static void
+_HexToPrefix(const char* hex, uint8* outPrefix, size_t prefixLen)
+{
+	for (size_t i = 0; i < prefixLen; i++) {
+		unsigned int val = 0;
+		sscanf(hex + i * 2, "%02x", &val);
+		outPrefix[i] = (uint8)val;
+	}
+}
 
 
 static const uint32 MSG_REFRESH_MAP = 'rfmp';
@@ -1002,7 +1021,79 @@ NetworkMapView::BuildEdgesFromTrace(const TraceRoute& route)
 			fEdges.AddItem(finalEdge);
 	}
 
+	// Persist all non-ambiguous edges to database
+	DatabaseManager* db = DatabaseManager::Instance();
+	if (db != NULL && db->IsOpen()) {
+		for (int32 e = 0; e < fEdges.CountItems(); e++) {
+			TopologyEdge* edge = fEdges.ItemAt(e);
+			if (edge == NULL || edge->ambiguous)
+				continue;
+			if (edge->timestamp != now)
+				continue;  // Only save newly created/updated edges
+
+			char fromHex[kPubKeyPrefixSize * 2 + 1];
+			char toHex[kPubKeyPrefixSize * 2 + 1];
+			memset(fromHex, 0, sizeof(fromHex));
+			memset(toHex, 0, sizeof(toHex));
+			_PrefixToHex(edge->fromPrefix, fromHex, kPubKeyPrefixSize);
+			_PrefixToHex(edge->toPrefix, toHex, kPubKeyPrefixSize);
+			db->InsertTopologyEdge(fromHex, toHex, edge->snr);
+		}
+	}
+
 	Invalidate();
+}
+
+
+void
+NetworkMapView::LoadSavedEdges()
+{
+	DatabaseManager* db = DatabaseManager::Instance();
+	if (db == NULL || !db->IsOpen())
+		return;
+
+	BMessage edgeData;
+	int32 count = db->LoadTopologyEdges(&edgeData);
+	if (count == 0)
+		return;
+
+	for (int32 i = 0; i < count; i++) {
+		const char* fromHex = NULL;
+		const char* toHex = NULL;
+		int8 snr = 0;
+		int32 ts = 0;
+
+		if (edgeData.FindString("from_key", i, &fromHex) != B_OK)
+			continue;
+		if (edgeData.FindString("to_key", i, &toHex) != B_OK)
+			continue;
+		edgeData.FindInt8("snr", i, &snr);
+		edgeData.FindInt32("timestamp", i, &ts);
+
+		TopologyEdge* edge = new TopologyEdge();
+		_HexToPrefix(fromHex, edge->fromPrefix, kPubKeyPrefixSize);
+		_HexToPrefix(toHex, edge->toPrefix, kPubKeyPrefixSize);
+		edge->snr = snr;
+		edge->timestamp = (uint32)ts;
+
+		// Skip if already exists
+		bool exists = false;
+		for (int32 e = 0; e < fEdges.CountItems(); e++) {
+			TopologyEdge* existing = fEdges.ItemAt(e);
+			if (existing &&
+				memcmp(existing->fromPrefix, edge->fromPrefix, kPubKeyPrefixSize) == 0 &&
+				memcmp(existing->toPrefix, edge->toPrefix, kPubKeyPrefixSize) == 0) {
+				exists = true;
+				break;
+			}
+		}
+		if (exists) {
+			delete edge;
+		} else {
+			fEdges.AddItem(edge);
+		}
+	}
+
 }
 
 
@@ -1039,6 +1130,25 @@ NetworkMapView::GetMultiHopNodes(BObjectList<MapNode>* outList) const
 }
 
 
+int32
+NetworkMapView::GetOnlineNodes(BObjectList<MapNode>* outList) const
+{
+	if (outList == NULL)
+		return 0;
+
+	int32 count = 0;
+	for (int32 i = 0; i < fNodes.CountItems(); i++) {
+		MapNode* node = fNodes.ItemAt(i);
+		if (node == NULL)
+			continue;
+		// Include all known nodes for topology discovery
+		outList->AddItem(node);
+		count++;
+	}
+	return count;
+}
+
+
 void
 NetworkMapView::_CalculatePositions()
 {
@@ -1051,6 +1161,20 @@ NetworkMapView::_CalculatePositions()
 	// Ring 1 = direct contacts (hops <= 1)
 	// Ring 2 = 2-hop contacts, clustered near discovered relay
 	// Ring 3 = 3+ hop contacts
+
+	// Pre-pass: update hops based on discovered topology edges
+	// If a trace revealed a node goes through a relay, promote it to Ring 2+
+	for (int32 i = 0; i < count; i++) {
+		MapNode* node = fNodes.ItemAt(i);
+		if (node == NULL)
+			continue;
+
+		MapNode* relay = _FindRelayForNode(node);
+		if (relay != NULL && node->hops <= 1) {
+			// Trace discovered this node goes through a relay, not direct
+			node->hops = 2;
+		}
+	}
 
 	// First pass: separate nodes into rings
 	BObjectList<MapNode> ring1(10);  // Direct
@@ -1163,6 +1287,45 @@ NetworkMapView::_CalculatePositions()
 
 		if (node->position.x == 0 && node->position.y == 0)
 			node->position = fCenter;
+	}
+
+	// Overlap resolution: push apart nodes that are too close
+	float minSep = (kNodeRadiusMax * 2.0f + 20.0f) * fZoom;
+	for (int32 pass = 0; pass < 5; pass++) {
+		bool moved = false;
+		for (int32 i = 0; i < count; i++) {
+			MapNode* a = fNodes.ItemAt(i);
+			if (a == NULL) continue;
+			for (int32 j = i + 1; j < count; j++) {
+				MapNode* b = fNodes.ItemAt(j);
+				if (b == NULL) continue;
+
+				float dx = b->targetPosition.x - a->targetPosition.x;
+				float dy = b->targetPosition.y - a->targetPosition.y;
+				float dist = sqrtf(dx * dx + dy * dy);
+
+				if (dist < minSep && dist > 0.01f) {
+					float overlap = (minSep - dist) * 0.5f;
+					float nx = dx / dist;
+					float ny = dy / dist;
+					a->targetPosition.x -= nx * overlap;
+					a->targetPosition.y -= ny * overlap;
+					b->targetPosition.x += nx * overlap;
+					b->targetPosition.y += ny * overlap;
+					moved = true;
+				} else if (dist <= 0.01f) {
+					// Coincident — nudge using index to break tie
+					float angle = (i * 2.3f + j * 1.7f);
+					a->targetPosition.x -= cosf(angle) * minSep * 0.5f;
+					a->targetPosition.y -= sinf(angle) * minSep * 0.5f;
+					b->targetPosition.x += cosf(angle) * minSep * 0.5f;
+					b->targetPosition.y += sinf(angle) * minSep * 0.5f;
+					moved = true;
+				}
+			}
+		}
+		if (!moved)
+			break;
 	}
 }
 
@@ -2397,12 +2560,18 @@ NetworkMapWindow::NetworkMapWindow(BWindow* parent)
 	fDiscoveryTimer(NULL),
 	fAutoTraceIndex(0),
 	fDiscoveryTotal(0),
-	fDiscoveryActive(false)
+	fDiscoveryActive(false),
+	fDiscoveryWaitTicks(0),
+	fHasPendingTrace(false)
 {
 	memset(fSelfName, 0, sizeof(fSelfName));
+	memset(fPendingTracePrefix, 0, sizeof(fPendingTracePrefix));
 
 	// Create map view
 	fMapView = new NetworkMapView();
+
+	// Load previously discovered topology edges from database
+	fMapView->LoadSavedEdges();
 
 	// Create controls
 	fShowLabelsCheck = new BCheckBox("show_labels", "Names",
@@ -2646,9 +2815,18 @@ NetworkMapWindow::HandleTraceData(const uint8* data, size_t length)
 	route.pathLen = pathLen;
 	route.timestamp = (uint32)time(NULL);
 
-	// Extract tag as partial dest identifier
-	if (length >= 8)
-		memcpy(route.destKeyPrefix, data + 4, 4 < kPubKeyPrefixSize ? 4 : kPubKeyPrefixSize);
+	// Use tracked pending trace target for correct dest identification
+	if (fHasPendingTrace) {
+		memcpy(route.destKeyPrefix, fPendingTracePrefix, kPubKeyPrefixSize);
+		fHasPendingTrace = false;
+	} else {
+		// For non-discovery traces (auto-trace, manual), use selected node
+		MapNode* selectedNode = fMapView->GetSelectedNode();
+		if (selectedNode != NULL)
+			memcpy(route.destKeyPrefix, selectedNode->pubKeyPrefix, kPubKeyPrefixSize);
+		else if (length >= 8)
+			memcpy(route.destKeyPrefix, data + 4, 4);  // fallback: tag (partial)
+	}
 
 	size_t hashOffset = 12;
 	size_t snrOffset = 12 + pathLen;
@@ -2668,6 +2846,16 @@ NetworkMapWindow::HandleTraceData(const uint8* data, size_t length)
 
 	// Build topology edges from the trace data
 	fMapView->BuildEdgesFromTrace(route);
+
+	// If discovery is active/waiting, reset wait timer and update status
+	if (fDiscoveryActive) {
+		fDiscoveryWaitTicks = 0;  // Reset wait — more responses may come
+		char status[80];
+		snprintf(status, sizeof(status),
+			"Mapping... %d edges discovered (waiting for responses)",
+			(int)fMapView->CountEdges());
+		fInfoLabel->SetText(status);
+	}
 }
 
 
@@ -2677,8 +2865,12 @@ NetworkMapWindow::_RequestAutoTrace()
 	// If a node is selected, trace that one first
 	MapNode* selectedNode = fMapView->GetSelectedNode();
 	if (selectedNode != NULL && selectedNode->status <= STATUS_RECENT) {
+		memcpy(fPendingTracePrefix, selectedNode->pubKeyPrefix, kPubKeyPrefixSize);
+		fHasPendingTrace = true;
+
 		BMessage msg(MSG_TRACE_PATH);
 		msg.AddData("pubkey", B_RAW_TYPE, selectedNode->pubKeyPrefix, kPubKeyPrefixSize);
+		msg.AddBool("silent", true);
 		if (fParent != NULL)
 			fParent->PostMessage(&msg);
 		return;
@@ -2696,8 +2888,12 @@ NetworkMapWindow::_RequestAutoTrace()
 	MapNode* node = multiHop.ItemAt(idx);
 
 	if (node != NULL && fParent != NULL) {
+		memcpy(fPendingTracePrefix, node->pubKeyPrefix, kPubKeyPrefixSize);
+		fHasPendingTrace = true;
+
 		BMessage msg(MSG_TRACE_PATH);
 		msg.AddData("pubkey", B_RAW_TYPE, node->pubKeyPrefix, kPubKeyPrefixSize);
+		msg.AddBool("silent", true);
 		fParent->PostMessage(&msg);
 	}
 
@@ -2711,17 +2907,18 @@ NetworkMapWindow::_RequestFullDiscovery()
 	if (fDiscoveryActive)
 		return;  // Already running
 
-	// Queue all multi-hop online/recent nodes for trace
+	// Queue all online/recent nodes for trace (not just multi-hop)
 	fDiscoveryQueue.MakeEmpty();
-	fMapView->GetMultiHopNodes(&fDiscoveryQueue);
+	fMapView->GetOnlineNodes(&fDiscoveryQueue);
 
 	fDiscoveryTotal = fDiscoveryQueue.CountItems();
 	if (fDiscoveryTotal == 0) {
-		fInfoLabel->SetText("No multi-hop nodes to trace");
+		fInfoLabel->SetText("No online nodes to trace");
 		return;
 	}
 
 	fDiscoveryActive = true;
+	fDiscoveryWaitTicks = 0;
 	fMapNetworkButton->SetEnabled(false);
 
 	char status[64];
@@ -2742,8 +2939,23 @@ NetworkMapWindow::_RequestFullDiscovery()
 void
 NetworkMapWindow::_DiscoveryTick()
 {
-	if (!fDiscoveryActive || fDiscoveryQueue.CountItems() == 0) {
-		// Discovery complete
+	if (!fDiscoveryActive) {
+		return;
+	}
+
+	if (fDiscoveryQueue.CountItems() == 0) {
+		// All requests sent — wait for radio responses (up to 15 ticks = 30s)
+		fDiscoveryWaitTicks++;
+		if (fDiscoveryWaitTicks <= 15) {
+			char status[64];
+			snprintf(status, sizeof(status),
+				"Waiting for responses... (%d edges so far)",
+				(int)fMapView->CountEdges());
+			fInfoLabel->SetText(status);
+			return;
+		}
+
+		// Done waiting
 		fDiscoveryActive = false;
 		fMapNetworkButton->SetEnabled(true);
 		delete fDiscoveryTimer;
@@ -2760,8 +2972,12 @@ NetworkMapWindow::_DiscoveryTick()
 	// Pop next node from queue
 	MapNode* node = fDiscoveryQueue.RemoveItemAt(0);
 	if (node != NULL && fParent != NULL) {
+		memcpy(fPendingTracePrefix, node->pubKeyPrefix, kPubKeyPrefixSize);
+		fHasPendingTrace = true;
+
 		BMessage msg(MSG_TRACE_PATH);
 		msg.AddData("pubkey", B_RAW_TYPE, node->pubKeyPrefix, kPubKeyPrefixSize);
+		msg.AddBool("silent", true);
 		fParent->PostMessage(&msg);
 	}
 
@@ -2777,10 +2993,9 @@ NetworkMapWindow::_DiscoveryTick()
 void
 NetworkMapWindow::_RequestUpdate()
 {
-	// Just request the parent to update the map with current data
-	// Don't trigger a full contact sync which would clear message history
+	// Update map data without bringing window to front
 	if (fParent != NULL) {
-		BMessage msg(MSG_SHOW_NETWORK_MAP);
+		BMessage msg(MSG_UPDATE_MAP_DATA);
 		fParent->PostMessage(&msg);
 	}
 }

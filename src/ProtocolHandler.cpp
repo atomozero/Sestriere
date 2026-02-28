@@ -549,12 +549,11 @@ ProtocolHandler::SendTracePath(const uint8* pubkey)
 	if (!IsConnected())
 		return B_NOT_INITIALIZED;
 
-	// Frame: [CMD][tag*4][authCode*4][flags][path...]
-	uint8 payload[16];
-	memset(payload, 0, sizeof(payload));
+	// Frame: [CMD][pubkey_prefix 6 bytes]
+	uint8 payload[7];
 	payload[0] = CMD_SEND_TRACE_PATH;
-	memcpy(payload + 10, pubkey, kPubKeyPrefixSize);
-	return fSerial->SendFrame(payload, 10 + kPubKeyPrefixSize);
+	memcpy(payload + 1, pubkey, kPubKeyPrefixSize);
+	return fSerial->SendFrame(payload, 7);
 }
 
 
