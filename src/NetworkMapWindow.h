@@ -66,10 +66,11 @@ struct MapNode {
 	float		pulsePhase;		// Animation phase for pulse effect
 	bool		hasSNRData;		// True if SNR data is available
 	float		flowPhase;		// Animated data flow along link (0..1)
+	bool		pinned;			// True if manually dragged — skip auto-layout
 
 	MapNode() : rssi(0), snr(0), hops(1), nodeType(0), lastSeen(0), isSelected(false),
 				status(STATUS_OFFLINE), messageCount(0), activityLevel(0),
-				pulsePhase(0), hasSNRData(false), flowPhase(0) {
+				pulsePhase(0), hasSNRData(false), flowPhase(0), pinned(false) {
 		memset(pubKeyPrefix, 0, sizeof(pubKeyPrefix));
 		memset(name, 0, sizeof(name));
 	}
@@ -224,7 +225,8 @@ private:
 			bool			fHideInactive;
 
 			MapNode*		fSelectedNode;
-			BPoint			fDragStart;
+			MapNode*		fDragNode;
+			BPoint			fDragOffset;	// Click offset from node center
 			bool			fDragging;
 
 			OwningObjectList<TraceRoute>	fTraceRoutes;

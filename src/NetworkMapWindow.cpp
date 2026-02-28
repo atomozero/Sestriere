@@ -136,7 +136,8 @@ NetworkMapView::NetworkMapView()
 	fShowSignalStrength(true),
 	fHideInactive(false),
 	fSelectedNode(NULL),
-	fDragStart(0, 0),
+	fDragNode(NULL),
+	fDragOffset(0, 0),
 	fDragging(false),
 	fEdges(20)
 {
@@ -197,13 +198,15 @@ NetworkMapView::Pulse()
 			needsRedraw = true;
 		}
 
-		// Smooth position interpolation
-		float dx = node->targetPosition.x - node->position.x;
-		float dy = node->targetPosition.y - node->position.y;
-		if (fabsf(dx) > 1 || fabsf(dy) > 1) {
-			node->position.x += dx * 0.15f;
-			node->position.y += dy * 0.15f;
-			needsRedraw = true;
+		// Smooth position interpolation (skip pinned nodes)
+		if (!node->pinned) {
+			float dx = node->targetPosition.x - node->position.x;
+			float dy = node->targetPosition.y - node->position.y;
+			if (fabsf(dx) > 1 || fabsf(dy) > 1) {
+				node->position.x += dx * 0.15f;
+				node->position.y += dy * 0.15f;
+				needsRedraw = true;
+			}
 		}
 	}
 
@@ -391,6 +394,14 @@ NetworkMapView::MouseDown(BPoint where)
 		}
 	}
 
+	// Start drag if clicking on a node
+	if (clickedNode != NULL) {
+		fDragNode = clickedNode;
+		fDragOffset = clickedNode->position - where;
+		fDragging = true;
+		SetMouseEventMask(B_POINTER_EVENTS, B_NO_POINTER_HISTORY);
+	}
+
 	// Double-click to chat
 	static bigtime_t lastClickTime = 0;
 	static MapNode* lastClickedNode = NULL;
@@ -399,6 +410,8 @@ NetworkMapView::MouseDown(BPoint where)
 	if (clickedNode != NULL && clickedNode == lastClickedNode &&
 		(now - lastClickTime) < 500000) {  // 500ms
 		// Double-click - open chat
+		fDragging = false;
+		fDragNode = NULL;
 		BMessage msg(MSG_NODE_CHAT);
 		msg.AddData("pubkey", B_RAW_TYPE, clickedNode->pubKeyPrefix, kPubKeyPrefixSize);
 		Window()->PostMessage(&msg);
@@ -414,7 +427,13 @@ NetworkMapView::MouseDown(BPoint where)
 void
 NetworkMapView::MouseMoved(BPoint where, uint32 transit, const BMessage* dragMessage)
 {
-	// Update hover state for tooltips (could be enhanced)
+	if (fDragging && fDragNode != NULL) {
+		BPoint newPos = where + fDragOffset;
+		fDragNode->position = newPos;
+		fDragNode->targetPosition = newPos;
+		fDragNode->pinned = true;
+		Invalidate();
+	}
 }
 
 
@@ -422,6 +441,7 @@ void
 NetworkMapView::MouseUp(BPoint where)
 {
 	fDragging = false;
+	fDragNode = NULL;
 }
 
 
@@ -1364,7 +1384,7 @@ NetworkMapView::_CalculatePositions()
 	int32 r1Count = ring1.CountItems();
 	for (int32 i = 0; i < r1Count; i++) {
 		MapNode* node = ring1.ItemAt(i);
-		if (node == NULL)
+		if (node == NULL || node->pinned)
 			continue;
 
 		// Use pubkey for consistent angle
@@ -1390,7 +1410,7 @@ NetworkMapView::_CalculatePositions()
 	// Position Ring 2: 2-hop contacts clustered near their relay
 	for (int32 i = 0; i < ring2.CountItems(); i++) {
 		MapNode* node = ring2.ItemAt(i);
-		if (node == NULL)
+		if (node == NULL || node->pinned)
 			continue;
 
 		// Try to find the relay this node connects through
@@ -1426,7 +1446,7 @@ NetworkMapView::_CalculatePositions()
 	// Position Ring 3: 3+ hop contacts
 	for (int32 i = 0; i < ring3.CountItems(); i++) {
 		MapNode* node = ring3.ItemAt(i);
-		if (node == NULL)
+		if (node == NULL || node->pinned)
 			continue;
 
 		MapNode* relay = _FindRelayForNode(node);
@@ -1474,18 +1494,26 @@ NetworkMapView::_CalculatePositions()
 					float overlap = (minSep - dist) * 0.5f;
 					float nx = dx / dist;
 					float ny = dy / dist;
-					a->targetPosition.x -= nx * overlap;
-					a->targetPosition.y -= ny * overlap;
-					b->targetPosition.x += nx * overlap;
-					b->targetPosition.y += ny * overlap;
+					if (!a->pinned) {
+						a->targetPosition.x -= nx * overlap;
+						a->targetPosition.y -= ny * overlap;
+					}
+					if (!b->pinned) {
+						b->targetPosition.x += nx * overlap;
+						b->targetPosition.y += ny * overlap;
+					}
 					moved = true;
 				} else if (dist <= 0.01f) {
 					// Coincident — nudge using index to break tie
 					float angle = (i * 2.3f + j * 1.7f);
-					a->targetPosition.x -= cosf(angle) * minSep * 0.5f;
-					a->targetPosition.y -= sinf(angle) * minSep * 0.5f;
-					b->targetPosition.x += cosf(angle) * minSep * 0.5f;
-					b->targetPosition.y += sinf(angle) * minSep * 0.5f;
+					if (!a->pinned) {
+						a->targetPosition.x -= cosf(angle) * minSep * 0.5f;
+						a->targetPosition.y -= sinf(angle) * minSep * 0.5f;
+					}
+					if (!b->pinned) {
+						b->targetPosition.x += cosf(angle) * minSep * 0.5f;
+						b->targetPosition.y += sinf(angle) * minSep * 0.5f;
+					}
 					moved = true;
 				}
 			}
