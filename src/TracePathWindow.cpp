@@ -290,6 +290,15 @@ TracePathWindow::StartExternalTrace(const ContactInfo* contact)
 	fHops.MakeEmpty();
 	_UpdateHopList();
 
+	// Direct path — no hops to trace
+	if (fContact.outPathLen <= 0) {
+		fTracing = false;
+		fTraceButton->SetEnabled(true);
+		fTraceButton->SetLabel("Start Trace");
+		fStatusLabel->SetText("Direct path — no intermediate hops");
+		return;
+	}
+
 	// Set tracing state — trace command already sent by MainWindow
 	fTracing = true;
 	fTraceButton->SetEnabled(false);

@@ -74,7 +74,7 @@ public:
 							const char* password);
 		status_t		SendStatusRequest(const uint8* pubkey);
 		status_t		SendTelemetryRequest(const uint8* pubkey);
-		status_t		SendTracePath(const uint8* pubkey);
+		status_t		SendTracePath(const ContactInfo* contact);
 
 		// Channels
 		status_t		SendGetChannel(uint8 index);

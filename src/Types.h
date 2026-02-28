@@ -93,6 +93,7 @@ struct ContactInfo {
 	uint8	type;			// ADV_TYPE: 0=NONE, 1=CHAT, 2=REPEATER, 3=ROOM
 	uint8	flags;
 	int8	outPathLen;		// Outbound path length (-1 = unknown, 0xFF = direct)
+	uint8	outPath[16];	// Outbound path hashes (max 16 hops × 1 byte each)
 	uint32	lastSeen;		// timestamp
 	int32	latitude;		// GPS latitude (1e-7 degrees, 0 = unknown)
 	int32	longitude;		// GPS longitude (1e-7 degrees, 0 = unknown)
@@ -105,6 +106,7 @@ struct ContactInfo {
 	ContactInfo() : type(0), flags(0), outPathLen(0), lastSeen(0),
 					latitude(0), longitude(0), isValid(false) {
 		memset(publicKey, 0, sizeof(publicKey));
+		memset(outPath, 0, sizeof(outPath));
 		memset(name, 0, sizeof(name));
 	}
 

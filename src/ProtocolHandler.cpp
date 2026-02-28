@@ -9,6 +9,8 @@
 
 #include "SerialHandler.h"
 
+#include <OS.h>
+
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -544,16 +546,78 @@ ProtocolHandler::SendTelemetryRequest(const uint8* pubkey)
 
 
 status_t
-ProtocolHandler::SendTracePath(const uint8* pubkey)
+ProtocolHandler::SendTracePath(const ContactInfo* contact)
 {
 	if (!IsConnected())
 		return B_NOT_INITIALIZED;
 
-	// Frame: [CMD][pubkey 32 bytes] — full key required (like SendLogin)
-	uint8 payload[33];
-	payload[0] = CMD_SEND_TRACE_PATH;
-	memcpy(payload + 1, pubkey, kPubKeySize);
-	return fSerial->SendFrame(payload, 33);
+	if (contact == NULL)
+		return B_BAD_VALUE;
+
+	// Cannot trace a direct-path contact (no intermediate hops)
+	if (contact->outPathLen <= 0)
+		return B_BAD_VALUE;
+
+	// Frame: [CMD][tag:4 LE][auth_code:4 LE][flags:1][symmetric_path]
+	// tag: random 32-bit to match PUSH_TRACE_DATA response
+	// auth_code: 0
+	// flags & 0x03: path_hash_mode (2 = 4-byte hash, V3 standard)
+	// symmetric_path: built from outPath reversed + mirrored
+
+	uint8 payload[256];
+	size_t pos = 0;
+
+	payload[pos++] = CMD_SEND_TRACE_PATH;
+
+	// tag = lower 32 bits of system_time (unique enough to match responses)
+	uint32 tag = (uint32)system_time();
+	payload[pos++] = tag & 0xFF;
+	payload[pos++] = (tag >> 8) & 0xFF;
+	payload[pos++] = (tag >> 16) & 0xFF;
+	payload[pos++] = (tag >> 24) & 0xFF;
+
+	// auth_code = 0
+	payload[pos++] = 0;
+	payload[pos++] = 0;
+	payload[pos++] = 0;
+	payload[pos++] = 0;
+
+	// flags: path_hash_mode = 0 (1-byte hashes, as stored in contact frame)
+	payload[pos++] = 0;
+
+	// outPath stores 1-byte hop hashes in dest→source order: [h0, h1, h2]
+	// Reverse to source→dest: [h2, h1, h0]
+	// Symmetric path: [h2, h1, h0, h1, h2] (forward + mirror)
+	int numHops = contact->outPathLen;
+	if (numHops > 16)
+		numHops = 16;
+
+	// Reverse the path (dest→source → source→dest)
+	uint8 reversed[16];
+	for (int i = 0; i < numHops; i++)
+		reversed[i] = contact->outPath[numHops - 1 - i];
+
+	// For repeater/room (type 2/3): prepend destination hash
+	if (contact->type == 2 || contact->type == 3) {
+		if (pos + 1 > sizeof(payload))
+			return B_NO_MEMORY;
+		// 1-byte hash of destination pubkey
+		payload[pos++] = contact->publicKey[0];
+	}
+
+	// Build symmetric path: [r0, r1, ..., r(n-1), r(n-2), ..., r0]
+	for (int i = 0; i < numHops; i++) {
+		if (pos + 1 > sizeof(payload))
+			return B_NO_MEMORY;
+		payload[pos++] = reversed[i];
+	}
+	for (int i = numHops - 2; i >= 0; i--) {
+		if (pos + 1 > sizeof(payload))
+			return B_NO_MEMORY;
+		payload[pos++] = reversed[i];
+	}
+
+	return fSerial->SendFrame(payload, pos);
 }
 
 

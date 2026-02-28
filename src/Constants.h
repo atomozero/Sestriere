@@ -125,6 +125,8 @@ const size_t kContactPubKeyOffset = 1;     // [1-32] = public key (32 bytes)
 const size_t kContactTypeOffset = 33;      // [33] = ADV_TYPE
 const size_t kContactFlagsOffset = 34;     // [34] = flags
 const size_t kContactPathLenOffset = 35;   // [35] = outbound path length
+const size_t kContactOutPathOffset = 36;   // [36-99] = outbound path hashes
+const size_t kContactOutPathMaxSize = 16;  // Max 16 hops × 1 byte hash each
 const size_t kContactNameOffset = 100;     // [100-131] = name (32 bytes)
 const size_t kContactNameSize = 32;
 const size_t kContactLastSeenOffset = 132; // [132-135] = last seen (uint32 LE)
