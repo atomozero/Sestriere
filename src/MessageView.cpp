@@ -94,15 +94,18 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 
 	bool isCli = (fTxtType == 1);
 
-	// Use monospace font for CLI messages
+	// Set font explicitly to ensure consistent measurement and drawing.
+	// CLI uses monospace; regular messages use the system plain font.
 	if (isCli)
 		owner->SetFont(be_fixed_font);
+	else
+		owner->SetFont(be_plain_font);
 
 	font_height fh;
 	owner->GetFontHeight(&fh);
 	float lineHeight = fh.ascent + fh.descent + fh.leading;
 
-	// Calculate bubble dimensions — use owner bounds (same as Update)
+	// Calculate bubble dimensions
 	float maxBubbleWidth = owner->Bounds().Width() * kBubbleMaxWidthRatio;
 
 	// For CLI messages, prepend "> " to outgoing commands
@@ -364,26 +367,19 @@ MessageView::Update(BView* owner, const BFont* font)
 	if (isCli && fOutgoing)
 		displayText.Prepend("> ");
 
-	// Wrap text to calculate actual height
+	// Estimate line count for height calculation.
 	// NOTE: Do NOT call owner->SetFont() here — it triggers
 	// BListView::_UpdateItems() → Update() infinite recursion.
-	// For CLI, estimate wrapping using monospace font directly.
+	// Use measureFont->StringWidth() directly for consistent results.
+	float availWidth = maxBubbleWidth - kBubblePadding * 2;
+	float textWidth = measureFont->StringWidth(displayText.String());
+	int32 lineCount = (textWidth > availWidth)
+		? (int32)(textWidth / availWidth) + 1 : 1;
+	if (lineCount < 1)
+		lineCount = 1;
 	std::vector<BString> lines;
-	if (isCli) {
-		// Estimate line count using monospace font width
-		float availWidth = maxBubbleWidth - kBubblePadding * 2;
-		float textWidth = be_fixed_font->StringWidth(
-			displayText.String());
-		int32 lineCount = (textWidth > availWidth)
-			? (int32)(textWidth / availWidth) + 1 : 1;
-		for (int32 i = 0; i < lineCount; i++)
-			lines.push_back("");
-		if (lines.empty())
-			lines.push_back("");
-	} else {
-		_WrapText(owner, fText,
-			maxBubbleWidth - kBubblePadding * 2, lines);
-	}
+	for (int32 i = 0; i < lineCount; i++)
+		lines.push_back("");
 
 	// Calculate total height
 	float textHeight = lines.size() * lineHeight;
