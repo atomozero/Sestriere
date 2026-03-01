@@ -339,6 +339,7 @@ SerialHandler::ListPorts(BMessage* outPorts)
 void
 SerialHandler::SetRawMode(bool raw)
 {
+	BAutolock lock(fLock);
 	fRawMode = raw;
 
 	// If switching to raw mode, abort any in-progress frame

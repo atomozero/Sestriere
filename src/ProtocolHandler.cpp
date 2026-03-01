@@ -292,6 +292,8 @@ ProtocolHandler::SendSetTuningParams(uint32 rxDelayBase, uint32 airtimeFactor)
 status_t
 ProtocolHandler::SendSetName(const char* name)
 {
+	if (name == NULL)
+		return B_BAD_VALUE;
 	if (!IsConnected())
 		return B_NOT_INITIALIZED;
 
@@ -458,6 +460,9 @@ ProtocolHandler::SendDM(const uint8* pubkeyPrefix, uint8 txtType,
 	memcpy(payload + pos, pubkeyPrefix, kPubKeyPrefixSize);
 	pos += kPubKeyPrefixSize;
 
+	if (pos + textLen > sizeof(payload))
+		return B_BAD_VALUE;
+
 	memcpy(payload + pos, text, textLen);
 	pos += textLen;
 
@@ -484,6 +489,9 @@ ProtocolHandler::SendChannelMsg(uint8 channelIdx, uint32 timestamp,
 	payload[pos++] = (timestamp >> 16) & 0xFF;
 	payload[pos++] = (timestamp >> 24) & 0xFF;
 
+	if (pos + textLen > sizeof(payload))
+		return B_BAD_VALUE;
+
 	memcpy(payload + pos, text, textLen);
 	pos += textLen;
 
@@ -499,6 +507,8 @@ ProtocolHandler::SendChannelMsg(uint8 channelIdx, uint32 timestamp,
 status_t
 ProtocolHandler::SendLogin(const uint8* pubkey, const char* password)
 {
+	if (pubkey == NULL || password == NULL)
+		return B_BAD_VALUE;
 	if (!IsConnected())
 		return B_NOT_INITIALIZED;
 

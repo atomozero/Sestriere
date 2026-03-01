@@ -341,7 +341,7 @@ TracePathWindow::ResolveHopNames(const OwningObjectList<ContactInfo>* contacts)
 				continue;
 
 			if (memcmp(contact->publicKey, hop->pubKeyPrefix, 4) == 0) {
-				snprintf(hop->name, sizeof(hop->name), "%s (%02X%02X%02X%02X)",
+				snprintf(hop->name, sizeof(hop->name), "%.50s (%02X%02X%02X%02X)",
 					contact->name,
 					hop->pubKeyPrefix[0], hop->pubKeyPrefix[1],
 					hop->pubKeyPrefix[2], hop->pubKeyPrefix[3]);

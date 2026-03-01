@@ -3330,7 +3330,10 @@ MainWindow::_HandleDeviceInfo(const uint8* data, size_t length)
 		// Semantic version at offset 60
 		char firmware[22];
 		memset(firmware, 0, sizeof(firmware));
-		size_t fwLen = strnlen((const char*)data + 60, 20);
+		size_t maxFwScan = length - 60;
+		if (maxFwScan > 20)
+			maxFwScan = 20;
+		size_t fwLen = strnlen((const char*)data + 60, maxFwScan);
 		memcpy(firmware, data + 60, fwLen);
 		strlcpy(fDeviceFirmware, firmware, sizeof(fDeviceFirmware));
 		info << "Firmware: " << fDeviceFirmware << "\n";
@@ -3566,8 +3569,7 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 		_UpdateRepeaterMap();
 
 	// Forward contact counts to Mission Control
-	if (fMissionControlWindow != NULL
-		&& !fMissionControlWindow->IsHidden()) {
+	if (_LockIfVisible(fMissionControlWindow)) {
 		uint32 now = (uint32)time(NULL);
 		int32 total = fContacts.CountItems();
 		int32 online = 0;
@@ -3582,97 +3584,95 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 					recent++;
 			}
 		}
-		if (fMissionControlWindow->LockLooper()) {
-			fMissionControlWindow->UpdateContacts(total, online, recent);
+		fMissionControlWindow->UpdateContacts(total, online, recent);
 
-			// Build topology node list + heatmap data
-			if (total > 0) {
-				int32 nodeCount = total < 32 ? total : 32;
-				TopoNode* nodes = new TopoNode[nodeCount];
-				int32 heatmapCount = total < 50 ? total : 50;
-				int8* snrValues = new int8[heatmapCount];
-				uint8* statuses = new uint8[heatmapCount];
+		// Build topology node list + heatmap data
+		if (total > 0) {
+			int32 nodeCount = total < 32 ? total : 32;
+			TopoNode* nodes = new TopoNode[nodeCount];
+			int32 heatmapCount = total < 50 ? total : 50;
+			int8* snrValues = new int8[heatmapCount];
+			uint8* statuses = new uint8[heatmapCount];
 
-				for (int32 i = 0; i < (total < 50 ? total : 50); i++) {
-					ContactInfo* c = fContacts.ItemAt(i);
-					if (c == NULL) continue;
+			for (int32 i = 0; i < (total < 50 ? total : 50); i++) {
+				ContactInfo* c = fContacts.ItemAt(i);
+				if (c == NULL) continue;
 
-					uint32 age = (now > c->lastSeen)
-						? (now - c->lastSeen) : 0;
-					uint8 status;
-					if (c->lastSeen == 0)
-						status = 0;
-					else if (age < 300)
-						status = 2;
-					else if (age < 900)
-						status = 1;
-					else
-						status = 0;
+				uint32 age = (now > c->lastSeen)
+					? (now - c->lastSeen) : 0;
+				uint8 status;
+				if (c->lastSeen == 0)
+					status = 0;
+				else if (age < 300)
+					status = 2;
+				else if (age < 900)
+					status = 1;
+				else
+					status = 0;
 
-					// Last incoming message SNR
-					int8 lastSnr = 0;
-					for (int32 j = c->messages.CountItems() - 1;
-						j >= 0; j--) {
-						ChatMessage* msg = c->messages.ItemAt(j);
-						if (msg != NULL && !msg->isOutgoing
-							&& msg->snr != 0) {
-							lastSnr = msg->snr;
-							break;
-						}
+				// Last incoming message SNR
+				int8 lastSnr = 0;
+				for (int32 j = c->messages.CountItems() - 1;
+					j >= 0; j--) {
+					ChatMessage* msg = c->messages.ItemAt(j);
+					if (msg != NULL && !msg->isOutgoing
+						&& msg->snr != 0) {
+						lastSnr = msg->snr;
+						break;
 					}
-
-					// Topology node
-					if (i < nodeCount) {
-						snprintf(nodes[i].name,
-							sizeof(nodes[i].name),
-							"%s", c->name);
-						nodes[i].snr = lastSnr;
-						nodes[i].status = status;
-
-						// Collect SNR sparkline from last N
-						// incoming messages
-						nodes[i].snrHistoryCount = 0;
-						int32 msgCount = c->messages.CountItems();
-						for (int32 j = msgCount - 1;
-							j >= 0 && nodes[i].snrHistoryCount
-								< kSparklinePoints; j--) {
-							ChatMessage* msg =
-								c->messages.ItemAt(j);
-							if (msg != NULL && !msg->isOutgoing
-								&& msg->snr != 0) {
-								nodes[i].snrHistory[
-									nodes[i].snrHistoryCount++]
-									= msg->snr;
-							}
-						}
-						// Reverse to chronological order
-						for (int32 a = 0,
-							b = nodes[i].snrHistoryCount - 1;
-							a < b; a++, b--) {
-							int8 tmp = nodes[i].snrHistory[a];
-							nodes[i].snrHistory[a] =
-								nodes[i].snrHistory[b];
-							nodes[i].snrHistory[b] = tmp;
-						}
-					}
-
-					// Heatmap data
-					snrValues[i] = lastSnr;
-					statuses[i] = status;
 				}
 
-				fMissionControlWindow->SetContactNodes(nodes,
-					nodeCount);
-				fMissionControlWindow->SetContactHeatmap(
-					snrValues, statuses, heatmapCount);
+				// Topology node
+				if (i < nodeCount) {
+					snprintf(nodes[i].name,
+						sizeof(nodes[i].name),
+						"%.31s", c->name);
+					nodes[i].snr = lastSnr;
+					nodes[i].status = status;
 
-				delete[] nodes;
-				delete[] snrValues;
-				delete[] statuses;
+					// Collect SNR sparkline from last N
+					// incoming messages
+					nodes[i].snrHistoryCount = 0;
+					int32 msgCount = c->messages.CountItems();
+					for (int32 j = msgCount - 1;
+						j >= 0 && nodes[i].snrHistoryCount
+							< kSparklinePoints; j--) {
+						ChatMessage* msg =
+							c->messages.ItemAt(j);
+						if (msg != NULL && !msg->isOutgoing
+							&& msg->snr != 0) {
+							nodes[i].snrHistory[
+								nodes[i].snrHistoryCount++]
+								= msg->snr;
+						}
+					}
+					// Reverse to chronological order
+					for (int32 a = 0,
+						b = nodes[i].snrHistoryCount - 1;
+						a < b; a++, b--) {
+						int8 tmp = nodes[i].snrHistory[a];
+						nodes[i].snrHistory[a] =
+							nodes[i].snrHistory[b];
+						nodes[i].snrHistory[b] = tmp;
+					}
+				}
+
+				// Heatmap data
+				snrValues[i] = lastSnr;
+				statuses[i] = status;
 			}
 
-			fMissionControlWindow->UnlockLooper();
+			fMissionControlWindow->SetContactNodes(nodes,
+				nodeCount);
+			fMissionControlWindow->SetContactHeatmap(
+				snrValues, statuses, heatmapCount);
+
+			delete[] nodes;
+			delete[] snrValues;
+			delete[] statuses;
 		}
+
+		fMissionControlWindow->UnlockLooper();
 	}
 
 	// Contact list no longer forwarded to separate window;
@@ -4516,9 +4516,9 @@ MainWindow::_HandlePushAdvert(const uint8* data, size_t length)
 		fMissionControlWindow->UnlockLooper();
 	}
 
-	// Publish to MQTT if connected
+	// Publish to MQTT if connected (snr is raw ×4, divide for actual dB)
 	if (fMqttClient != NULL && fMqttClient->IsConnected()) {
-		fMqttClient->PublishPacket(now, snr, rssi, "advert",
+		fMqttClient->PublishPacket(now, snr / 4, rssi, "advert",
 			pubKeyPrefix, kPubKeyPrefixSize, data, length);
 	}
 }
