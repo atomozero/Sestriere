@@ -95,8 +95,8 @@ struct ContactInfo {
 	int8	outPathLen;		// Outbound path length (-1 = unknown, 0xFF = direct)
 	uint8	outPath[16];	// Outbound path hashes (max 16 hops × 1 byte each)
 	uint32	lastSeen;		// timestamp
-	int32	latitude;		// GPS latitude (1e-7 degrees, 0 = unknown)
-	int32	longitude;		// GPS longitude (1e-7 degrees, 0 = unknown)
+	int32	latitude;		// GPS latitude (1e-6 degrees, 0 = unknown)
+	int32	longitude;		// GPS longitude (1e-6 degrees, 0 = unknown)
 	char	name[64];
 	bool	isValid;
 

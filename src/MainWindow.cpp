@@ -5896,8 +5896,8 @@ MainWindow::_ExportGPX(const char* path)
 		if (contact == NULL || !contact->HasGPS())
 			continue;
 
-		double lat = contact->latitude / 1e7;
-		double lon = contact->longitude / 1e7;
+		double lat = contact->latitude / 1e6;
+		double lon = contact->longitude / 1e6;
 
 		// Node type label
 		const char* typeStr = "Node";
