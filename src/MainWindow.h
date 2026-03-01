@@ -18,6 +18,7 @@ class BFilePanel;
 #include "Types.h"
 
 class BButton;
+class BCheckBox;
 class ProtocolHandler;
 class BListView;
 class BMenuBar;
@@ -184,6 +185,9 @@ private:
 
 			// UI elements - Sidebar
 			BTextControl*	fSearchField;
+			BCheckBox*		fShowChats;
+			BCheckBox*		fShowRepeaters;
+			BCheckBox*		fShowRooms;
 			BListView*		fContactList;
 			BScrollView*	fContactScroll;
 			ContactItem*	fChannelItem;

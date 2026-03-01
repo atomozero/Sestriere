@@ -11,6 +11,7 @@
 #include <Application.h>
 #include <Button.h>
 #include <CardView.h>
+#include <CheckBox.h>
 #include <Clipboard.h>
 #include <Deskbar.h>
 #include <Directory.h>
@@ -89,6 +90,7 @@ enum {
 	MSG_TOGGLE_SIDEBAR = 'tgsb',
 	MSG_TOGGLE_INFO_PANEL = 'tgip',
 	MSG_CONTACT_FILTER = 'cflt',
+	MSG_TYPE_FILTER = 'tyfl',
 	MSG_SEARCH_MESSAGES = 'srch',
 	MSG_SEARCH_QUERY = 'srqy',
 	MSG_SEARCH_CLOSE = 'srcl',
@@ -194,6 +196,9 @@ MainWindow::MainWindow()
 	fConnectItem(NULL),
 	fDisconnectItem(NULL),
 	fSearchField(NULL),
+	fShowChats(NULL),
+	fShowRepeaters(NULL),
+	fShowRooms(NULL),
 	fContactList(NULL),
 	fContactScroll(NULL),
 	fChannelItem(NULL),
@@ -501,6 +506,17 @@ MainWindow::_BuildUI()
 	fSearchField->SetModificationMessage(new BMessage(MSG_CONTACT_FILTER));
 	fSearchField->TextView()->SetExplicitMinSize(BSize(100, B_SIZE_UNSET));
 
+	// Type filter checkboxes
+	fShowChats = new BCheckBox("show_chats", "Chat",
+		new BMessage(MSG_TYPE_FILTER));
+	fShowChats->SetValue(B_CONTROL_ON);
+	fShowRepeaters = new BCheckBox("show_repeaters", "Repeater",
+		new BMessage(MSG_TYPE_FILTER));
+	fShowRepeaters->SetValue(B_CONTROL_ON);
+	fShowRooms = new BCheckBox("show_rooms", "Room",
+		new BMessage(MSG_TYPE_FILTER));
+	fShowRooms->SetValue(B_CONTROL_ON);
+
 	fContactList = new ContactListView("contacts");
 	fContactList->SetSelectionMessage(new BMessage(MSG_CONTACT_SELECTED));
 
@@ -520,7 +536,7 @@ MainWindow::_BuildUI()
 	fSidebarDeviceLabel->SetAlignment(B_ALIGN_CENTER);
 	fSidebarDeviceLabel->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 
-	// Sidebar with search + contact list + device footer
+	// Sidebar with search + filters + contact list + device footer
 	BView* sidebar = new BView("sidebar", 0);
 	sidebar->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	sidebar->SetExplicitMinSize(BSize(220, B_SIZE_UNSET));
@@ -529,6 +545,12 @@ MainWindow::_BuildUI()
 		.AddGroup(B_HORIZONTAL, 0)
 			.SetInsets(4, 4, 4, 4)
 			.Add(fSearchField, 1.0)
+		.End()
+		.AddGroup(B_HORIZONTAL, 0)
+			.SetInsets(6, 0, 6, 2)
+			.Add(fShowChats)
+			.Add(fShowRepeaters)
+			.Add(fShowRooms)
 		.End()
 		.Add(fContactScroll, 1.0)
 		.AddGroup(B_HORIZONTAL, 0)
@@ -943,6 +965,7 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 
 		case MSG_CONTACT_FILTER:
+		case MSG_TYPE_FILTER:
 		{
 			const char* filter = fSearchField->Text();
 			_FilterContacts(filter);
@@ -5310,6 +5333,11 @@ MainWindow::_UpdateContactList()
 void
 MainWindow::_FilterContacts(const char* filter)
 {
+	// Type filter state
+	bool showChats = (fShowChats->Value() == B_CONTROL_ON);
+	bool showRepeaters = (fShowRepeaters->Value() == B_CONTROL_ON);
+	bool showRooms = (fShowRooms->Value() == B_CONTROL_ON);
+
 	// Suppress selection messages while rebuilding the list to avoid
 	// queued MSG_CONTACT_SELECTED overriding programmatic re-selection
 	fContactList->SetSelectionMessage(NULL);
@@ -5396,6 +5424,11 @@ MainWindow::_FilterContacts(const char* filter)
 					ContactInfo* contact = fContacts.ItemAt(c);
 					if (contact == NULL || !contact->isValid)
 						continue;
+					// Type filter
+					if ((contact->type == 2 && !showRepeaters)
+						|| (contact->type == 3 && !showRooms)
+						|| (contact->type <= 1 && !showChats))
+						continue;
 					char hex[kContactHexSize];
 					FormatContactKey(hex, contact->publicKey);
 					if (*mk != hex)
@@ -5439,6 +5472,10 @@ MainWindow::_FilterContacts(const char* filter)
 					ContactInfo* contact = fContacts.ItemAt(c);
 					if (contact == NULL || !contact->isValid)
 						continue;
+					if ((contact->type == 2 && !showRepeaters)
+						|| (contact->type == 3 && !showRooms)
+						|| (contact->type <= 1 && !showChats))
+						continue;
 					char hex[kContactHexSize];
 					FormatContactKey(hex, contact->publicKey);
 					if (*mk != hex)
@@ -5471,6 +5508,10 @@ MainWindow::_FilterContacts(const char* filter)
 			ContactInfo* contact = fContacts.ItemAt(c);
 			if (contact == NULL || !contact->isValid)
 				continue;
+			if ((contact->type == 2 && !showRepeaters)
+				|| (contact->type == 3 && !showRooms)
+				|| (contact->type <= 1 && !showChats))
+				continue;
 			if (hasFilter) {
 				BString name(contact->name);
 				BString query(filter);
@@ -5499,6 +5540,12 @@ MainWindow::_FilterContacts(const char* filter)
 		for (int32 i = 0; i < fContacts.CountItems(); i++) {
 			ContactInfo* contact = fContacts.ItemAt(i);
 			if (contact == NULL || !contact->isValid)
+				continue;
+
+			// Type filter
+			if ((contact->type == 2 && !showRepeaters)
+				|| (contact->type == 3 && !showRooms)
+				|| (contact->type <= 1 && !showChats))
 				continue;
 
 			// Apply case-insensitive filter on name
