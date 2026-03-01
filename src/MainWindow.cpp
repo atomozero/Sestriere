@@ -638,9 +638,9 @@ MainWindow::_BuildUI()
 			.Add(fAdminSetPwdBtn)
 		.End()
 		.AddGroup(B_HORIZONTAL, 2)
-			.AddGlue()
 			.Add(fAdminRebootBtn)
 			.Add(fAdminFactoryResetBtn)
+			.AddGlue()
 		.End()
 	.End();
 
