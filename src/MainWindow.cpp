@@ -1361,6 +1361,7 @@ MainWindow::MessageReceived(BMessage* message)
 
 					if (fTracePathWindow->LockLooper()) {
 						fTracePathWindow->StartExternalTrace(contact);
+						fTracePathWindow->ResolveHopNames(&fContacts);
 						fTracePathWindow->UnlockLooper();
 					}
 				}
@@ -1394,14 +1395,14 @@ MainWindow::MessageReceived(BMessage* message)
 				ContactInfo* c = fContacts.ItemAt(i);
 				if (c == NULL || !c->isValid)
 					continue;
-				if (c->outPathLen <= 0) {
-					skipped++;
+				if (c->outPathLen < 0) {
+					skipped++;  // Direct path confirmed — skip
 					continue;
 				}
 				traceable++;
 			}
 			_LogMessage("INFO", BString().SetToFormat(
-				"Trace ALL: %d traceable, %d skipped (no path)", traceable, skipped));
+				"Trace ALL: %d traceable, %d skipped (direct)", traceable, skipped));
 			if (traceable > 0) {
 				// Start sequential trace: send first, schedule next with delay
 				BMessage nextMsg(MSG_TRACE_ALL_NEXT);
@@ -1417,7 +1418,7 @@ MainWindow::MessageReceived(BMessage* message)
 			message->FindInt32("index", &startIdx);
 			for (int32 i = startIdx; i < fContacts.CountItems(); i++) {
 				ContactInfo* c = fContacts.ItemAt(i);
-				if (c == NULL || !c->isValid || c->outPathLen <= 0)
+				if (c == NULL || !c->isValid || c->outPathLen < 0)
 					continue;
 				// Send trace for this contact
 				status_t result = fProtocol->SendTracePath(c);
@@ -4182,7 +4183,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 
 	// Auto-trace when message hop count disagrees with stored outPath
 	if (sender != NULL && pathLen != kPathLenDirect && pathLen > 0
-		&& sender->outPathLen <= 0 && fConnected) {
+		&& sender->outPathLen == 0 && fConnected) {
 		_LogMessage("INFO", BString().SetToFormat(
 			"Path mismatch: %s shows %d hops but outPathLen=%d — tracing",
 			senderName.String(), (int)pathLen, (int)sender->outPathLen));
@@ -6393,8 +6394,8 @@ MainWindow::_UpdateRepeaterMap()
 		strlcpy(info.fullName, contact->name, sizeof(info.fullName));
 		info.packetCount = 0;
 		info.isSelf = false;
-		info.isDirect = (contact->outPathLen <= 1);
-		info.isForwarded = (contact->outPathLen > 1);
+		info.isDirect = (contact->outPathLen < 0);
+		info.isForwarded = (contact->outPathLen > 0);
 		nodeCount++;
 		mergedCount++;
 	}

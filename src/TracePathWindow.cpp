@@ -631,8 +631,8 @@ TracePathWindow::StartExternalTrace(const ContactInfo* contact)
 	fHops.MakeEmpty();
 	_UpdatePathView();
 
-	// Direct path — no hops to trace
-	if (fContact.outPathLen <= 0) {
+	// Direct path confirmed (0xFF / -1 as int8) — no hops to trace
+	if (fContact.outPathLen < 0) {
 		fTracing = false;
 		fTraceButton->SetEnabled(true);
 		fTraceButton->SetLabel("Start Trace");
@@ -640,18 +640,23 @@ TracePathWindow::StartExternalTrace(const ContactInfo* contact)
 		return;
 	}
 
-	// Show known path immediately from stored outPath data
-	_PopulateKnownPath();
+	// Show known path immediately if we have stored outPath data
+	if (fContact.outPathLen > 0)
+		_PopulateKnownPath();
 
 	// Set tracing state — trace command already sent by MainWindow
 	fTracing = true;
 	fTraceButton->SetEnabled(false);
 	fTraceButton->SetLabel("Tracing...");
 
-	BString statusStr;
-	statusStr.SetToFormat("Known path: %d hop(s) — waiting for live trace...",
-		(int)fContact.outPathLen);
-	fStatusLabel->SetText(statusStr.String());
+	if (fContact.outPathLen > 0) {
+		BString statusStr;
+		statusStr.SetToFormat("Known path: %d hop(s) — waiting for live trace...",
+			(int)fContact.outPathLen);
+		fStatusLabel->SetText(statusStr.String());
+	} else {
+		fStatusLabel->SetText("Path unknown — waiting for live trace...");
+	}
 
 	// Start timeout timer
 	BMessage timeoutMsg(MSG_TRACE_TIMEOUT);
