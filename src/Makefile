@@ -36,11 +36,12 @@ SRCS = \
 	ProtocolHandler.cpp \
 	MissionControlWindow.cpp \
 	SerialMonitorWindow.cpp \
-	RepeaterMonitorView.cpp
+	RepeaterMonitorView.cpp \
+	TileCache.cpp
 
 RDEFS = Sestriere.rdef
 
-LIBS = be tracker shared columnlistview mosquitto sqlite3 $(STDCPPLIBS)
+LIBS = be tracker shared columnlistview mosquitto sqlite3 translation $(STDCPPLIBS)
 
 LIBPATHS =
 
