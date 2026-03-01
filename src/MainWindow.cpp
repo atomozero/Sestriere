@@ -4085,6 +4085,12 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 			senderName.String(), pathLen, snr, text));
 	}
 
+	// Sanitize timestamp: if sender clock is off by more than 1 day,
+	// use local time instead (avoids wrong ordering and pruning issues)
+	uint32 now = (uint32)time(NULL);
+	if (timestamp < now - 86400 || timestamp > now + 3600)
+		timestamp = now;
+
 	// Create ChatMessage
 	ChatMessage chatMsg;
 	memcpy(chatMsg.pubKeyPrefix, senderPrefix, kPubKeyPrefixSize);
@@ -4266,6 +4272,13 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 
 		// Extract message (after ": ")
 		strlcpy(messageText, colonPos + 2, sizeof(messageText));
+	}
+
+	// Sanitize timestamp from sender's clock
+	{
+		uint32 now = (uint32)time(NULL);
+		if (timestamp < now - 86400 || timestamp > now + 3600)
+			timestamp = now;
 	}
 
 	_LogMessage("MSG", BString().SetToFormat("CHANNEL from %s: %s",
