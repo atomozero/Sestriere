@@ -102,6 +102,16 @@ enum {
 	MSG_HANDSHAKE_TIMEOUT = 'hstm',
 	MSG_TRACE_ALL = 'tral',
 	MSG_TRACE_ALL_NEXT = 'trn!',
+
+	// Admin toolbar buttons (in chat area)
+	kMsgAdminVersion = 'avrs',
+	kMsgAdminNeighbors = 'anbr',
+	kMsgAdminClock = 'aclk',
+	kMsgAdminClearStats = 'acls',
+	kMsgAdminReboot = 'arbc',
+	kMsgAdminFactoryReset = 'afrs',
+	kMsgAdminSetName = 'asnm',
+	kMsgAdminSetPwd = 'aspw',
 };
 
 // Timer intervals
@@ -198,6 +208,17 @@ MainWindow::MainWindow()
 	fMsgSearchField(NULL),
 	fSearchCloseButton(NULL),
 	fSearchActive(false),
+	fAdminToolbar(NULL),
+	fAdminVersionBtn(NULL),
+	fAdminNeighborsBtn(NULL),
+	fAdminClockBtn(NULL),
+	fAdminClearStatsBtn(NULL),
+	fAdminRebootBtn(NULL),
+	fAdminFactoryResetBtn(NULL),
+	fAdminSetNameBtn(NULL),
+	fAdminSetPwdBtn(NULL),
+	fAdminNameField(NULL),
+	fAdminPwdField(NULL),
 	fInfoPanel(NULL),
 	fMainSplit(NULL),
 	fCardView(NULL),
@@ -575,18 +596,68 @@ MainWindow::_BuildUI()
 		.Add(fSearchCloseButton)
 	.End();
 
-	// Chat panel (header + search bar + messages + input)
+	// Admin toolbar (hidden by default, shown during admin session)
+	fAdminToolbar = new BView("admin_toolbar", 0);
+	fAdminToolbar->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+
+	// Row 1: query/action buttons
+	fAdminVersionBtn = new BButton("admin_ver", "Version",
+		new BMessage(kMsgAdminVersion));
+	fAdminNeighborsBtn = new BButton("admin_nbr", "Neighbors",
+		new BMessage(kMsgAdminNeighbors));
+	fAdminClockBtn = new BButton("admin_clk", "Clock",
+		new BMessage(kMsgAdminClock));
+	fAdminClearStatsBtn = new BButton("admin_cls", "Clear Stats",
+		new BMessage(kMsgAdminClearStats));
+	fAdminRebootBtn = new BButton("admin_reb", "Reboot",
+		new BMessage(kMsgAdminReboot));
+	fAdminFactoryResetBtn = new BButton("admin_frs", "Factory Reset",
+		new BMessage(kMsgAdminFactoryReset));
+
+	// Row 2: name/password fields
+	fAdminNameField = new BTextControl("admin_name", "Name:", "", NULL);
+	fAdminSetNameBtn = new BButton("admin_sn", "Set",
+		new BMessage(kMsgAdminSetName));
+	fAdminPwdField = new BTextControl("admin_pwd", "Pwd:", "", NULL);
+	fAdminSetPwdBtn = new BButton("admin_sp", "Set",
+		new BMessage(kMsgAdminSetPwd));
+
+	BLayoutBuilder::Group<>(fAdminToolbar, B_VERTICAL, 1)
+		.SetInsets(B_USE_SMALL_SPACING, 2, B_USE_SMALL_SPACING, 2)
+		.AddGroup(B_HORIZONTAL, 2)
+			.Add(fAdminVersionBtn)
+			.Add(fAdminNeighborsBtn)
+			.Add(fAdminClockBtn)
+			.Add(fAdminClearStatsBtn)
+		.End()
+		.AddGroup(B_HORIZONTAL, 2)
+			.Add(fAdminNameField, 1.0)
+			.Add(fAdminSetNameBtn)
+			.AddStrut(4)
+			.Add(fAdminPwdField, 1.0)
+			.Add(fAdminSetPwdBtn)
+		.End()
+		.AddGroup(B_HORIZONTAL, 2)
+			.AddGlue()
+			.Add(fAdminRebootBtn)
+			.Add(fAdminFactoryResetBtn)
+		.End()
+	.End();
+
+	// Chat panel (header + search bar + messages + admin toolbar + input)
 	BView* chatPanel = new BView("chat_panel", 0);
 	chatPanel->SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
 	BLayoutBuilder::Group<>(chatPanel, B_VERTICAL, 0)
 		.Add(fChatHeader)
 		.Add(fSearchBar)
 		.Add(fChatScroll, 1.0)
+		.Add(fAdminToolbar)
 		.Add(inputBar)
 	.End();
 
-	// Hide search bar initially
+	// Hide search bar and admin toolbar initially
 	fSearchBar->Hide();
+	fAdminToolbar->Hide();
 
 	// Hide chat header initially — info panel shows the contact name
 	fChatHeader->Hide();
@@ -623,6 +694,16 @@ MainWindow::_BuildUI()
 		.Add(fTopBar)
 		.Add(fCardView, 1.0)
 	.End();
+
+	// Set admin toolbar button targets to this window
+	fAdminVersionBtn->SetTarget(this);
+	fAdminNeighborsBtn->SetTarget(this);
+	fAdminClockBtn->SetTarget(this);
+	fAdminClearStatsBtn->SetTarget(this);
+	fAdminRebootBtn->SetTarget(this);
+	fAdminFactoryResetBtn->SetTarget(this);
+	fAdminSetNameBtn->SetTarget(this);
+	fAdminSetPwdBtn->SetTarget(this);
 }
 
 
@@ -2056,6 +2137,100 @@ MainWindow::MessageReceived(BMessage* message)
 					fProtocol->SendStatusRequest(target->publicKey);
 			}
 			break;
+
+		// Admin toolbar buttons (in chat area)
+		case kMsgAdminVersion:
+		{
+			BMessage cmd(MSG_ADMIN_SEND_CLI);
+			cmd.AddString("command", "ver");
+			PostMessage(&cmd);
+			break;
+		}
+
+		case kMsgAdminNeighbors:
+		{
+			BMessage cmd(MSG_ADMIN_SEND_CLI);
+			cmd.AddString("command", "neighbors");
+			PostMessage(&cmd);
+			break;
+		}
+
+		case kMsgAdminClock:
+		{
+			BMessage cmd(MSG_ADMIN_SEND_CLI);
+			cmd.AddString("command", "clock");
+			PostMessage(&cmd);
+			break;
+		}
+
+		case kMsgAdminClearStats:
+		{
+			BMessage cmd(MSG_ADMIN_SEND_CLI);
+			cmd.AddString("command", "clear stats");
+			PostMessage(&cmd);
+			break;
+		}
+
+		case kMsgAdminReboot:
+		{
+			BAlert* alert = new BAlert("Reboot",
+				"Reboot this device?\n\n"
+				"The device will restart and briefly go offline.",
+				"Cancel", "Reboot", NULL,
+				B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+			if (alert->Go() == 1)
+				fProtocol->SendReboot();
+			break;
+		}
+
+		case kMsgAdminFactoryReset:
+		{
+			BAlert* alert1 = new BAlert("Factory Reset",
+				"Factory reset this device?\n\n"
+				"ALL contacts, messages, and settings will be erased!",
+				"Cancel", "Continue", NULL,
+				B_WIDTH_AS_USUAL, B_STOP_ALERT);
+			if (alert1->Go() == 1) {
+				BAlert* alert2 = new BAlert("Confirm Reset",
+					"Are you SURE?\n\n"
+					"This cannot be undone!",
+					"Cancel", "Reset", NULL,
+					B_WIDTH_AS_USUAL, B_STOP_ALERT);
+				if (alert2->Go() == 1)
+					fProtocol->SendFactoryReset();
+			}
+			break;
+		}
+
+		case kMsgAdminSetName:
+		{
+			const char* text = fAdminNameField->Text();
+			if (text != NULL && text[0] != '\0') {
+				BString command("set name ");
+				command << text;
+				_SendCliCommand(command.String());
+				fAdminNameField->SetText("");
+			}
+			break;
+		}
+
+		case kMsgAdminSetPwd:
+		{
+			const char* text = fAdminPwdField->Text();
+			if (text != NULL && text[0] != '\0') {
+				BAlert* alert = new BAlert("Change Password",
+					"Change the admin password for this device?",
+					"Cancel", "Change", NULL,
+					B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+				if (alert->Go() == 1) {
+					BString command("password ");
+					command << text;
+					_SendCliCommand(command.String());
+					fAdminPwdField->SetText("");
+				}
+			}
+			break;
+		}
 
 		case MSG_REQUEST_TELEMETRY:
 		{
@@ -4760,14 +4935,10 @@ MainWindow::_HandlePushLoginResult(uint8 code)
 		if (targetContact != NULL
 			&& (targetContact->type == 2 || targetContact->type == 3)) {
 			fInfoPanel->SetAdminSession(true);
+			_ShowAdminToolbar(true);
 
 			// Request remote repeater status
 			fProtocol->SendStatusRequest(targetContact->publicKey);
-
-			// Uncollapse info panel if collapsed
-			float infoW = fMainSplit->ItemWeight(2);
-			if (infoW < 0.05f)
-				fMainSplit->SetItemWeight(2, 0.2f, true);
 
 			// Start admin auto-refresh timer (15s)
 			delete fAdminRefreshTimer;
@@ -4947,6 +5118,7 @@ MainWindow::_OnDisconnected()
 	delete fAdminRefreshTimer;
 	fAdminRefreshTimer = NULL;
 	fInfoPanel->SetAdminSession(false);
+	_ShowAdminToolbar(false);
 
 	// Stop telemetry poll timer
 	delete fTelemetryPollTimer;
@@ -6043,6 +6215,22 @@ MainWindow::_RefreshContactList()
 {
 	const char* filter = fSearchField ? fSearchField->Text() : "";
 	_FilterContacts(filter);
+}
+
+
+void
+MainWindow::_ShowAdminToolbar(bool show)
+{
+	if (fAdminToolbar == NULL)
+		return;
+
+	if (show) {
+		if (fAdminToolbar->IsHidden())
+			fAdminToolbar->Show();
+	} else {
+		if (!fAdminToolbar->IsHidden())
+			fAdminToolbar->Hide();
+	}
 }
 
 

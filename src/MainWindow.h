@@ -170,6 +170,9 @@ private:
 			void			_SwitchToChatMode();
 			void			_UpdateRepeaterMap();
 
+			// Admin toolbar (in chat area, above input bar)
+			void			_ShowAdminToolbar(bool show);
+
 			SerialHandler*	fSerialHandler;
 			ProtocolHandler* fProtocol;
 
@@ -199,6 +202,19 @@ private:
 			BTextControl*	fMsgSearchField;
 			BButton*		fSearchCloseButton;
 			bool			fSearchActive;
+
+			// UI elements - Admin toolbar (in chat area)
+			BView*			fAdminToolbar;
+			BButton*		fAdminVersionBtn;
+			BButton*		fAdminNeighborsBtn;
+			BButton*		fAdminClockBtn;
+			BButton*		fAdminClearStatsBtn;
+			BButton*		fAdminRebootBtn;
+			BButton*		fAdminFactoryResetBtn;
+			BButton*		fAdminSetNameBtn;
+			BButton*		fAdminSetPwdBtn;
+			BTextControl*	fAdminNameField;
+			BTextControl*	fAdminPwdField;
 
 			// UI elements - Info panel
 			ContactInfoPanel*	fInfoPanel;

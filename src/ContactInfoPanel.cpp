@@ -7,11 +7,7 @@
 
 #include "ContactInfoPanel.h"
 
-#include <Button.h>
 #include <Font.h>
-#include <LayoutBuilder.h>
-#include <TabView.h>
-#include <TextControl.h>
 #include <Window.h>
 
 #include <cctype>
@@ -19,23 +15,10 @@
 #include <cstring>
 #include <ctime>
 
-#include <Alert.h>
-
 #include "Constants.h"
 #include "DatabaseManager.h"
 #include "Utils.h"
 #include "SNRChartView.h"
-
-
-// Internal message codes for admin buttons
-static const uint32 kMsgRebootClicked = 'arbc';
-static const uint32 kMsgResetClicked = 'arfc';
-static const uint32 kMsgVersionClicked = 'cver';
-static const uint32 kMsgNeighborsClicked = 'cnbr';
-static const uint32 kMsgClockClicked = 'cclk';
-static const uint32 kMsgClearStatsClicked = 'ccls';
-static const uint32 kMsgSetNameClicked = 'csnm';
-static const uint32 kMsgPasswordClicked = 'cspw';
 
 
 // Avatar colors — use kAvatarPalette from Constants.h
@@ -102,18 +85,7 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fAdminRxPkts(0),
 	fAdminRssi(0),
 	fAdminSnr(0),
-	fAdminNoise(0),
-	fAdminTabView(NULL),
-	fVersionButton(NULL),
-	fNeighborsButton(NULL),
-	fClockButton(NULL),
-	fClearStatsButton(NULL),
-	fSetNameField(NULL),
-	fSetNameButton(NULL),
-	fPasswordField(NULL),
-	fPasswordButton(NULL),
-	fRebootButton(NULL),
-	fFactoryResetButton(NULL)
+	fAdminNoise(0)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	SetExplicitMinSize(BSize(kPanelMinWidth, B_SIZE_UNSET));
@@ -125,9 +97,6 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fSNRChart->ResizeTo(kPanelMinWidth - kMargin * 2, 100);
 	fSNRChart->Hide();
 	AddChild(fSNRChart);
-
-	// Build admin BTabView (hidden until admin session)
-	_BuildAdminTabs();
 }
 
 
@@ -137,137 +106,10 @@ ContactInfoPanel::~ContactInfoPanel()
 
 
 void
-ContactInfoPanel::AttachedToWindow()
-{
-	BView::AttachedToWindow();
-	fRebootButton->SetTarget(this);
-	fFactoryResetButton->SetTarget(this);
-	fVersionButton->SetTarget(this);
-	fNeighborsButton->SetTarget(this);
-	fClockButton->SetTarget(this);
-	fClearStatsButton->SetTarget(this);
-	fSetNameButton->SetTarget(this);
-	fPasswordButton->SetTarget(this);
-}
-
-
-void
 ContactInfoPanel::FrameResized(float newWidth, float newHeight)
 {
 	BView::FrameResized(newWidth, newHeight);
 	Invalidate();
-}
-
-
-void
-ContactInfoPanel::MessageReceived(BMessage* message)
-{
-	switch (message->what) {
-		case kMsgRebootClicked:
-		{
-			BAlert* alert = new BAlert("Reboot",
-				"Reboot this device?\n\n"
-				"The device will restart and briefly go offline.",
-				"Cancel", "Reboot", NULL,
-				B_WIDTH_AS_USUAL, B_WARNING_ALERT);
-			if (alert->Go() == 1) {
-				BMessage cmd(MSG_ADMIN_REBOOT);
-				Window()->PostMessage(&cmd);
-			}
-			break;
-		}
-
-		case kMsgResetClicked:
-		{
-			BAlert* alert1 = new BAlert("Factory Reset",
-				"Factory reset this device?\n\n"
-				"ALL contacts, messages, and settings will be erased!",
-				"Cancel", "Continue", NULL,
-				B_WIDTH_AS_USUAL, B_STOP_ALERT);
-			if (alert1->Go() == 1) {
-				BAlert* alert2 = new BAlert("Confirm Reset",
-					"Are you SURE?\n\n"
-					"This cannot be undone!",
-					"Cancel", "Reset", NULL,
-					B_WIDTH_AS_USUAL, B_STOP_ALERT);
-				if (alert2->Go() == 1) {
-					BMessage cmd(MSG_ADMIN_FACTORY_RESET);
-					Window()->PostMessage(&cmd);
-				}
-			}
-			break;
-		}
-
-		case kMsgVersionClicked:
-		{
-			BMessage cmd(MSG_ADMIN_SEND_CLI);
-			cmd.AddString("command", "ver");
-			Window()->PostMessage(&cmd);
-			break;
-		}
-
-		case kMsgNeighborsClicked:
-		{
-			BMessage cmd(MSG_ADMIN_SEND_CLI);
-			cmd.AddString("command", "neighbors");
-			Window()->PostMessage(&cmd);
-			break;
-		}
-
-		case kMsgClockClicked:
-		{
-			BMessage cmd(MSG_ADMIN_SEND_CLI);
-			cmd.AddString("command", "clock");
-			Window()->PostMessage(&cmd);
-			break;
-		}
-
-		case kMsgClearStatsClicked:
-		{
-			BMessage cmd(MSG_ADMIN_SEND_CLI);
-			cmd.AddString("command", "clear stats");
-			Window()->PostMessage(&cmd);
-			break;
-		}
-
-		case kMsgSetNameClicked:
-		{
-			const char* text = fSetNameField->Text();
-			if (text != NULL && text[0] != '\0') {
-				BString command("set name ");
-				command << text;
-				BMessage cmd(MSG_ADMIN_SEND_CLI);
-				cmd.AddString("command", command.String());
-				Window()->PostMessage(&cmd);
-				fSetNameField->SetText("");
-			}
-			break;
-		}
-
-		case kMsgPasswordClicked:
-		{
-			const char* text = fPasswordField->Text();
-			if (text != NULL && text[0] != '\0') {
-				BAlert* alert = new BAlert("Change Password",
-					"Change the admin password for this device?",
-					"Cancel", "Change", NULL,
-					B_WIDTH_AS_USUAL, B_WARNING_ALERT);
-				if (alert->Go() == 1) {
-					BString command("password ");
-					command << text;
-					BMessage cmd(MSG_ADMIN_SEND_CLI);
-					cmd.AddString("command", command.String());
-					Window()->PostMessage(&cmd);
-					fPasswordField->SetText("");
-				}
-			}
-			break;
-		}
-
-		default:
-			BView::MessageReceived(message);
-			break;
-	}
 }
 
 
@@ -562,10 +404,6 @@ ContactInfoPanel::SetContact(const ContactInfo* contact)
 	if (fSNRChart != NULL && fSNRChart->IsHidden())
 		fSNRChart->Show();
 
-	// Show admin tabs only for repeater/room contacts
-	bool showAdmin = (fAdminActive && contact != NULL && contact->type >= 2);
-	_ShowAdminTabs(showAdmin);
-
 	Invalidate();
 }
 
@@ -581,7 +419,6 @@ ContactInfoPanel::SetChannel(bool isChannel)
 		if (!fSNRChart->IsHidden())
 			fSNRChart->Hide();
 	}
-	_ShowAdminTabs(false);
 	Invalidate();
 }
 
@@ -602,7 +439,6 @@ ContactInfoPanel::Clear()
 	fContact = NULL;
 	fIsChannel = false;
 	fAdminActive = false;
-	_ShowAdminTabs(false);
 	if (fSNRChart != NULL) {
 		fSNRChart->ClearData();
 		if (!fSNRChart->IsHidden())
@@ -814,10 +650,6 @@ void
 ContactInfoPanel::SetAdminSession(bool active)
 {
 	fAdminActive = active;
-
-	// Only show tabs if current contact is a repeater/room
-	bool showTabs = (active && fContact != NULL && fContact->type >= 2);
-	_ShowAdminTabs(showTabs);
 	Invalidate();
 }
 
@@ -967,137 +799,6 @@ ContactInfoPanel::_DrawAdminSections(float& y)
 	char noiseStr[16];
 	snprintf(noiseStr, sizeof(noiseStr), "%d dBm", fAdminNoise);
 	_DrawInfoRow(y, "Noise", noiseStr, TextColor());
-
-	// Position admin tabs below stats
-	_PositionAdminTabs(y);
 }
 
 
-void
-ContactInfoPanel::_BuildAdminTabs()
-{
-	fAdminTabView = new BTabView("admin_tabs", B_WIDTH_FROM_WIDEST);
-	fAdminTabView->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-
-	// === Query tab ===
-	BView* queryTab = new BView("query_tab", B_SUPPORTS_LAYOUT);
-	queryTab->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-
-	fVersionButton = new BButton("version", "Version",
-		new BMessage(kMsgVersionClicked));
-	fNeighborsButton = new BButton("neighbors", "Neighbors",
-		new BMessage(kMsgNeighborsClicked));
-	fClockButton = new BButton("clock", "Clock",
-		new BMessage(kMsgClockClicked));
-	fClearStatsButton = new BButton("clear_stats", "Clear Stats",
-		new BMessage(kMsgClearStatsClicked));
-
-	BLayoutBuilder::Group<>(queryTab, B_VERTICAL, 4)
-		.SetInsets(4, 4, 4, 4)
-		.AddGroup(B_HORIZONTAL, 4)
-			.Add(fVersionButton)
-			.Add(fNeighborsButton)
-		.End()
-		.AddGroup(B_HORIZONTAL, 4)
-			.Add(fClockButton)
-			.Add(fClearStatsButton)
-		.End()
-		.AddGlue();
-
-	fAdminTabView->AddTab(queryTab, new BTab());
-	fAdminTabView->TabAt(0)->SetLabel("Query");
-
-	// === Config tab ===
-	BView* configTab = new BView("config_tab", B_SUPPORTS_LAYOUT);
-	configTab->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-
-	fSetNameField = new BTextControl("set_name_field", "Name:", "",
-		NULL);
-	fSetNameButton = new BButton("set_name", "Set",
-		new BMessage(kMsgSetNameClicked));
-	fPasswordField = new BTextControl("password_field", "Pwd:", "",
-		NULL);
-	fPasswordButton = new BButton("set_password", "Set",
-		new BMessage(kMsgPasswordClicked));
-
-	BLayoutBuilder::Group<>(configTab, B_VERTICAL, 4)
-		.SetInsets(4, 4, 4, 4)
-		.AddGroup(B_HORIZONTAL, 4)
-			.Add(fSetNameField)
-			.Add(fSetNameButton)
-		.End()
-		.AddGroup(B_HORIZONTAL, 4)
-			.Add(fPasswordField)
-			.Add(fPasswordButton)
-		.End()
-		.AddGlue();
-
-	fAdminTabView->AddTab(configTab, new BTab());
-	fAdminTabView->TabAt(1)->SetLabel("Config");
-
-	// === Actions tab ===
-	BView* actionsTab = new BView("actions_tab", B_SUPPORTS_LAYOUT);
-	actionsTab->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-
-	fRebootButton = new BButton("reboot", "Reboot",
-		new BMessage(kMsgRebootClicked));
-	fFactoryResetButton = new BButton("factory_reset", "Factory Reset",
-		new BMessage(kMsgResetClicked));
-
-	BLayoutBuilder::Group<>(actionsTab, B_VERTICAL, 4)
-		.SetInsets(4, 4, 4, 4)
-		.AddGroup(B_HORIZONTAL, 4)
-			.Add(fRebootButton)
-			.Add(fFactoryResetButton)
-		.End()
-		.AddGlue();
-
-	fAdminTabView->AddTab(actionsTab, new BTab());
-	fAdminTabView->TabAt(2)->SetLabel("Actions");
-
-	// Initially hidden, positioned off-screen
-	fAdminTabView->MoveTo(kMargin, 500);
-	fAdminTabView->ResizeTo(kPanelMinWidth - kMargin * 2, 100);
-	fAdminTabView->Hide();
-	AddChild(fAdminTabView);
-}
-
-
-void
-ContactInfoPanel::_PositionAdminTabs(float& y)
-{
-	if (fAdminTabView == NULL)
-		return;
-
-	BRect bounds = Bounds();
-	float x = bounds.left + kMargin;
-	float w = bounds.Width() - kMargin * 2;
-
-	// Ensure minimum width
-	if (w < 60)
-		w = 60;
-
-	// Tab height: tab bar (~22px) + content (2 rows of buttons ~60px)
-	float h = 100;
-
-	y += 4;
-	fAdminTabView->MoveTo(x, y);
-	fAdminTabView->ResizeTo(w, h);
-	y += h + 4;
-}
-
-
-void
-ContactInfoPanel::_ShowAdminTabs(bool show)
-{
-	if (fAdminTabView == NULL)
-		return;
-
-	if (show) {
-		if (fAdminTabView->IsHidden())
-			fAdminTabView->Show();
-	} else {
-		if (!fAdminTabView->IsHidden())
-			fAdminTabView->Hide();
-	}
-}

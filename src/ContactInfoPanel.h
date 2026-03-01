@@ -13,9 +13,6 @@
 
 #include "Types.h"
 
-class BButton;
-class BTabView;
-class BTextControl;
 class SNRChartView;
 
 class ContactInfoPanel : public BView {
@@ -24,9 +21,7 @@ public:
 	virtual				~ContactInfoPanel();
 
 	virtual void		Draw(BRect updateRect);
-	virtual void		AttachedToWindow();
 	virtual void		FrameResized(float newWidth, float newHeight);
-	virtual void		MessageReceived(BMessage* message);
 	virtual BSize		MinSize();
 	virtual BSize		PreferredSize();
 
@@ -60,9 +55,6 @@ private:
 			void		_DrawSectionHeader(float& y,
 							const char* title);
 			void		_DrawAdminSections(float& y);
-			void		_BuildAdminTabs();
-			void		_PositionAdminTabs(float& y);
-			void		_ShowAdminTabs(bool show);
 
 			const ContactInfo*	fContact;
 			bool		fIsChannel;
@@ -82,24 +74,6 @@ private:
 			int8		fAdminSnr;
 			int8		fAdminNoise;
 
-			// Admin tabbed controls
-			BTabView*	fAdminTabView;
-
-			// Query tab buttons
-			BButton*	fVersionButton;
-			BButton*	fNeighborsButton;
-			BButton*	fClockButton;
-			BButton*	fClearStatsButton;
-
-			// Config tab controls
-			BTextControl*	fSetNameField;
-			BButton*	fSetNameButton;
-			BTextControl*	fPasswordField;
-			BButton*	fPasswordButton;
-
-			// Actions tab buttons
-			BButton*	fRebootButton;
-			BButton*	fFactoryResetButton;
 };
 
 
