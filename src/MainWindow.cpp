@@ -1251,9 +1251,13 @@ MainWindow::MessageReceived(BMessage* message)
 					(size >= (ssize_t)kPubKeyPrefixSize) ? kPubKeyPrefixSize : size);
 
 				if (contact == NULL) {
-					_LogMessage("WARN", BString().SetToFormat(
-						"Cannot trace: no contact for prefix %02X%02X%02X%02X%02X%02X (size=%d)",
-						pk[0], pk[1], pk[2], pk[3], pk[4], pk[5], (int)size));
+					if (size >= (ssize_t)kPubKeyPrefixSize) {
+						_LogMessage("WARN", BString().SetToFormat(
+							"Cannot trace: no contact for prefix %02X%02X%02X%02X%02X%02X (size=%d)",
+							pk[0], pk[1], pk[2], pk[3], pk[4], pk[5], (int)size));
+					} else {
+						_LogMessage("WARN", "Cannot trace: pubkey data too short");
+					}
 					break;
 				}
 
@@ -2232,7 +2236,8 @@ MainWindow::MessageReceived(BMessage* message)
 			if (!fConnected) break;
 			const void* pubkey;
 			ssize_t size;
-			if (message->FindData("pubkey", B_RAW_TYPE, &pubkey, &size) == B_OK) {
+			if (message->FindData("pubkey", B_RAW_TYPE, &pubkey, &size) == B_OK
+				&& size >= (ssize_t)kPubKeyPrefixSize) {
 				uint8 payload[7];
 				payload[0] = CMD_EXPORT_CONTACT;
 				memcpy(payload + 1, pubkey, 6);
