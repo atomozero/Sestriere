@@ -19,9 +19,10 @@
 #include "Constants.h"
 
 
-static const float kMinZoom = 100.0f;
-static const float kMaxZoom = 100000.0f;
+static const float kMinZoom = 5.0f;
+static const float kMaxZoom = 50000.0f;
 static const float kDefaultZoom = 5000.0f;
+static const float kMinFitSpan = 0.01f;		// ~1.1 km minimum visible area
 static const float kZoomStep = 1.5f;
 static const float kNodeRadius = 8.0f;
 static const float kSelfRadius = 10.0f;
@@ -129,7 +130,10 @@ MapView::MouseMoved(BPoint where, uint32 /*transit*/,
 		float dx = where.x - fDragStart.x;
 		float dy = where.y - fDragStart.y;
 
-		float dLon = -dx / fZoom;
+		float cosLat = cos(fDragStartLat * M_PI / 180.0f);
+		if (cosLat < 0.01f) cosLat = 0.01f;
+
+		float dLon = -dx / (fZoom * cosLat);
 		float dLat = dy / fZoom;
 
 		fCenterLat = fDragStartLat + dLat;
@@ -217,6 +221,7 @@ MapView::AddOrUpdateNode(const ContactInfo& contact, float lat, float lon)
 			node->longitude = lon;
 			strlcpy(node->name, contact.name, sizeof(node->name));
 			node->type = contact.type;
+			node->pathLen = contact.outPathLen;
 			Invalidate();
 			return;
 		}
@@ -228,6 +233,7 @@ MapView::AddOrUpdateNode(const ContactInfo& contact, float lat, float lon)
 	node->latitude = lat;
 	node->longitude = lon;
 	node->type = contact.type;
+	node->pathLen = contact.outPathLen;
 
 	fNodes.AddItem(node);
 	Invalidate();
@@ -288,11 +294,18 @@ MapView::ZoomToFit()
 	fCenterLon = (minLon + maxLon) / 2.0f;
 
 	BRect bounds = Bounds();
-	float latSpan = maxLat - minLat + 0.001f;
-	float lonSpan = maxLon - minLon + 0.001f;
 
-	float zoomLat = (bounds.Height() * 0.8f) / latSpan;
-	float zoomLon = (bounds.Width() * 0.8f) / lonSpan;
+	// Ensure minimum visible area (~1.1 km) for single/clustered nodes
+	float latSpan = std::max(maxLat - minLat, kMinFitSpan);
+	float lonSpan = std::max(maxLon - minLon, kMinFitSpan);
+
+	// Account for longitude correction at this latitude
+	float cosLat = cos(fCenterLat * M_PI / 180.0f);
+	if (cosLat < 0.01f) cosLat = 0.01f;
+
+	// Use 70% margin to leave room for node labels (~25px each side)
+	float zoomLat = (bounds.Height() * 0.7f) / latSpan;
+	float zoomLon = (bounds.Width() * 0.7f) / (lonSpan * cosLat);
 
 	fZoom = std::min(zoomLat, zoomLon);
 	if (fZoom < kMinZoom) fZoom = kMinZoom;
@@ -320,7 +333,11 @@ MapView::_LatLonToScreen(float lat, float lon) const
 	float centerX = bounds.Width() / 2.0f;
 	float centerY = bounds.Height() / 2.0f;
 
-	float x = centerX + (lon - fCenterLon) * fZoom;
+	// Correct longitude scale for latitude (Mercator-like correction)
+	float cosLat = cos(fCenterLat * M_PI / 180.0f);
+	if (cosLat < 0.01f) cosLat = 0.01f;
+
+	float x = centerX + (lon - fCenterLon) * cosLat * fZoom;
 	float y = centerY - (lat - fCenterLat) * fZoom;
 
 	return BPoint(x, y);
@@ -334,7 +351,10 @@ MapView::_ScreenToLatLon(BPoint screen, float& lat, float& lon) const
 	float centerX = bounds.Width() / 2.0f;
 	float centerY = bounds.Height() / 2.0f;
 
-	lon = fCenterLon + (screen.x - centerX) / fZoom;
+	float cosLat = cos(fCenterLat * M_PI / 180.0f);
+	if (cosLat < 0.01f) cosLat = 0.01f;
+
+	lon = fCenterLon + (screen.x - centerX) / (fZoom * cosLat);
 	lat = fCenterLat - (screen.y - centerY) / fZoom;
 }
 
@@ -697,7 +717,7 @@ MapWindow::SetSelfPosition(float lat, float lon, const char* name)
 
 void
 MapWindow::UpdateFromContacts(OwningObjectList<ContactInfo>* contacts,
-	double defaultLat, double defaultLon)
+	double /*defaultLat*/, double /*defaultLon*/)
 {
 	fMapView->ClearNodes();
 
@@ -706,14 +726,13 @@ MapWindow::UpdateFromContacts(OwningObjectList<ContactInfo>* contacts,
 		if (contact == NULL || !contact->isValid)
 			continue;
 
-		// Use default lat/lon as placeholder for now
-		// Real positions come from contact advert data
-		float lat = (float)defaultLat;
-		float lon = (float)defaultLon;
+		// Only add contacts that have valid GPS coordinates
+		if (!contact->HasGPS())
+			continue;
 
-		// Offset nodes slightly so they don't overlap
-		lat += (float)(i * 0.001);
-		lon += (float)(i * 0.001);
+		// Convert int32 (1e-6 degrees) to float degrees
+		float lat = (float)(contact->latitude / 1e6);
+		float lon = (float)(contact->longitude / 1e6);
 
 		fMapView->AddOrUpdateNode(*contact, lat, lon);
 	}
