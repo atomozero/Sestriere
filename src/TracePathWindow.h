@@ -14,9 +14,9 @@
 #include "Types.h"
 
 class BButton;
-class BListView;
 class BMessageRunner;
 class BStringView;
+class TracePathView;
 
 // Single hop in a trace path
 struct TraceHop {
@@ -24,8 +24,9 @@ struct TraceHop {
 	char		name[64];
 	int8		snr;		// SNR * 4
 	uint32		timestamp;
+	bool		hasSnr;		// true if SNR data available (live trace)
 
-	TraceHop() : snr(0), timestamp(0) {
+	TraceHop() : snr(0), timestamp(0), hasSnr(false) {
 		memset(pubKeyPrefix, 0, sizeof(pubKeyPrefix));
 		memset(name, 0, sizeof(name));
 	}
@@ -58,15 +59,14 @@ public:
 
 private:
 			void			_OnStartTrace();
-			void			_UpdateHopList();
-			void			_FormatPubKeyPrefix(const uint8* prefix, char* out,
-								size_t outSize);
+			void			_UpdatePathView();
+			void			_PopulateKnownPath();
 
 			BWindow*		fParent;
 			ContactInfo		fContact;
 
 			BStringView*	fTargetLabel;
-			BListView*		fHopList;
+			TracePathView*	fPathView;
 			BButton*		fTraceButton;
 			BButton*		fCloseButton;
 			BStringView*	fStatusLabel;
