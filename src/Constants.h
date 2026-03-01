@@ -283,6 +283,7 @@ enum {
 
 	// Ping
 	MSG_CONTACT_PING = 'cpng',
+	MSG_PING_TIMEOUT = 'pngt',
 
 	// Profile export/import
 	MSG_SHOW_PROFILE = 'prof',

@@ -331,6 +331,7 @@ private:
 			bigtime_t		fPingStartTime;
 			uint8			fPingTargetKey[kPubKeyPrefixSize];
 			bool			fPingPending;
+			BMessageRunner*	fPingTimeoutRunner;
 
 			// Mute state
 			BMessage		fMutedKeys;

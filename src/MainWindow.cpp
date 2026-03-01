@@ -285,6 +285,7 @@ MainWindow::MainWindow()
 	fGpxSavePanel = NULL;
 	fPingStartTime = 0;
 	fPingPending = false;
+	fPingTimeoutRunner = NULL;
 	memset(fPingTargetKey, 0, sizeof(fPingTargetKey));
 	memset(fLoggedInKey, 0, sizeof(fLoggedInKey));
 	fHasDeviceInfo = false;
@@ -354,6 +355,7 @@ MainWindow::~MainWindow()
 	delete fAutoSyncRunner;
 	delete fHandshakeTimer;
 	delete fRepeaterMapTimer;
+	delete fPingTimeoutRunner;
 
 	// Protocol handler cleanup
 	delete fProtocol;
@@ -1688,6 +1690,10 @@ MainWindow::MessageReceived(BMessage* message)
 		{
 			if (!fConnected) {
 				_LogMessage("WARN", "Not connected");
+				BAlert* alert = new BAlert("Ping",
+					"Cannot ping: radio not connected",
+					"OK", NULL, NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+				alert->Go(NULL);
 				break;
 			}
 			const void* keyData;
@@ -1698,28 +1704,70 @@ MainWindow::MessageReceived(BMessage* message)
 				ContactInfo* contact = _FindContactByPrefix(
 					(const uint8*)keyData, kPubKeyPrefixSize);
 
+				if (contact == NULL) {
+					_LogMessage("WARN", "Cannot ping: contact not found");
+					fPingPending = false;
+					break;
+				}
+
+				const char* name = contact->name[0]
+					? contact->name : "(unknown)";
+
 				// Record ping start
 				fPingStartTime = system_time();
 				memcpy(fPingTargetKey, keyData, kPubKeyPrefixSize);
 				fPingPending = true;
 
-				if (contact != NULL) {
-					status_t result = fProtocol->SendTracePath(contact);
-					if (result == B_BAD_VALUE) {
-						_LogMessage("PING", BString().SetToFormat(
-							"Direct path to %s — ping not needed",
-							contact->name[0] ? contact->name : "(unknown)"));
-						fPingPending = false;
-					} else {
-						_LogMessage("PING", BString().SetToFormat(
-							"Pinging %s...",
-							contact->name[0] ? contact->name : "(unknown)"));
-					}
-				} else {
-					_LogMessage("WARN", "Cannot ping: contact not found");
+				status_t result = fProtocol->SendTracePath(contact);
+				if (result != B_OK) {
+					_LogMessage("PING", BString().SetToFormat(
+						"Ping failed for %s", name));
 					fPingPending = false;
+				} else {
+					_LogMessage("PING", BString().SetToFormat(
+						"Pinging %s...", name));
+					// Show feedback in chat
+					ChatMessage pingMsg;
+					pingMsg.timestamp = (uint32)time(NULL);
+					pingMsg.isOutgoing = false;
+					pingMsg.isChannel = true;
+					snprintf(pingMsg.text, sizeof(pingMsg.text),
+						"Pinging %s...", name);
+					fChatView->AddMessage(pingMsg, "Ping");
+
+					// Start 30s timeout
+					delete fPingTimeoutRunner;
+					BMessage timeoutMsg(MSG_PING_TIMEOUT);
+					fPingTimeoutRunner = new BMessageRunner(this,
+						&timeoutMsg, 30000000LL, 1);
 				}
 			}
+			break;
+		}
+
+		case MSG_PING_TIMEOUT:
+		{
+			if (fPingPending) {
+				fPingPending = false;
+				ContactInfo* target = _FindContactByPrefix(
+					fPingTargetKey, kPubKeyPrefixSize);
+				const char* name = (target && target->name[0])
+					? target->name : "(unknown)";
+
+				BString result;
+				result.SetToFormat("Ping %s: no response (timeout)", name);
+				_LogMessage("PING", result.String());
+
+				ChatMessage pingResult;
+				pingResult.timestamp = (uint32)time(NULL);
+				pingResult.isOutgoing = false;
+				pingResult.isChannel = true;
+				strlcpy(pingResult.text, result.String(),
+					sizeof(pingResult.text));
+				fChatView->AddMessage(pingResult, "Ping");
+			}
+			delete fPingTimeoutRunner;
+			fPingTimeoutRunner = NULL;
 			break;
 		}
 
@@ -4802,6 +4850,8 @@ MainWindow::_HandlePushTraceData(const uint8* data, size_t length)
 	if (fPingPending) {
 		bigtime_t rtt = system_time() - fPingStartTime;
 		fPingPending = false;
+		delete fPingTimeoutRunner;
+		fPingTimeoutRunner = NULL;
 
 		uint8 pathLen = (length >= 3) ? data[2] : 0;
 		uint8 hops = (pathLen <= 1) ? pathLen : (pathLen / 4);
@@ -4822,6 +4872,14 @@ MainWindow::_HandlePushTraceData(const uint8* data, size_t length)
 				name, rtt / 1000000.0, hops);
 
 		_LogMessage("PING", result.String());
+
+		// Show result in chat
+		ChatMessage pingResult;
+		pingResult.timestamp = (uint32)time(NULL);
+		pingResult.isOutgoing = false;
+		pingResult.isChannel = true;
+		strlcpy(pingResult.text, result.String(), sizeof(pingResult.text));
+		fChatView->AddMessage(pingResult, "Ping");
 	}
 
 	// Log trace path summary
