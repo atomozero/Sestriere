@@ -1339,6 +1339,11 @@ MainWindow::MessageReceived(BMessage* message)
 					} else {
 						_LogMessage("WARN", "Cannot trace: pubkey data too short");
 					}
+					if (fTracePathWindow != NULL
+						&& fTracePathWindow->LockLooper()) {
+						fTracePathWindow->SetTraceComplete(false);
+						fTracePathWindow->UnlockLooper();
+					}
 					break;
 				}
 
@@ -1349,6 +1354,11 @@ MainWindow::MessageReceived(BMessage* message)
 				if (!silent) {
 					if (!fConnected) {
 						_LogMessage("WARN", "Cannot trace: radio not connected");
+						if (fTracePathWindow != NULL
+							&& fTracePathWindow->LockLooper()) {
+							fTracePathWindow->SetTraceComplete(false);
+							fTracePathWindow->UnlockLooper();
+						}
 						break;
 					}
 

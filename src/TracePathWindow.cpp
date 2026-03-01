@@ -51,6 +51,7 @@ public:
 			void			SetHops(OwningObjectList<TraceHop>* hops,
 								const char* selfName, const char* destName,
 								uint8 destType);
+			void			SetMessage(const char* message);
 
 private:
 			void			_DrawNodeCard(float y, const char* name,
@@ -63,6 +64,7 @@ private:
 			OwningObjectList<TraceHop>*	fHops;
 			char			fSelfName[64];
 			char			fDestName[64];
+			char			fMessage[128];
 			uint8			fDestType;
 };
 
@@ -75,7 +77,15 @@ TracePathView::TracePathView()
 {
 	fSelfName[0] = '\0';
 	fDestName[0] = '\0';
+	fMessage[0] = '\0';
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+}
+
+
+void
+TracePathView::SetMessage(const char* message)
+{
+	strlcpy(fMessage, message ? message : "", sizeof(fMessage));
 }
 
 
@@ -119,8 +129,24 @@ TracePathView::Draw(BRect updateRect)
 	SetHighColor(bgColor);
 	FillRect(bounds);
 
-	if (fHops == NULL || fHops->CountItems() == 0)
+	if (fHops == NULL || fHops->CountItems() == 0) {
+		if (fMessage[0] != '\0') {
+			BFont font(be_plain_font);
+			font.SetSize(13.0f);
+			SetFont(&font);
+
+			rgb_color dimColor = tint_color(bgColor, B_DARKEN_2_TINT);
+			SetHighColor(dimColor);
+
+			float strWidth = StringWidth(fMessage);
+			font_height fh;
+			font.GetHeight(&fh);
+			float x = (bounds.Width() - strWidth) / 2.0f;
+			float y = (bounds.Height() + fh.ascent) / 2.0f;
+			DrawString(fMessage, BPoint(x, y));
+		}
 		return;
+	}
 
 	float y = kTopPadding;
 
@@ -463,6 +489,7 @@ TracePathWindow::AddTraceHop(const TraceHop& hop)
 {
 	TraceHop* newHop = new TraceHop(hop);
 	fHops.AddItem(newHop);
+	fPathView->SetMessage("");  // Clear message, real content now
 	_UpdatePathView();
 }
 
@@ -483,10 +510,16 @@ TracePathWindow::SetTraceComplete(bool success)
 		status.SetToFormat("Live trace: %d hop(s)", (int)fHops.CountItems());
 		fStatusLabel->SetText(status.String());
 	} else {
-		BString status;
-		status.SetToFormat("No live response — showing known path (%d hop(s))",
-			(int)fHops.CountItems());
-		fStatusLabel->SetText(status.String());
+		if (fHops.CountItems() > 0) {
+			BString status;
+			status.SetToFormat("No live response — showing known path (%d hop(s))",
+				(int)fHops.CountItems());
+			fStatusLabel->SetText(status.String());
+		} else {
+			fPathView->SetMessage("No response from device");
+			fPathView->Invalidate();
+			fStatusLabel->SetText("Trace timed out — no response");
+		}
 	}
 }
 
@@ -603,6 +636,7 @@ TracePathWindow::SetContact(const ContactInfo* contact)
 
 	// Clear previous results
 	fHops.MakeEmpty();
+	fPathView->SetMessage("Press Start to begin trace");
 	_UpdatePathView();
 
 	fTraceButton->SetEnabled(true);
@@ -629,10 +663,11 @@ TracePathWindow::StartExternalTrace(const ContactInfo* contact)
 
 	// Clear previous results
 	fHops.MakeEmpty();
-	_UpdatePathView();
 
 	// Direct path confirmed (0xFF / -1 as int8) — no hops to trace
 	if (fContact.outPathLen < 0) {
+		fPathView->SetMessage("Direct path — no intermediate hops");
+		_UpdatePathView();
 		fTracing = false;
 		fTraceButton->SetEnabled(true);
 		fTraceButton->SetLabel("Start Trace");
@@ -641,8 +676,12 @@ TracePathWindow::StartExternalTrace(const ContactInfo* contact)
 	}
 
 	// Show known path immediately if we have stored outPath data
-	if (fContact.outPathLen > 0)
+	if (fContact.outPathLen > 0) {
 		_PopulateKnownPath();
+	} else {
+		fPathView->SetMessage("Waiting for trace response...");
+		_UpdatePathView();
+	}
 
 	// Set tracing state — trace command already sent by MainWindow
 	fTracing = true;
@@ -717,6 +756,21 @@ TracePathWindow::_OnStartTrace()
 {
 	if (fTracing)
 		return;
+
+	// Immediate visual feedback
+	fTracing = true;
+	fTraceButton->SetEnabled(false);
+	fTraceButton->SetLabel("Tracing...");
+	fHops.MakeEmpty();
+	fPathView->SetMessage("Sending trace request...");
+	_UpdatePathView();
+	fStatusLabel->SetText("Sending trace request...");
+
+	// Start timeout timer
+	delete fTimeoutRunner;
+	BMessage timeoutMsg(MSG_TRACE_TIMEOUT);
+	fTimeoutRunner = new BMessageRunner(this, &timeoutMsg,
+		kTraceTimeoutUs, 1);
 
 	// Send trace path request to parent window
 	if (fParent != NULL) {
