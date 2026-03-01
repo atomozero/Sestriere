@@ -40,6 +40,8 @@ Unified dashboard with device status, radio health metrics, network health score
 - **Message Search** -- Full-text search across chat history (Cmd+F)
 - **Auto-growing Input** -- Multi-line input (1-4 lines), Enter to send, Shift+Enter for newline
 - **Contact Management** -- Search, sync, export/import, right-click context menu
+- **Contact Type Filters** -- Sidebar checkboxes to show/hide Chat, Repeater, and Room contacts
+- **Ping with Feedback** -- Round-trip time measurement with results shown directly in chat
 
 ### Visualization
 - **Network Map** -- Force-directed topology with SNR-colored links, animated flow dots, trace route visualization, auto-trace, full mesh discovery, and edge persistence
@@ -50,11 +52,11 @@ Unified dashboard with device status, radio health metrics, network health score
 ### Radio Analysis
 - **Packet Analyzer** -- Wireshark-style real-time analyzer with color-coded packet types, decoded detail view, hex dump, SNR trend chart, contact heatmap, delta-t timing, CSV export
 - **Statistics Window** -- Core/radio/packet stats with auto-refresh
-- **Trace Path** -- Hop-by-hop route visualization with per-hop SNR
+- **Trace Path** -- Graphical route visualization with node cards, colored avatars, arrows, and SNR-colored pills between hops
 
 ### Device Control
 - **Settings** -- Node name, location, TX power, 12 radio presets (frequency, bandwidth, SF, CR)
-- **Repeater Admin** -- Remote administration of repeaters/rooms after login (stats, contacts, reboot, factory reset)
+- **Repeater Admin** -- Remote administration of repeaters/rooms after login with contextual toolbar in chat area (stats, contacts, reboot, factory reset)
 - **Battery & Storage Monitoring** -- Real-time voltage and storage status with LiPo/LiFePO4/NMC chemistry curves
 - **Serial Monitor** -- Terminal-style CLI interaction for repeater/standalone devices
 - **Repeater Monitor** -- Structured repeater log analysis with per-node stats and topology extraction
