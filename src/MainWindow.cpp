@@ -1593,6 +1593,12 @@ MainWindow::MessageReceived(BMessage* message)
 				pingMsg->AddData("pubkey", B_RAW_TYPE,
 					ctxItem->GetContact().publicKey, kPubKeySize);
 				menu->AddItem(new BMenuItem("Ping", pingMsg));
+
+				BMessage* traceMsg = new BMessage(MSG_TRACE_PATH);
+				traceMsg->AddData("pubkey", B_RAW_TYPE,
+					ctxItem->GetContact().publicKey, kPubKeySize);
+				menu->AddItem(new BMenuItem("Trace Route", traceMsg));
+
 				BMessage* resetMsg = new BMessage(MSG_CONTACT_RESET_PATH);
 				resetMsg->AddData("pubkey", B_RAW_TYPE,
 					ctxItem->GetContact().publicKey, kPubKeySize);
