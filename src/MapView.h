@@ -15,6 +15,8 @@
 #include "Types.h"
 
 class BButton;
+class BCheckBox;
+class TileCache;
 
 
 // Geographic map node representation
@@ -64,18 +66,30 @@ public:
 			void			ZoomToFit();
 			void			CenterOnSelf();
 
+			void			SetTilesEnabled(bool enabled);
+			bool			TilesEnabled() const { return fShowTiles; }
+
 private:
+			// Mercator projection helpers
+	static	float			_MercatorY(float latDeg);
 			BPoint			_LatLonToScreen(float lat, float lon) const;
 			void			_ScreenToLatLon(BPoint screen, float& lat,
 								float& lon) const;
+
+			// Drawing methods
+			void			_DrawTiles();
+			void			_DrawCoastlines();
 			void			_DrawGrid();
 			void			_DrawNodes();
 			void			_DrawNode(const GeoMapNode& node);
 			void			_DrawConnections();
 			void			_DrawScaleBar();
 			void			_DrawCompass();
+
 			GeoMapNode*		_FindNodeAt(BPoint where);
 			rgb_color		_ColorForType(uint8 type) const;
+
+			int				_ZoomToTileZoom() const;
 
 			OwningObjectList<GeoMapNode>	fNodes;
 			GeoMapNode		fSelfNode;
@@ -83,7 +97,7 @@ private:
 
 			float			fCenterLat;
 			float			fCenterLon;
-			float			fZoom;
+			float			fZoom;		// pixels per degree longitude
 
 			bool			fDragging;
 			BPoint			fDragStart;
@@ -92,6 +106,17 @@ private:
 
 			GeoMapNode*		fSelectedNode;
 			GeoMapNode*		fHoverNode;
+
+			// Tile/coastline support
+			TileCache*		fTileCache;
+			bool			fShowTiles;
+			bool			fShowCoastlines;
+
+			int				fLastTileZ;
+			int				fLastTileMinX;
+			int				fLastTileMinY;
+			int				fLastTileMaxX;
+			int				fLastTileMaxY;
 };
 
 
@@ -116,6 +141,7 @@ private:
 	BButton*			fZoomOutButton;
 	BButton*			fFitButton;
 	BButton*			fCenterButton;
+	BCheckBox*			fTilesCheckBox;
 	BWindow*			fParent;
 };
 

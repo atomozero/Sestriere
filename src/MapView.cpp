@@ -7,7 +7,9 @@
 
 #include "MapView.h"
 
+#include <Bitmap.h>
 #include <Button.h>
+#include <CheckBox.h>
 #include <GroupLayout.h>
 #include <LayoutBuilder.h>
 
@@ -16,7 +18,9 @@
 #include <cstdio>
 #include <cstring>
 
+#include "CoastlineData.h"
 #include "Constants.h"
+#include "TileCache.h"
 
 
 static const float kMinZoom = 5.0f;
@@ -31,6 +35,11 @@ static const uint32 kMsgZoomIn		= 'zmin';
 static const uint32 kMsgZoomOut		= 'zmot';
 static const uint32 kMsgZoomFit		= 'zmft';
 static const uint32 kMsgCenterSelf	= 'cnsl';
+static const uint32 kMsgToggleTiles	= 'tltg';
+
+// Land fill color for coastlines
+static const rgb_color kLandColor = {60, 75, 55, 255};
+static const rgb_color kCoastlineStroke = {90, 110, 80, 255};
 
 
 // ============================================================================
@@ -49,16 +58,35 @@ MapView::MapView(const char* name)
 	fDragStartLat(0),
 	fDragStartLon(0),
 	fSelectedNode(NULL),
-	fHoverNode(NULL)
+	fHoverNode(NULL),
+	fTileCache(NULL),
+	fShowTiles(false),
+	fShowCoastlines(true),
+	fLastTileZ(-1),
+	fLastTileMinX(-1),
+	fLastTileMinY(-1),
+	fLastTileMaxX(-1),
+	fLastTileMaxY(-1)
 {
 	fSelfNode = GeoMapNode();
 	fSelfNode.isSelf = true;
 	SetViewColor(B_TRANSPARENT_COLOR);
+
+	// Create tile cache in settings directory
+	BString cacheDir;
+	cacheDir.SetToFormat("%s/.config/settings/Sestriere/tiles",
+		getenv("HOME"));
+	fTileCache = new TileCache(cacheDir.String());
+	fTileCache->Run();
 }
 
 
 MapView::~MapView()
 {
+	if (fTileCache != NULL) {
+		fTileCache->Lock();
+		fTileCache->Quit();
+	}
 }
 
 
@@ -75,13 +103,28 @@ MapView::Draw(BRect /*updateRect*/)
 {
 	BRect bounds = Bounds();
 
-	// Background - dark blue for "sea"
+	// 1. Background - dark blue for "sea"
 	SetHighColor(30, 40, 60);
 	FillRect(bounds);
 
+	// 2. OSM tiles (if enabled and loaded)
+	if (fShowTiles)
+		_DrawTiles();
+
+	// 3. Coastlines (always drawn as offline fallback)
+	if (fShowCoastlines)
+		_DrawCoastlines();
+
+	// 4. Grid (dimmed if tiles active)
 	_DrawGrid();
+
+	// 5. Connections
 	_DrawConnections();
+
+	// 6. Nodes
 	_DrawNodes();
+
+	// 7. Scale bar + compass
 	_DrawScaleBar();
 	_DrawCompass();
 }
@@ -130,13 +173,18 @@ MapView::MouseMoved(BPoint where, uint32 /*transit*/,
 		float dx = where.x - fDragStart.x;
 		float dy = where.y - fDragStart.y;
 
-		float cosLat = cos(fDragStartLat * M_PI / 180.0f);
-		if (cosLat < 0.01f) cosLat = 0.01f;
+		// In Mercator, longitude is linear but latitude is non-linear.
+		// For panning, we compute the Mercator Y difference in screen space.
+		float dLon = -dx / fZoom;
 
-		float dLon = -dx / (fZoom * cosLat);
-		float dLat = dy / fZoom;
+		// Convert screen dy back to latitude change via Mercator inverse
+		float centerMercY = _MercatorY(fDragStartLat);
+		float newMercY = centerMercY + dy / fZoom;
 
-		fCenterLat = fDragStartLat + dLat;
+		// Inverse Mercator Y to latitude
+		float newLat = atan(sinh(newMercY * M_PI / 180.0f)) * 180.0f / M_PI;
+
+		fCenterLat = newLat;
 		fCenterLon = fDragStartLon + dLon;
 
 		if (fCenterLat > 85.0f) fCenterLat = 85.0f;
@@ -183,6 +231,10 @@ MapView::MessageReceived(BMessage* message)
 			}
 			break;
 		}
+
+		case MSG_TILES_READY:
+			Invalidate();
+			break;
 
 		default:
 			BView::MessageReceived(message);
@@ -295,17 +347,17 @@ MapView::ZoomToFit()
 
 	BRect bounds = Bounds();
 
-	// Ensure minimum visible area (~1.1 km) for single/clustered nodes
-	float latSpan = std::max(maxLat - minLat, kMinFitSpan);
+	// Ensure minimum visible area
 	float lonSpan = std::max(maxLon - minLon, kMinFitSpan);
 
-	// Account for longitude correction at this latitude
-	float cosLat = cos(fCenterLat * M_PI / 180.0f);
-	if (cosLat < 0.01f) cosLat = 0.01f;
+	// For Mercator, compute Y span in mercator degrees
+	float mercMin = _MercatorY(minLat);
+	float mercMax = _MercatorY(maxLat);
+	float mercSpan = std::max(mercMax - mercMin, kMinFitSpan);
 
-	// Use 70% margin to leave room for node labels (~25px each side)
-	float zoomLat = (bounds.Height() * 0.7f) / latSpan;
-	float zoomLon = (bounds.Width() * 0.7f) / (lonSpan * cosLat);
+	// fZoom is pixels per degree of longitude
+	float zoomLon = (bounds.Width() * 0.7f) / lonSpan;
+	float zoomLat = (bounds.Height() * 0.7f) / mercSpan;
 
 	fZoom = std::min(zoomLat, zoomLon);
 	if (fZoom < kMinZoom) fZoom = kMinZoom;
@@ -326,6 +378,32 @@ MapView::CenterOnSelf()
 }
 
 
+void
+MapView::SetTilesEnabled(bool enabled)
+{
+	fShowTiles = enabled;
+	if (fTileCache != NULL)
+		fTileCache->SetEnabled(enabled);
+	Invalidate();
+}
+
+
+// ============================================================================
+// Mercator projection
+// ============================================================================
+
+/*static*/ float
+MapView::_MercatorY(float latDeg)
+{
+	// Clamp to avoid infinity at poles
+	if (latDeg > 85.051f) latDeg = 85.051f;
+	if (latDeg < -85.051f) latDeg = -85.051f;
+
+	float latRad = latDeg * M_PI / 180.0f;
+	return log(tan(M_PI / 4.0f + latRad / 2.0f)) * (180.0f / M_PI);
+}
+
+
 BPoint
 MapView::_LatLonToScreen(float lat, float lon) const
 {
@@ -333,12 +411,9 @@ MapView::_LatLonToScreen(float lat, float lon) const
 	float centerX = bounds.Width() / 2.0f;
 	float centerY = bounds.Height() / 2.0f;
 
-	// Correct longitude scale for latitude (Mercator-like correction)
-	float cosLat = cos(fCenterLat * M_PI / 180.0f);
-	if (cosLat < 0.01f) cosLat = 0.01f;
-
-	float x = centerX + (lon - fCenterLon) * cosLat * fZoom;
-	float y = centerY - (lat - fCenterLat) * fZoom;
+	// fZoom = pixels per degree of longitude
+	float x = centerX + (lon - fCenterLon) * fZoom;
+	float y = centerY - (_MercatorY(lat) - _MercatorY(fCenterLat)) * fZoom;
 
 	return BPoint(x, y);
 }
@@ -351,11 +426,179 @@ MapView::_ScreenToLatLon(BPoint screen, float& lat, float& lon) const
 	float centerX = bounds.Width() / 2.0f;
 	float centerY = bounds.Height() / 2.0f;
 
-	float cosLat = cos(fCenterLat * M_PI / 180.0f);
-	if (cosLat < 0.01f) cosLat = 0.01f;
+	lon = fCenterLon + (screen.x - centerX) / fZoom;
 
-	lon = fCenterLon + (screen.x - centerX) / (fZoom * cosLat);
-	lat = fCenterLat - (screen.y - centerY) / fZoom;
+	float mercY = _MercatorY(fCenterLat) - (screen.y - centerY) / fZoom;
+	// Inverse Mercator: lat = atan(sinh(mercY * pi / 180)) * 180 / pi
+	lat = atan(sinh(mercY * M_PI / 180.0f)) * 180.0f / M_PI;
+}
+
+
+// ============================================================================
+// Tile drawing
+// ============================================================================
+
+int
+MapView::_ZoomToTileZoom() const
+{
+	// Convert fZoom (pixels/degree lon) to OSM tile zoom level
+	// At OSM zoom z, each tile covers 360/2^z degrees, and is 256px wide
+	// So pixels/degree = 256 * 2^z / 360
+	// z = log2(fZoom * 360 / 256)
+	float z = log2(fZoom * 360.0f / 256.0f);
+	int tileZ = (int)round(z);
+	if (tileZ < 2) tileZ = 2;
+	if (tileZ > 17) tileZ = 17;
+	return tileZ;
+}
+
+
+void
+MapView::_DrawTiles()
+{
+	if (fTileCache == NULL || !fShowTiles)
+		return;
+
+	BRect bounds = Bounds();
+	int tileZ = _ZoomToTileZoom();
+	int numTiles = 1 << tileZ;
+
+	// Get visible area in lat/lon
+	float topLat, leftLon, botLat, rightLon;
+	_ScreenToLatLon(BPoint(0, 0), topLat, leftLon);
+	_ScreenToLatLon(BPoint(bounds.Width(), bounds.Height()), botLat, rightLon);
+
+	// Convert to tile coords
+	// tile x = floor((lon + 180) / 360 * 2^z)
+	int minTileX = (int)floor((leftLon + 180.0f) / 360.0f * numTiles);
+	int maxTileX = (int)floor((rightLon + 180.0f) / 360.0f * numTiles);
+
+	// tile y = floor((1 - ln(tan(lat) + sec(lat)) / pi) / 2 * 2^z)
+	float latRadTop = topLat * M_PI / 180.0f;
+	float latRadBot = botLat * M_PI / 180.0f;
+
+	int minTileY = (int)floor((1.0f - log(tan(latRadTop) +
+		1.0f / cos(latRadTop)) / M_PI) / 2.0f * numTiles);
+	int maxTileY = (int)floor((1.0f - log(tan(latRadBot) +
+		1.0f / cos(latRadBot)) / M_PI) / 2.0f * numTiles);
+
+	// Clamp
+	if (minTileX < 0) minTileX = 0;
+	if (maxTileX >= numTiles) maxTileX = numTiles - 1;
+	if (minTileY < 0) minTileY = 0;
+	if (maxTileY >= numTiles) maxTileY = numTiles - 1;
+
+	// Draw cached tiles
+	for (int tx = minTileX; tx <= maxTileX; tx++) {
+		for (int ty = minTileY; ty <= maxTileY; ty++) {
+			BBitmap* bitmap = fTileCache->GetCachedTile(tileZ, tx, ty);
+			if (bitmap == NULL)
+				continue;
+
+			// Tile top-left corner in lat/lon
+			float tileLon = (float)tx * 360.0f / numTiles - 180.0f;
+			float n = M_PI - 2.0f * M_PI * ty / numTiles;
+			float tileLat = 180.0f / M_PI * atan(0.5f *
+				(exp(n) - exp(-n)));
+
+			// Tile bottom-right
+			float nextLon = (float)(tx + 1) * 360.0f / numTiles - 180.0f;
+			float n2 = M_PI - 2.0f * M_PI * (ty + 1) / numTiles;
+			float nextLat = 180.0f / M_PI * atan(0.5f *
+				(exp(n2) - exp(-n2)));
+
+			BPoint topLeft = _LatLonToScreen(tileLat, tileLon);
+			BPoint botRight = _LatLonToScreen(nextLat, nextLon);
+
+			BRect destRect(topLeft.x, topLeft.y, botRight.x, botRight.y);
+			DrawBitmap(bitmap, destRect);
+		}
+	}
+
+	// Request tiles async (if visible range changed)
+	if (tileZ != fLastTileZ || minTileX != fLastTileMinX
+		|| minTileY != fLastTileMinY || maxTileX != fLastTileMaxX
+		|| maxTileY != fLastTileMaxY) {
+		fLastTileZ = tileZ;
+		fLastTileMinX = minTileX;
+		fLastTileMinY = minTileY;
+		fLastTileMaxX = maxTileX;
+		fLastTileMaxY = maxTileY;
+
+		fTileCache->RequestTiles(tileZ, minTileX, minTileY,
+			maxTileX, maxTileY, this);
+	}
+}
+
+
+// ============================================================================
+// Coastline drawing
+// ============================================================================
+
+void
+MapView::_DrawCoastlines()
+{
+	if (fShowTiles) {
+		// When tiles are active, draw thin coastline outlines only
+		SetHighColor(kCoastlineStroke);
+		SetPenSize(1.0f);
+	} else {
+		// No tiles: fill land polygons
+		SetHighColor(kLandColor);
+	}
+
+	// Walk through coastline data drawing polylines
+	int i = 0;
+	while (i < kCoastlinePointCount) {
+		float lat = kCoastlineData[i * 2];
+		float lon = kCoastlineData[i * 2 + 1];
+
+		if (lat >= 998.0f && lon >= 998.0f) {
+			// Sentinel — skip
+			i++;
+			continue;
+		}
+
+		// Collect polyline points until next sentinel
+		BPoint polyPoints[256];
+		int pointCount = 0;
+
+		while (i < kCoastlinePointCount && pointCount < 256) {
+			lat = kCoastlineData[i * 2];
+			lon = kCoastlineData[i * 2 + 1];
+
+			if (lat >= 998.0f && lon >= 998.0f) {
+				i++;
+				break;
+			}
+
+			polyPoints[pointCount] = _LatLonToScreen(lat, lon);
+			pointCount++;
+			i++;
+		}
+
+		if (pointCount < 2)
+			continue;
+
+		if (fShowTiles) {
+			// Just stroke the outline
+			for (int p = 0; p < pointCount - 1; p++)
+				StrokeLine(polyPoints[p], polyPoints[p + 1]);
+		} else {
+			// Fill the polygon for land
+			if (pointCount >= 3) {
+				SetHighColor(kLandColor);
+				FillPolygon(polyPoints, pointCount);
+			}
+			// Stroke the outline
+			SetHighColor(kCoastlineStroke);
+			SetPenSize(1.0f);
+			for (int p = 0; p < pointCount - 1; p++)
+				StrokeLine(polyPoints[p], polyPoints[p + 1]);
+		}
+	}
+
+	SetPenSize(1.0f);
 }
 
 
@@ -375,7 +618,12 @@ MapView::_DrawGrid()
 	else if (fZoom > 500) gridSpacing = 0.5f;
 	else gridSpacing = 1.0f;
 
-	SetHighColor(50, 60, 80);
+	// Dimmed grid when tiles are active
+	if (fShowTiles)
+		SetHighColor(80, 80, 80, 80);
+	else
+		SetHighColor(50, 60, 80);
+
 	SetPenSize(1.0f);
 
 	float startLat = floor(minLat / gridSpacing) * gridSpacing;
@@ -439,10 +687,11 @@ MapView::_DrawNode(const GeoMapNode& node)
 	if (node.isSelf) {
 		SetHighColor(255, 255, 255);
 		SetPenSize(2.0f);
-		for (int i = 0; i < 4; i++) {
-			float angle = i * M_PI / 4.0f;
+		for (int j = 0; j < 4; j++) {
+			float angle = j * M_PI / 4.0f;
 			BPoint p1(pos.x + cos(angle) * 4, pos.y + sin(angle) * 4);
-			BPoint p2(pos.x + cos(angle) * radius, pos.y + sin(angle) * radius);
+			BPoint p2(pos.x + cos(angle) * radius,
+				pos.y + sin(angle) * radius);
 			StrokeLine(p1, p2);
 		}
 		SetPenSize(1.0f);
@@ -525,6 +774,8 @@ MapView::_DrawScaleBar()
 {
 	BRect bounds = Bounds();
 
+	// At the equator, 1 degree lon ≈ 111km.
+	// fZoom = pixels per degree lon, so metersPerPixel ≈ 111000 / fZoom
 	float metersPerPixel = 111000.0f / fZoom;
 	float targetPixels = 100.0f;
 	float targetMeters = metersPerPixel * targetPixels;
@@ -646,7 +897,10 @@ MapWindow::MapWindow(BWindow* parent)
 	fZoomInButton = new BButton("zoom_in", "+", new BMessage(kMsgZoomIn));
 	fZoomOutButton = new BButton("zoom_out", "-", new BMessage(kMsgZoomOut));
 	fFitButton = new BButton("fit", "Fit", new BMessage(kMsgZoomFit));
-	fCenterButton = new BButton("center", "Center", new BMessage(kMsgCenterSelf));
+	fCenterButton = new BButton("center", "Center",
+		new BMessage(kMsgCenterSelf));
+	fTilesCheckBox = new BCheckBox("tiles", "Online Map",
+		new BMessage(kMsgToggleTiles));
 
 	BView* controlBar = new BView("controls", 0);
 	controlBar->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
@@ -658,6 +912,7 @@ MapWindow::MapWindow(BWindow* parent)
 		.Add(fFitButton)
 		.Add(fCenterButton)
 		.AddGlue()
+		.Add(fTilesCheckBox)
 	.End();
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
@@ -692,6 +947,10 @@ MapWindow::MessageReceived(BMessage* message)
 			break;
 		case kMsgCenterSelf:
 			fMapView->CenterOnSelf();
+			break;
+		case kMsgToggleTiles:
+			fMapView->SetTilesEnabled(
+				fTilesCheckBox->Value() == B_CONTROL_ON);
 			break;
 		default:
 			BWindow::MessageReceived(message);
