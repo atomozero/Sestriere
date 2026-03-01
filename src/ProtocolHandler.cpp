@@ -564,10 +564,6 @@ ProtocolHandler::SendTracePath(const ContactInfo* contact)
 	if (contact == NULL)
 		return B_BAD_VALUE;
 
-	// Cannot trace a direct-path contact (no intermediate hops)
-	if (contact->outPathLen <= 0)
-		return B_BAD_VALUE;
-
 	// Frame: [CMD][tag:4 LE][auth_code:4 LE][flags:1][symmetric_path]
 	// tag: random 32-bit to match PUSH_TRACE_DATA response
 	// auth_code: 0

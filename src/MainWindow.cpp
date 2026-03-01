@@ -3981,11 +3981,20 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 	}
 
 	// Trigger pulse and update link quality on network map
-	if (_LockIfVisible(fNetworkMapWindow)) {
+	if (fNetworkMapWindow != NULL && fNetworkMapWindow->LockLooper()) {
 		fNetworkMapWindow->TriggerNodePulse(senderPrefix);
 		if (snr != 0)
 			fNetworkMapWindow->UpdateLinkQuality(senderPrefix, snr, fLastRssi);
 		fNetworkMapWindow->UnlockLooper();
+	}
+
+	// Auto-trace when message hop count disagrees with stored outPath
+	if (sender != NULL && pathLen != kPathLenDirect && pathLen > 0
+		&& sender->outPathLen <= 0 && fConnected) {
+		_LogMessage("INFO", BString().SetToFormat(
+			"Path mismatch: %s shows %d hops but outPathLen=%d — tracing",
+			senderName.String(), (int)pathLen, (int)sender->outPathLen));
+		fProtocol->SendTracePath(sender);
 	}
 
 	// Forward to Mission Control activity feed
