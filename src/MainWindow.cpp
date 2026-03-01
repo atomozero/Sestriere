@@ -2299,19 +2299,28 @@ MainWindow::MessageReceived(BMessage* message)
 		{
 			if (fProfileWindow == NULL) {
 				fProfileWindow = new ProfileWindow(this);
-			}
-			fProfileWindow->SetDeviceInfo(fDeviceName, fPublicKey,
-				fDeviceFirmware);
-			fProfileWindow->SetContacts(fContacts);
-			fProfileWindow->SetChannels(fChannels);
-			if (fHasRadioParams)
-				fProfileWindow->SetRadioParams(fRadioFreq, fRadioBw,
-					fRadioSf, fRadioCr, fRadioTxPower);
-			fProfileWindow->SetMqttSettings(fMqttSettings);
-			if (fProfileWindow->IsHidden())
+				// Window not yet shown — safe to call without lock
+				fProfileWindow->SetDeviceInfo(fDeviceName, fPublicKey,
+					fDeviceFirmware);
+				fProfileWindow->SetContacts(fContacts);
+				fProfileWindow->SetChannels(fChannels);
+				if (fHasRadioParams)
+					fProfileWindow->SetRadioParams(fRadioFreq, fRadioBw,
+						fRadioSf, fRadioCr, fRadioTxPower);
+				fProfileWindow->SetMqttSettings(fMqttSettings);
 				fProfileWindow->Show();
-			else
+			} else if (fProfileWindow->LockLooper()) {
+				fProfileWindow->SetDeviceInfo(fDeviceName, fPublicKey,
+					fDeviceFirmware);
+				fProfileWindow->SetContacts(fContacts);
+				fProfileWindow->SetChannels(fChannels);
+				if (fHasRadioParams)
+					fProfileWindow->SetRadioParams(fRadioFreq, fRadioBw,
+						fRadioSf, fRadioCr, fRadioTxPower);
+				fProfileWindow->SetMqttSettings(fMqttSettings);
+				fProfileWindow->UnlockLooper();
 				_ShowWindow(fProfileWindow);
+			}
 			break;
 		}
 

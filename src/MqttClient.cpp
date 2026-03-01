@@ -246,9 +246,10 @@ MqttClient::PublishStatus(const char* deviceName, const char* firmware,
 
 	// Get current timestamp in ISO8601 format
 	time_t now = time(NULL);
-	struct tm* tm = gmtime(&now);
+	struct tm tmBuf;
+	gmtime_r(&now, &tmBuf);
 	char timestamp[32];
-	strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%SZ", tm);
+	strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%SZ", &tmBuf);
 
 	// Format matching meshcore-to-maps expected format
 	char json[768];
