@@ -68,7 +68,7 @@ static const bigtime_t kMapRefreshInterval = 3000000;   // 3 seconds
 static const bigtime_t kAutoTraceInterval = 30000000;   // 30 seconds
 static const bigtime_t kAnimationInterval = 50000;      // 50ms = 20fps
 static const bigtime_t kDiscoveryTickInterval = 10000000; // 10 seconds between trace requests (radio has ~3 slot limit)
-static const uint32 kEdgeExpireSeconds = 600;            // 10 minutes edge lifetime
+static const uint32 kEdgeExpireSeconds = 21600;           // 6 hours edge lifetime
 static const uint32 kAutoTraceSkipSeconds = 300;         // 5 min: skip recently traced nodes
 
 // Colors
@@ -835,6 +835,19 @@ NetworkMapView::UpdateNodeSNR(const uint8* pubKeyPrefix, int8 snr, int8 rssi)
 			node->hasSNRData = true;
 			Invalidate();
 			break;
+		}
+	}
+
+	// Refresh edge timestamps for edges involving this contact —
+	// receiving a message proves the path is still active
+	uint32 now = (uint32)time(NULL);
+	for (int32 e = 0; e < fEdges.CountItems(); e++) {
+		TopologyEdge* edge = fEdges.ItemAt(e);
+		if (edge == NULL)
+			continue;
+		if (memcmp(edge->fromPrefix, pubKeyPrefix, kPubKeyPrefixSize) == 0
+			|| memcmp(edge->toPrefix, pubKeyPrefix, kPubKeyPrefixSize) == 0) {
+			edge->timestamp = now;
 		}
 	}
 }

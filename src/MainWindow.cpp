@@ -3154,7 +3154,12 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			break;
 		}
 		case PUSH_PATH_UPDATED:
-			_LogMessage("INFO", "Path updated for a contact");
+			_LogMessage("INFO", "Path updated for a contact — re-syncing");
+			// Path changed: re-sync contacts to get fresh outPath data
+			if (fConnected && !fSyncingContacts) {
+				fSyncingContacts = true;
+				fProtocol->SendGetContacts();
+			}
 			break;
 		case PUSH_TRACE_DATA:
 			_HandlePushTraceData(data, length);
@@ -3689,8 +3694,11 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 		fMissionControlWindow->UnlockLooper();
 	}
 
-	// Contact list no longer forwarded to separate window;
-	// admin data shown inline in ContactInfoPanel
+	// Refresh NetworkMapWindow edges even when hidden — keep topology alive
+	if (fNetworkMapWindow != NULL && fNetworkMapWindow->LockLooper()) {
+		fNetworkMapWindow->UpdateFromContacts(&fContacts);
+		fNetworkMapWindow->UnlockLooper();
+	}
 }
 
 
@@ -4565,7 +4573,8 @@ MainWindow::_HandlePushTraceData(const uint8* data, size_t length)
 	}
 
 	// Forward to NetworkMapWindow for trace route visualization
-	if (_LockIfVisible(fNetworkMapWindow)) {
+	// (even when hidden — keep topology data fresh)
+	if (fNetworkMapWindow != NULL && fNetworkMapWindow->LockLooper()) {
 		fNetworkMapWindow->HandleTraceData(data, length);
 		fNetworkMapWindow->UnlockLooper();
 	}
