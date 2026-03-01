@@ -25,6 +25,10 @@
 
 #include <OS.h>
 
+#include <fcntl.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
 
 static const int kMaxMemoryTiles = 100;
 
@@ -111,14 +115,33 @@ TileCache::MessageReceived(BMessage* msg)
 						"https://tile.openstreetmap.org/%d/%d/%d.png",
 						(int)z, (int)tx, (int)ty);
 
-					BString cmd;
-					cmd.SetToFormat(
-						"curl -s -m 10 -A 'Sestriere/1.0 (Haiku; MeshCore Client)' "
-						"-o '%s' '%s' 2>/dev/null",
-						path.String(), url.String());
+					// Download tile using fork/exec (no shell)
+					bool downloaded = false;
+					pid_t pid = fork();
+					if (pid == 0) {
+						// Child: redirect stderr to /dev/null
+						int devnull = open("/dev/null", O_WRONLY);
+						if (devnull >= 0) {
+							dup2(devnull, STDERR_FILENO);
+							close(devnull);
+						}
+						execlp("curl", "curl",
+							"-s", "-m", "10",
+							"-A", "Sestriere/1.0 (Haiku; MeshCore Client)",
+							"-o", path.String(),
+							url.String(),
+							(char*)NULL);
+						_exit(127);
+					} else if (pid > 0) {
+						int status;
+						waitpid(pid, &status, 0);
+						if (WIFEXITED(status)
+							&& WEXITSTATUS(status) == 0) {
+							downloaded = true;
+						}
+					}
 
-					int result = system(cmd.String());
-					if (result == 0) {
+					if (downloaded) {
 						bitmap = _LoadFromDisk(z, tx, ty);
 						if (bitmap != NULL) {
 							BAutolock lock(fLock);
