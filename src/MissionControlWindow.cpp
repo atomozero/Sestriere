@@ -1322,6 +1322,7 @@ MissionControlWindow::MissionControlWindow(BWindow* parent)
 	fLastDataTime(0),
 	fConnected(false),
 	fBatteryMv(0),
+	fBatteryType(BATTERY_LIPO),
 	fRssi(0),
 	fSnr(0),
 	fContactsTotal(0),
@@ -1614,7 +1615,7 @@ MissionControlWindow::SetBatteryInfo(uint16 battMv, uint32 usedKb,
 	fUsedKb = usedKb;
 	fTotalKb = totalKb;
 
-	int32 pct = BatteryPercent(battMv);
+	int32 pct = BatteryPercent(battMv, (BatteryChemistry)fBatteryType);
 
 	char battStr[32];
 	snprintf(battStr, sizeof(battStr), "%d%% (%u mV)", (int)pct,
@@ -1630,6 +1631,13 @@ MissionControlWindow::SetBatteryInfo(uint16 battMv, uint32 usedKb,
 	_RecalcHealthScore();
 	_CheckAlerts();
 	fLastDataTime = system_time();
+}
+
+
+void
+MissionControlWindow::SetBatteryType(uint8 type)
+{
+	fBatteryType = type;
 }
 
 
@@ -1776,9 +1784,8 @@ MissionControlWindow::_RecalcHealthScore()
 
 	if (fConnected) score += 25;
 
-	if (fBatteryMv >= 4200) score += 15;
-	else if (fBatteryMv >= 3300)
-		score += (int32)(((fBatteryMv - 3300) / 900.0f) * 15);
+	score += BatteryPercent(fBatteryMv, (BatteryChemistry)fBatteryType)
+		* 15 / 100;
 
 	if (fRssi != 0) {
 		int32 rssiScore = (int32)((fRssi + 120) * 20.0f / 80.0f);

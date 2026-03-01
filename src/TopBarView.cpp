@@ -20,6 +20,7 @@
 #include <cstdio>
 
 #include "Constants.h"
+#include "Utils.h"
 
 
 static const uint32 MSG_LED_OFF = 'loff';
@@ -76,6 +77,7 @@ TopBarView::TopBarView(const char* name)
 	fConnected(false),
 	fPortName(""),
 	fBatteryMv(0),
+	fBatteryType(BATTERY_LIPO),
 	fRssi(0),
 	fSnr(0),
 	fTxPackets(0),
@@ -667,9 +669,8 @@ TopBarView::Draw(BRect updateRect)
 		BRect battRect(rx, iconY - iconH / 2, rx + iconW, iconY + iconH / 2);
 		SetHighColor(BatteryColor(fBatteryMv));
 		StrokeRect(battRect);
-		float level = 0;
-		if (fBatteryMv >= 4200) level = 1.0f;
-		else if (fBatteryMv >= 3300) level = (fBatteryMv - 3300) / 900.0f;
+		float level = BatteryPercent(fBatteryMv,
+			(BatteryChemistry)fBatteryType) / 100.0f;
 		BRect fillRect = battRect;
 		fillRect.InsetBy(1, 1);
 		fillRect.right = fillRect.left + fillRect.Width() * level;
@@ -746,6 +747,14 @@ void
 TopBarView::SetBattery(uint16 milliVolts)
 {
 	fBatteryMv = milliVolts;
+	Invalidate();
+}
+
+
+void
+TopBarView::SetBatteryType(uint8 type)
+{
+	fBatteryType = type;
 	Invalidate();
 }
 
@@ -915,19 +924,17 @@ TopBarView::_ToolTipForArea(int32 area) const
 		}
 		case kAreaBattery:
 		{
-			int32 pct = 0;
-			if (fBatteryMv >= 4200)
-				pct = 100;
-			else if (fBatteryMv >= 3300)
-				pct = (int32)((fBatteryMv - 3300) / 9.0f);
+			int32 pct = BatteryPercent(fBatteryMv,
+				(BatteryChemistry)fBatteryType);
 			const char* state = "Critical";
-			if (fBatteryMv >= kBattGoodMv) state = "Good";
-			else if (fBatteryMv >= kBattFairMv) state = "OK";
-			else if (fBatteryMv >= kBattLowMv) state = "Low";
+			if (pct >= 75) state = "Good";
+			else if (pct >= 40) state = "OK";
+			else if (pct >= 15) state = "Low";
+			const char* chemName = (fBatteryType < BATTERY_CHEMISTRY_COUNT)
+				? kBatteryChemistryNames[fBatteryType] : "Unknown";
 			fToolTipText.SetToFormat("Battery: %u mV (~%d%%)\n"
-				"State: %s\n"
-				"Range: 3300 mV (empty) \xe2\x80\x93 4200 mV (full)",
-				(unsigned)fBatteryMv, (int)pct, state);
+				"State: %s\nType: %s",
+				(unsigned)fBatteryMv, (int)pct, state, chemName);
 			return fToolTipText.String();
 		}
 		case kAreaRssi:

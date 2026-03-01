@@ -52,6 +52,7 @@ public:
 								const char* firmware);
 	void					SetBatteryInfo(uint16 battMv, uint32 usedKb,
 								uint32 totalKb);
+	void					SetBatteryType(uint8 type);
 	void					SetDeviceStats(uint32 uptime, uint32 txPackets,
 								uint32 rxPackets);
 	void					SetRadioStats(int8 rssi, int8 snr,
@@ -120,6 +121,7 @@ private:
 	// Cached state for health score
 	bool					fConnected;
 	uint16					fBatteryMv;
+	uint8					fBatteryType;
 	int8					fRssi;
 	int8					fSnr;
 	int32					fContactsTotal;

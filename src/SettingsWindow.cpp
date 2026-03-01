@@ -26,6 +26,7 @@
 
 #include "Constants.h"
 #include "MqttClient.h"
+#include "Utils.h"
 
 
 static const uint32 kMsgSettingChanged	= 'stch';
@@ -34,6 +35,7 @@ static const uint32 kMsgRevertSettings	= 'rvst';
 static const uint32 kMsgPresetSelected	= 'prsl';
 static const uint32 kMsgMqttEnableChanged = 'mqen';
 static const uint32 kMsgTogglePasswordVis = 'tpvs';
+static const uint32 kMsgBatteryTypeSelected = 'btsl';
 
 
 SettingsWindow::SettingsWindow(BWindow* parent)
@@ -45,6 +47,7 @@ SettingsWindow::SettingsWindow(BWindow* parent)
 	fNodeNameControl(NULL),
 	fLatitudeControl(NULL),
 	fLongitudeControl(NULL),
+	fBatteryTypeMenu(NULL),
 	fPresetMenu(NULL),
 	fTxPowerSlider(NULL),
 	fFrequencyControl(NULL),
@@ -179,6 +182,14 @@ SettingsWindow::MessageReceived(BMessage* message)
 			fRevertButton->SetEnabled(true);
 			break;
 
+		case kMsgBatteryTypeSelected:
+		{
+			fSettingsChanged = true;
+			fApplyButton->SetEnabled(true);
+			fRevertButton->SetEnabled(true);
+			break;
+		}
+
 		case kMsgTogglePasswordVis:
 		{
 			bool hidden = fMqttPasswordControl->TextView()->IsTypingHidden();
@@ -219,6 +230,20 @@ SettingsWindow::SetLongitude(double lon)
 		char buf[32];
 		snprintf(buf, sizeof(buf), "%.6f", lon);
 		fLongitudeControl->SetText(buf);
+	}
+}
+
+
+void
+SettingsWindow::SetBatteryType(uint8 type)
+{
+	if (fBatteryTypeMenu != NULL && type < BATTERY_CHEMISTRY_COUNT) {
+		BMenu* menu = fBatteryTypeMenu->Menu();
+		if (menu != NULL) {
+			BMenuItem* item = menu->ItemAt(type);
+			if (item != NULL)
+				item->SetMarked(true);
+		}
 	}
 }
 
@@ -268,6 +293,18 @@ SettingsWindow::_BuildDeviceTab(BView* parent)
 		new BMessage(kMsgSettingChanged));
 	fLongitudeControl->SetModificationMessage(new BMessage(kMsgSettingChanged));
 
+	// Battery chemistry dropdown
+	BPopUpMenu* battPopUp = new BPopUpMenu("battery_popup");
+	for (int i = 0; i < BATTERY_CHEMISTRY_COUNT; i++) {
+		BMessage* msg = new BMessage(kMsgBatteryTypeSelected);
+		msg->AddInt32("type", i);
+		BMenuItem* item = new BMenuItem(kBatteryChemistryNames[i], msg);
+		battPopUp->AddItem(item);
+	}
+	fBatteryTypeMenu = new BMenuField("battery_type", "Battery:", battPopUp);
+	// Default to LiPo
+	battPopUp->ItemAt(BATTERY_LIPO)->SetMarked(true);
+
 	BStringView* infoLabel = new BStringView("info",
 		"Changes will be sent to the connected device.");
 	infoLabel->SetHighColor(100, 100, 100);
@@ -282,6 +319,7 @@ SettingsWindow::_BuildDeviceTab(BView* parent)
 			.Add(fLongitudeControl->CreateLabelLayoutItem(), 0, 2)
 			.Add(fLongitudeControl->CreateTextViewLayoutItem(), 1, 2)
 		.End()
+		.Add(fBatteryTypeMenu)
 		.AddStrut(B_USE_DEFAULT_SPACING)
 		.Add(infoLabel)
 		.AddGlue()
@@ -471,6 +509,19 @@ SettingsWindow::_OnApply()
 		BMessage nameMsg(MSG_SET_NAME);
 		nameMsg.AddString("name", newName);
 		fParent->PostMessage(&nameMsg);
+	}
+
+	// Send battery type
+	if (fBatteryTypeMenu != NULL) {
+		BMenu* battMenu = fBatteryTypeMenu->Menu();
+		if (battMenu != NULL) {
+			int32 battType = battMenu->IndexOf(battMenu->FindMarked());
+			if (battType >= 0) {
+				BMessage battMsg(MSG_BATTERY_TYPE_CHANGED);
+				battMsg.AddInt32("type", battType);
+				fParent->PostMessage(&battMsg);
+			}
+		}
 	}
 
 	// Send lat/lon update

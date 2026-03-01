@@ -11,6 +11,7 @@
 #include <Application.h>
 #include <Button.h>
 #include <CardView.h>
+#include <Clipboard.h>
 #include <Deskbar.h>
 #include <Directory.h>
 #include <Entry.h>
@@ -243,6 +244,7 @@ MainWindow::MainWindow()
 	fTelemetryPollTimer(NULL),
 	fHandshakeTimer(NULL),
 	fRepeaterMapTimer(NULL),
+	fBatteryType(BATTERY_LIPO),
 	fBatteryMv(0),
 	fLastRssi(0),
 	fLastSnr(0),
@@ -294,6 +296,10 @@ MainWindow::MainWindow()
 	fMqttClient = NULL;
 	_LoadMqttSettings();  // Just load settings, don't create client yet
 	fTopBar->SetMqttEnabled(fMqttSettings.enabled);
+
+	// Load device settings (battery type, etc.)
+	_LoadDeviceSettings();
+	fTopBar->SetBatteryType(fBatteryType);
 
 	// Load muted keys and contact groups from database
 	DatabaseManager::Instance()->LoadAllMuted(&fMutedKeys);
@@ -767,15 +773,52 @@ MainWindow::MessageReceived(BMessage* message)
 				info << "\n";
 			}
 
-			BAlert* alert = new BAlert("Device Info", info.String(), "OK");
-			alert->SetShortcut(0, B_ESCAPE);
-			alert->Go(NULL);
+			BAlert* alert = new BAlert("Device Info", info.String(),
+				"Copy Key", "OK", NULL, B_WIDTH_AS_USUAL, B_INFO_ALERT);
+			alert->SetShortcut(1, B_ESCAPE);
+			int32 result = alert->Go();
+			if (result == 0 && fPublicKey[0] != '\0') {
+				if (be_clipboard->Lock()) {
+					be_clipboard->Clear();
+					BMessage* clip = be_clipboard->Data();
+					clip->AddData("text/plain", B_MIME_TYPE,
+						fPublicKey, strlen(fPublicKey));
+					be_clipboard->Commit();
+					be_clipboard->Unlock();
+				}
+			}
 			break;
 		}
 
 		case MSG_GET_BATTERY:
+		{
 			fProtocol->SendGetBattery();
+
+			if (fBatteryMv > 0) {
+				int32 pct = BatteryPercent(fBatteryMv,
+					(BatteryChemistry)fBatteryType);
+
+				const char* chemName = (fBatteryType < BATTERY_CHEMISTRY_COUNT)
+					? kBatteryChemistryNames[fBatteryType] : "Unknown";
+				BString info;
+				info << BString().SetToFormat("Voltage: %u mV\n", fBatteryMv);
+				info << BString().SetToFormat("Estimated: %d%%\n", (int)pct);
+
+				const char* level;
+				if (pct >= 75) level = "Good";
+				else if (pct >= 40) level = "Fair";
+				else if (pct >= 15) level = "Low";
+				else level = "Critical";
+				info << "Status: " << level << "\n";
+				info << "Type: " << chemName << "\n";
+
+				BAlert* alert = new BAlert("Battery Status",
+					info.String(), "OK");
+				alert->SetShortcut(0, B_ESCAPE);
+				alert->Go(NULL);
+			}
 			break;
+		}
 
 		case MSG_GET_STATS:
 			// Open stats window and request fresh data
@@ -938,6 +981,7 @@ MainWindow::MessageReceived(BMessage* message)
 						fRadioSf, fRadioCr, fRadioTxPower);
 				}
 				fSettingsWindow->SetMqttSettings(fMqttSettings);
+				fSettingsWindow->SetBatteryType(fBatteryType);
 				fSettingsWindow->Show();
 			} else {
 				if (fSettingsWindow->LockLooper()) {
@@ -945,6 +989,7 @@ MainWindow::MessageReceived(BMessage* message)
 						fSettingsWindow->SetRadioParams(fRadioFreq, fRadioBw,
 							fRadioSf, fRadioCr, fRadioTxPower);
 					}
+					fSettingsWindow->SetBatteryType(fBatteryType);
 					fSettingsWindow->UnlockLooper();
 				}
 				_ShowWindow(fSettingsWindow);
@@ -990,6 +1035,25 @@ MainWindow::MessageReceived(BMessage* message)
 			if (deskbar.HasItem("Sestriere")) {
 				deskbar.RemoveItem("Sestriere");
 				_LogMessage("INFO", "Removed from Deskbar");
+			}
+			break;
+		}
+
+		case MSG_BATTERY_TYPE_CHANGED:
+		{
+			int32 type;
+			if (message->FindInt32("type", &type) == B_OK
+				&& type >= 0 && type < BATTERY_CHEMISTRY_COUNT) {
+				fBatteryType = (uint8)type;
+				fTopBar->SetBatteryType(fBatteryType);
+				// Update Mission Control if visible
+				if (_LockIfVisible(fMissionControlWindow)) {
+					fMissionControlWindow->SetBatteryType(fBatteryType);
+					fMissionControlWindow->UnlockLooper();
+				}
+				_SaveDeviceSettings();
+				fprintf(stderr, "[MainWindow] Battery type set to %s\n",
+					kBatteryChemistryNames[type]);
 			}
 			break;
 		}
@@ -1903,10 +1967,8 @@ MainWindow::MessageReceived(BMessage* message)
 						fMissionControlWindow->AddActivityEvent("SYS",
 							msg.String());
 						if (fBatteryMv > 0) {
-							int32 pct = 0;
-							if (fBatteryMv >= 4200) pct = 100;
-							else if (fBatteryMv >= 3300)
-								pct = (int32)((fBatteryMv - 3300) / 9.0f);
+							int32 pct = BatteryPercent(fBatteryMv,
+								(BatteryChemistry)fBatteryType);
 							msg.SetToFormat("Battery: %d%% (%u mV)",
 								(int)pct, (unsigned)fBatteryMv);
 							fMissionControlWindow->AddActivityEvent("SYS",
@@ -4189,10 +4251,8 @@ MainWindow::_HandleBattAndStorage(const uint8* data, size_t length)
 		if (_LockIfVisible(fMissionControlWindow)) {
 			fMissionControlWindow->SetBatteryInfo(battMv, usedKb,
 				totalKb);
-			int32 pct = 0;
-			if (battMv >= 4200) pct = 100;
-			else if (battMv >= 3300)
-				pct = (int32)((battMv - 3300) / 9.0f);
+			int32 pct = BatteryPercent(battMv,
+				(BatteryChemistry)fBatteryType);
 			BString battEvent;
 			battEvent.SetToFormat("Battery: %d%% (%u mV)",
 				(int)pct, (unsigned)battMv);
@@ -5345,6 +5405,77 @@ MainWindow::_LoadMqttSettings()
 
 	fprintf(stderr, "[MainWindow] MQTT settings loaded (enabled=%s, lat=%.4f, lon=%.4f)\n",
 		fMqttSettings.enabled ? "yes" : "no", fMqttSettings.latitude, fMqttSettings.longitude);
+}
+
+
+void
+MainWindow::_SaveDeviceSettings()
+{
+	BString settingsPath = _GetSettingsPath();
+	if (settingsPath.IsEmpty())
+		return;
+
+	BString filePath = settingsPath;
+	filePath.Append("/device.settings");
+
+	BFile file(filePath.String(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+	if (file.InitCheck() != B_OK)
+		return;
+
+	BString content;
+	content << "battery_type=" << (int)fBatteryType << "\n";
+	file.Write(content.String(), content.Length());
+}
+
+
+void
+MainWindow::_LoadDeviceSettings()
+{
+	BString settingsPath = _GetSettingsPath();
+	if (settingsPath.IsEmpty())
+		return;
+
+	BString filePath = settingsPath;
+	filePath.Append("/device.settings");
+
+	BFile file(filePath.String(), B_READ_ONLY);
+	if (file.InitCheck() != B_OK)
+		return;
+
+	off_t size;
+	file.GetSize(&size);
+	if (size <= 0 || size > 1024)
+		return;
+
+	char* buffer = new char[size + 1];
+	ssize_t bytesRead = file.Read(buffer, size);
+	if (bytesRead <= 0) {
+		delete[] buffer;
+		return;
+	}
+	buffer[bytesRead] = '\0';
+
+	char* saveptr = NULL;
+	char* line = strtok_r(buffer, "\n", &saveptr);
+	while (line != NULL) {
+		char* eq = strchr(line, '=');
+		if (eq != NULL) {
+			*eq = '\0';
+			char* key = line;
+			char* value = eq + 1;
+
+			if (strcmp(key, "battery_type") == 0) {
+				int type = atoi(value);
+				if (type >= 0 && type < BATTERY_CHEMISTRY_COUNT)
+					fBatteryType = (uint8)type;
+			}
+		}
+		line = strtok_r(NULL, "\n", &saveptr);
+	}
+
+	delete[] buffer;
+	fprintf(stderr, "[MainWindow] Device settings loaded (battery=%s)\n",
+		kBatteryChemistryNames[fBatteryType]);
 }
 
 

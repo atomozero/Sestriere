@@ -310,6 +310,9 @@ enum {
 	// Repeater Monitor
 	MSG_SHOW_REPEATER_MONITOR = 'rmon',
 
+	// Battery type changed
+	MSG_BATTERY_TYPE_CHANGED = 'btyp',
+
 	// Repeater map update timer
 	MSG_REPEATER_MAP_TICK = 'rmtk',
 

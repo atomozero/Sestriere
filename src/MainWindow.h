@@ -145,6 +145,10 @@ private:
 			void			_SaveMqttSettings();
 			void			_LoadMqttSettings();
 
+			// Device settings (battery type, etc.)
+			void			_SaveDeviceSettings();
+			void			_LoadDeviceSettings();
+
 			// People contacts integration
 			void			_SaveContactAsPerson(ContactInfo* contact);
 			void			_LoadPeopleContacts();
@@ -270,6 +274,7 @@ private:
 			BMessageRunner*	fRepeaterMapTimer;
 
 			// Cached stats for status bar
+			uint8			fBatteryType;	// BatteryChemistry enum
 			uint16			fBatteryMv;
 			int8			fLastRssi;
 			int8			fLastSnr;

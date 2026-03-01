@@ -29,6 +29,7 @@ public:
 		// Status updates
 		void			SetConnected(bool connected, const char* port = NULL);
 		void			SetBattery(uint16 milliVolts);
+		void			SetBatteryType(uint8 type);
 		void			SetRadioStats(int8 rssi, int8 snr,
 						uint32 txPkts, uint32 rxPkts);
 		void			SetUptime(uint32 seconds);
@@ -54,6 +55,7 @@ private:
 		bool			fConnected;
 		BString			fPortName;
 		uint16			fBatteryMv;
+		uint8			fBatteryType;
 		int8			fRssi;
 		int8			fSnr;
 		uint32			fTxPackets;

@@ -32,6 +32,7 @@ public:
 			void			SetLatitude(double lat);
 			void			SetLongitude(double lon);
 			void			SetRadioPreset(int32 preset);
+			void			SetBatteryType(uint8 type);
 			void			SetRadioParams(uint32 freqHz, uint32 bwHz,
 								uint8 sf, uint8 cr, uint8 txPower);
 			void			SetMqttSettings(const MqttSettings& settings);
@@ -52,6 +53,7 @@ private:
 			BTextControl*	fNodeNameControl;
 			BTextControl*	fLatitudeControl;
 			BTextControl*	fLongitudeControl;
+			BMenuField*		fBatteryTypeMenu;
 
 			// Radio settings
 			BMenuField*		fPresetMenu;
