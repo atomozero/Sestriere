@@ -4118,17 +4118,18 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 		fContactList->Invalidate();
 	}
 
-	// Store message in contact's history and update lastSeen
+	// Always persist to database (even during contact sync when sender
+	// may be temporarily NULL because fContacts is being rebuilt)
+	char contactHex[kContactHexSize];
+	FormatContactKey(contactHex, senderPrefix);
+	DatabaseManager* db = DatabaseManager::Instance();
+	db->InsertMessage(contactHex, chatMsg);
+
+	// Store message in contact's in-memory history and update lastSeen
 	if (sender != NULL) {
 		ChatMessage* stored = new ChatMessage(chatMsg);
 		sender->messages.AddItem(stored);
 		sender->lastSeen = (uint32)time(NULL);
-
-		// Persist to database and record SNR history
-		char contactHex[kContactHexSize];
-		FormatContactKey(contactHex, senderPrefix);
-		DatabaseManager* db = DatabaseManager::Instance();
-		db->InsertMessage(contactHex, chatMsg);
 
 		// Record SNR data point for historical charting
 		if (snr != 0 || pathLen != kPathLenDirect) {
