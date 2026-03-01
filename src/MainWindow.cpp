@@ -2743,6 +2743,7 @@ MainWindow::_SelectContact(int32 index)
 			}
 			fInfoPanel->SetChannelStats(totalContacts, onlineCount);
 		}
+		_ShowAdminToolbar(false);
 		fMessageInput->SetEnabled(fConnected);
 		fSendButton->SetEnabled(fConnected);
 
@@ -2787,6 +2788,7 @@ MainWindow::_SelectContact(int32 index)
 		fChatHeader->SetConsoleMode(false);
 		fChatView->SetCurrentContact(NULL);
 		fInfoPanel->SetChannel(true);
+		_ShowAdminToolbar(false);
 		fMessageInput->SetEnabled(fConnected);
 		fSendButton->SetEnabled(fConnected);
 
@@ -2828,6 +2830,7 @@ MainWindow::_SelectContact(int32 index)
 			fChatHeader->SetConsoleMode(isLoggedInContact);
 			fChatView->SetCurrentContact(contact);
 			fInfoPanel->SetContact(contact);
+			_ShowAdminToolbar(isLoggedInContact);
 			fMessageInput->SetEnabled(fConnected);
 			fSendButton->SetEnabled(fConnected);
 
@@ -2854,6 +2857,7 @@ MainWindow::_SelectContact(int32 index)
 		fChatHeader->SetConsoleMode(false);
 		fChatView->SetCurrentContact(NULL);
 		fInfoPanel->Clear();
+		_ShowAdminToolbar(false);
 		fMessageInput->SetEnabled(false);
 		fSendButton->SetEnabled(false);
 	}
