@@ -81,7 +81,7 @@ LoginWindow::LoginWindow(BWindow* parent, const ContactInfo* contact)
 		new BMessage(B_QUIT_REQUESTED));
 
 	fStatusLabel = new BStringView("status_label", "");
-	fStatusLabel->SetHighColor(100, 100, 100);
+	fStatusLabel->SetHighColor(kStatusOffline);
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL)
 		.SetInsets(B_USE_WINDOW_SPACING)
@@ -159,7 +159,7 @@ LoginWindow::SetLoginResult(bool success, const char* message)
 	fTimeoutRunner = NULL;
 
 	if (success) {
-		fStatusLabel->SetHighColor(0, 150, 0);
+		fStatusLabel->SetHighColor(kColorGood);
 		fStatusLabel->SetText(message != NULL ? message : "Success!");
 
 		// Close after 500ms delay (non-blocking)
@@ -167,7 +167,7 @@ LoginWindow::SetLoginResult(bool success, const char* message)
 		fCloseRunner = new BMessageRunner(this,
 			new BMessage(kMsgDelayedClose), 500000, 1);
 	} else {
-		fStatusLabel->SetHighColor(200, 0, 0);
+		fStatusLabel->SetHighColor(kColorBad);
 		fStatusLabel->SetText(message != NULL ? message : "Login failed.");
 	}
 }
@@ -181,7 +181,7 @@ LoginWindow::_OnLogin()
 
 	const char* password = fPasswordControl->Text();
 	if (password == NULL || password[0] == '\0') {
-		fStatusLabel->SetHighColor(200, 0, 0);
+		fStatusLabel->SetHighColor(kColorBad);
 		fStatusLabel->SetText("Please enter a password.");
 		return;
 	}
@@ -189,7 +189,7 @@ LoginWindow::_OnLogin()
 	fLoggingIn = true;
 	fLoginButton->SetEnabled(false);
 	fPasswordControl->SetEnabled(false);
-	fStatusLabel->SetHighColor(100, 100, 100);
+	fStatusLabel->SetHighColor(kStatusOffline);
 	fStatusLabel->SetText("Logging in...");
 
 	// Send login request to parent window

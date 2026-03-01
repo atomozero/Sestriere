@@ -307,7 +307,7 @@ SettingsWindow::_BuildDeviceTab(BView* parent)
 
 	BStringView* infoLabel = new BStringView("info",
 		"Changes will be sent to the connected device.");
-	infoLabel->SetHighColor(100, 100, 100);
+	infoLabel->SetHighColor(kStatusOffline);
 
 	BLayoutBuilder::Group<>(parent, B_VERTICAL)
 		.SetInsets(B_USE_DEFAULT_SPACING)
@@ -368,7 +368,7 @@ SettingsWindow::_BuildRadioTab(BView* parent)
 	BStringView* warningLabel = new BStringView("warning",
 		"Warning: Changing radio parameters may break\n"
 		"communication with other nodes.");
-	warningLabel->SetHighColor(200, 0, 0);
+	warningLabel->SetHighColor(kColorBad);
 
 	BLayoutBuilder::Group<>(parent, B_VERTICAL)
 		.SetInsets(B_USE_DEFAULT_SPACING)
@@ -423,11 +423,11 @@ SettingsWindow::_BuildMqttTab(BView* parent)
 		new BMessage(kMsgTogglePasswordVis));
 
 	fMqttStatusLabel = new BStringView("mqtt_status", "Status: Not connected");
-	fMqttStatusLabel->SetHighColor(128, 128, 128);
+	fMqttStatusLabel->SetHighColor(kStatusOffline);
 
 	BStringView* mqttInfo = new BStringView("mqtt_info",
 		"Data published to nodi.meshcoreitalia.it");
-	mqttInfo->SetHighColor(100, 100, 100);
+	mqttInfo->SetHighColor(kStatusOffline);
 
 	BLayoutBuilder::Group<>(parent, B_VERTICAL)
 		.SetInsets(B_USE_DEFAULT_SPACING)

@@ -171,7 +171,7 @@ ContactExportWindow::_OnCopyToClipboard()
 {
 	const char* text = fDataView->Text();
 	if (text == NULL || text[0] == '\0') {
-		fStatusLabel->SetHighColor(200, 0, 0);
+		fStatusLabel->SetHighColor(kColorBad);
 		fStatusLabel->SetText("No data to copy.");
 		return;
 	}
@@ -187,10 +187,10 @@ ContactExportWindow::_OnCopyToClipboard()
 
 		be_clipboard->Unlock();
 
-		fStatusLabel->SetHighColor(0, 150, 0);
+		fStatusLabel->SetHighColor(kColorGood);
 		fStatusLabel->SetText("Copied to clipboard!");
 	} else {
-		fStatusLabel->SetHighColor(200, 0, 0);
+		fStatusLabel->SetHighColor(kColorBad);
 		fStatusLabel->SetText("Failed to access clipboard.");
 	}
 }
@@ -201,7 +201,7 @@ ContactExportWindow::_OnImport()
 {
 	const char* hexText = fDataView->Text();
 	if (hexText == NULL || hexText[0] == '\0') {
-		fStatusLabel->SetHighColor(200, 0, 0);
+		fStatusLabel->SetHighColor(kColorBad);
 		fStatusLabel->SetText("Please paste contact data first.");
 		return;
 	}
@@ -217,7 +217,7 @@ ContactExportWindow::_OnImport()
 	}
 
 	if (cleanHex.Length() < 2 || cleanHex.Length() % 2 != 0) {
-		fStatusLabel->SetHighColor(200, 0, 0);
+		fStatusLabel->SetHighColor(kColorBad);
 		fStatusLabel->SetText("Invalid hex data.");
 		return;
 	}
@@ -236,10 +236,10 @@ ContactExportWindow::_OnImport()
 		importMsg.AddData("data", B_RAW_TYPE, data, dataLen);
 		fParent->PostMessage(&importMsg);
 
-		fStatusLabel->SetHighColor(0, 150, 0);
+		fStatusLabel->SetHighColor(kColorGood);
 		fStatusLabel->SetText("Import command sent. Check contacts.");
 	} else {
-		fStatusLabel->SetHighColor(200, 0, 0);
+		fStatusLabel->SetHighColor(kColorBad);
 		fStatusLabel->SetText("Not connected.");
 	}
 

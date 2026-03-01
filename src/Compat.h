@@ -1,5 +1,8 @@
 /*
- * Compat.h - Compatibility layer for Haiku API differences
+ * Copyright 2025, Sestriere Authors
+ * All rights reserved. Distributed under the terms of the MIT license.
+ *
+ * Compat.h — Compatibility layer for Haiku API differences
  *
  * Handles BObjectList template signature change between beta5 and pre-beta6:
  *   Beta5:      template<class T> class BObjectList (ownership via constructor)
