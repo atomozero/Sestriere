@@ -11,6 +11,7 @@
 #include <Font.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <ctime>
 
@@ -115,9 +116,10 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 		maxBubbleWidth - kBubblePadding * 2, lines);
 
 	// Calculate actual bubble width based on longest line
+	// Use ceilf() to avoid subpixel rounding causing text overflow
 	float maxLineWidth = 0;
 	for (const auto& line : lines) {
-		float w = owner->StringWidth(line.String());
+		float w = ceilf(owner->StringWidth(line.String()));
 		if (w > maxLineWidth)
 			maxLineWidth = w;
 	}
@@ -129,7 +131,7 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 		BFont boldFont;
 		owner->GetFont(&boldFont);
 		boldFont.SetFace(B_BOLD_FACE);
-		headerWidth = boldFont.StringWidth(fSenderName.String());
+		headerWidth = ceilf(boldFont.StringWidth(fSenderName.String()));
 	}
 
 	// Calculate meta text — build the actual displayed string for sizing
@@ -236,17 +238,18 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 
 	// Draw sender name for incoming messages
 	if (!fOutgoing && fSenderName.Length() > 0) {
-		owner->SetHighColor(SenderNameColor());
-		BFont boldFont;
-		owner->GetFont(&boldFont);
+		BFont savedFont;
+		owner->GetFont(&savedFont);
+
+		BFont boldFont(savedFont);
 		boldFont.SetFace(B_BOLD_FACE);
 		owner->SetFont(&boldFont);
+		owner->SetHighColor(SenderNameColor());
 
 		owner->DrawString(fSenderName.String(),
 			BPoint(bubbleRect.left + kBubblePadding, yPos));
 
-		boldFont.SetFace(B_REGULAR_FACE);
-		owner->SetFont(&boldFont);
+		owner->SetFont(&savedFont);
 		yPos += lineHeight;
 	}
 

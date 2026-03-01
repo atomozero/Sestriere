@@ -90,6 +90,9 @@ DatabaseManager::Open(const char* directory)
 		return false;
 	}
 
+	// Schema migration: add txt_type column if missing (added in 1.7)
+	_Execute("ALTER TABLE messages ADD COLUMN txt_type INTEGER DEFAULT 0");
+
 	// Migrate old messages.txt if database is empty
 	if (_IsEmpty())
 		_MigrateFromTextFile(directory);
@@ -130,8 +133,8 @@ DatabaseManager::InsertMessage(const char* contactKeyHex,
 
 	const char* sql =
 		"INSERT OR IGNORE INTO messages (contact_key, timestamp, outgoing, "
-		"channel, sender_key, text, path_len, snr) "
-		"VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+		"channel, sender_key, text, path_len, snr, txt_type) "
+		"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
@@ -149,6 +152,7 @@ DatabaseManager::InsertMessage(const char* contactKeyHex,
 	sqlite3_bind_text(stmt, 6, message.text, -1, SQLITE_TRANSIENT);
 	sqlite3_bind_int(stmt, 7, message.pathLen);
 	sqlite3_bind_int(stmt, 8, message.snr);
+	sqlite3_bind_int(stmt, 9, message.txtType);
 
 	rc = sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
@@ -166,8 +170,8 @@ DatabaseManager::LoadMessages(const char* contactKeyHex,
 		return 0;
 
 	const char* sql =
-		"SELECT timestamp, outgoing, sender_key, text, path_len, snr "
-		"FROM messages WHERE contact_key = ? AND channel = 0 "
+		"SELECT timestamp, outgoing, sender_key, text, path_len, snr, "
+		"txt_type FROM messages WHERE contact_key = ? AND channel = 0 "
 		"ORDER BY timestamp ASC";
 
 	sqlite3_stmt* stmt;
@@ -198,6 +202,7 @@ DatabaseManager::LoadMessages(const char* contactKeyHex,
 
 		msg->pathLen = (uint8)sqlite3_column_int(stmt, 4);
 		msg->snr = (int8)sqlite3_column_int(stmt, 5);
+		msg->txtType = (uint8)sqlite3_column_int(stmt, 6);
 
 		outMessages.AddItem(msg);
 		count++;
@@ -216,8 +221,8 @@ DatabaseManager::LoadChannelMessages(OwningObjectList<ChatMessage>& outMessages)
 		return 0;
 
 	const char* sql =
-		"SELECT timestamp, outgoing, sender_key, text, path_len, snr "
-		"FROM messages WHERE channel = 1 "
+		"SELECT timestamp, outgoing, sender_key, text, path_len, snr, "
+		"txt_type FROM messages WHERE channel = 1 "
 		"ORDER BY timestamp ASC";
 
 	sqlite3_stmt* stmt;
@@ -245,6 +250,7 @@ DatabaseManager::LoadChannelMessages(OwningObjectList<ChatMessage>& outMessages)
 
 		msg->pathLen = (uint8)sqlite3_column_int(stmt, 4);
 		msg->snr = (int8)sqlite3_column_int(stmt, 5);
+		msg->txtType = (uint8)sqlite3_column_int(stmt, 6);
 
 		outMessages.AddItem(msg);
 		count++;
@@ -1122,7 +1128,8 @@ DatabaseManager::_CreateTables()
 		"  sender_key TEXT,"
 		"  text TEXT NOT NULL,"
 		"  path_len INTEGER DEFAULT 255,"
-		"  snr INTEGER DEFAULT 0"
+		"  snr INTEGER DEFAULT 0,"
+		"  txt_type INTEGER DEFAULT 0"
 		")");
 	if (!ok)
 		return false;
