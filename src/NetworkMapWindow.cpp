@@ -135,6 +135,7 @@ NetworkMapView::NetworkMapView()
 	fShowLabels(true),
 	fShowSignalStrength(true),
 	fHideInactive(false),
+	fLayoutDirty(true),
 	fSelectedNode(NULL),
 	fDragNode(NULL),
 	fDragOffset(0, 0),
@@ -237,7 +238,11 @@ void
 NetworkMapView::Draw(BRect updateRect)
 {
 	BRect bounds = Bounds();
-	fCenter.Set(bounds.Width() / 2, bounds.Height() / 2);
+	BPoint newCenter(bounds.Width() / 2, bounds.Height() / 2);
+	if (fCenter != newCenter) {
+		fCenter = newCenter;
+		fLayoutDirty = true;
+	}
 
 	// Draw background gradient effect
 	SetHighColor(kBackgroundColor);
@@ -278,8 +283,11 @@ NetworkMapView::Draw(BRect updateRect)
 	StrokeLine(BPoint(fCenter.x, fCenter.y - crossSize),
 			   BPoint(fCenter.x, fCenter.y + crossSize));
 
-	// Calculate target positions for all nodes
-	_CalculatePositions();
+	// Calculate target positions only when layout data changed
+	if (fLayoutDirty) {
+		_CalculatePositions();
+		fLayoutDirty = false;
+	}
 
 	// Expire old edges
 	uint32 now = (uint32)time(NULL);
@@ -549,6 +557,7 @@ NetworkMapView::SetNodes(const OwningObjectList<ContactInfo>* contacts)
 	// Build topology edges from outPath data in contact frames
 	BuildEdgesFromOutPaths(contacts);
 
+	fLayoutDirty = true;
 	Invalidate();
 }
 
@@ -774,6 +783,7 @@ NetworkMapView::SetRepeaterTopology(const char* selfName,
 		}
 	}
 
+	fLayoutDirty = true;
 	Invalidate();
 }
 
@@ -798,6 +808,7 @@ void
 NetworkMapView::SetHideInactive(bool hide)
 {
 	fHideInactive = hide;
+	fLayoutDirty = true;
 	Invalidate();
 }
 
@@ -806,6 +817,7 @@ void
 NetworkMapView::SetZoom(float zoom)
 {
 	fZoom = zoom;
+	fLayoutDirty = true;
 	Invalidate();
 }
 
@@ -966,6 +978,7 @@ NetworkMapView::SetTraceRoute(const TraceRoute& route)
 		if (existing && memcmp(existing->destKeyPrefix, route.destKeyPrefix,
 				kPubKeyPrefixSize) == 0) {
 			*existing = route;
+			fLayoutDirty = true;
 			Invalidate();
 			return;
 		}
@@ -973,6 +986,7 @@ NetworkMapView::SetTraceRoute(const TraceRoute& route)
 
 	TraceRoute* newRoute = new TraceRoute(route);
 	fTraceRoutes.AddItem(newRoute);
+	fLayoutDirty = true;
 	Invalidate();
 }
 
@@ -981,6 +995,7 @@ void
 NetworkMapView::ClearTraceRoutes()
 {
 	fTraceRoutes.MakeEmpty();
+	fLayoutDirty = true;
 	Invalidate();
 }
 
@@ -2537,49 +2552,144 @@ NetworkMapView::_DrawInfoPanel()
 void
 NetworkMapView::_DrawLinkQualityLegend()
 {
-	if (!fShowSignalStrength)
-		return;
-
 	BRect bounds = Bounds();
-	float legendX = 10;
-	float legendY = bounds.bottom - 100;
+	BFont font;
+	GetFont(&font);
+
+	float lx = 10;
+	float y = bounds.bottom - 10;  // Start from bottom, grow upward
+
+	// Calculate total height
+	float totalH = 14 + 12 * 4;   // Status section
+	totalH += 10 + 14 + 12 * 2;   // Shapes section
+	totalH += 10 + 14 + 12;       // Badges section
+	if (fShowSignalStrength)
+		totalH += 10 + 14 + 12 * 6;  // Link quality section
+
+	y -= totalH;
 
 	// Background
 	SetHighColor(30, 34, 38, 200);
-	FillRoundRect(BRect(legendX - 5, legendY - 15, legendX + 110, bounds.bottom - 5), 4, 4);
+	FillRoundRect(BRect(lx - 5, y - 5, lx + 118, bounds.bottom - 5), 4, 4);
 
-	BFont font;
-	GetFont(&font);
+	// --- Status Ring Colors ---
 	font.SetSize(9);
+	font.SetFace(B_BOLD_FACE);
 	SetFont(&font);
 	SetHighColor(kLabelColor);
-	DrawString("Link Quality (SNR)", BPoint(legendX, legendY));
+	DrawString("Status", BPoint(lx, y + 9));
+	font.SetFace(0);
+	SetFont(&font);
 
-	legendY += 12;
-	struct { rgb_color color; const char* label; float thickness; } legend[] = {
-		{kLinkExcellent, "> 5 dB",     3.5f},
-		{kLinkGood,      "0 to 5 dB",  3.0f},
-		{kLinkFair,      "-5 to 0 dB", 2.5f},
-		{kLinkPoor,      "-10 to -5",  2.0f},
-		{kLinkBad,       "< -10 dB",   1.5f},
-		{kLinkUnknown,   "No data",    1.0f}
+	y += 14;
+	struct { rgb_color color; const char* label; } statusItems[] = {
+		{{50, 205, 50, 255},   "Online"},
+		{{255, 193, 37, 255},  "Recent"},
+		{{255, 140, 0, 255},   "Away"},
+		{{128, 128, 128, 255}, "Offline"}
 	};
 
-	for (int i = 0; i < 6; i++) {
-		// Draw colored line sample
-		SetHighColor(legend[i].color);
-		SetPenSize(legend[i].thickness);
-		float lineY = legendY + i * 12 + 4;
-		StrokeLine(BPoint(legendX, lineY), BPoint(legendX + 16, lineY));
-
-		// Label
+	for (int i = 0; i < 4; i++) {
+		float dotY = y + i * 12 + 4;
+		SetHighColor(statusItems[i].color);
+		SetPenSize(2.5f);
+		StrokeEllipse(BPoint(lx + 5, dotY), 4, 4);
 		SetHighColor(kLabelColor);
 		font.SetSize(9);
 		SetFont(&font);
-		DrawString(legend[i].label, BPoint(legendX + 22, legendY + i * 12 + 8));
+		DrawString(statusItems[i].label, BPoint(lx + 16, y + i * 12 + 8));
 	}
-
 	SetPenSize(1.0f);
+
+	// --- Node Shapes ---
+	y += 12 * 4 + 10;
+	font.SetSize(9);
+	font.SetFace(B_BOLD_FACE);
+	SetFont(&font);
+	SetHighColor(kLabelColor);
+	DrawString("Shapes", BPoint(lx, y + 9));
+	font.SetFace(0);
+	SetFont(&font);
+
+	y += 14;
+	// Circle = client
+	SetHighColor(100, 160, 220, 255);
+	FillEllipse(BPoint(lx + 5, y + 4), 4, 4);
+	SetHighColor(kLabelColor);
+	font.SetSize(9);
+	SetFont(&font);
+	DrawString("Client", BPoint(lx + 16, y + 8));
+
+	// Hexagon = repeater
+	y += 12;
+	BPoint hex[6];
+	for (int i = 0; i < 6; i++) {
+		float a = i * M_PI / 3.0f - M_PI / 6.0f;
+		hex[i].Set(lx + 5 + cosf(a) * 5, y + 4 + sinf(a) * 5);
+	}
+	SetHighColor(100, 160, 220, 255);
+	FillPolygon(hex, 6);
+	SetHighColor(kLabelColor);
+	DrawString("Repeater", BPoint(lx + 16, y + 8));
+
+	// --- Badges ---
+	y += 12 + 10;
+	font.SetSize(9);
+	font.SetFace(B_BOLD_FACE);
+	SetFont(&font);
+	SetHighColor(kLabelColor);
+	DrawString("Badges", BPoint(lx, y + 9));
+	font.SetFace(0);
+	SetFont(&font);
+
+	y += 14;
+	// Hop count badge
+	SetHighColor(60, 60, 60, 220);
+	FillEllipse(BPoint(lx + 5, y + 3), 5, 5);
+	SetHighColor(255, 255, 255, 255);
+	font.SetSize(8);
+	SetFont(&font);
+	float nw = StringWidth("2");
+	DrawString("2", BPoint(lx + 5 - nw / 2, y + 6));
+	SetHighColor(kLabelColor);
+	font.SetSize(9);
+	SetFont(&font);
+	DrawString("Hop count", BPoint(lx + 16, y + 7));
+
+	// --- Link Quality (SNR) ---
+	if (fShowSignalStrength) {
+		y += 12 + 10;
+		font.SetSize(9);
+		font.SetFace(B_BOLD_FACE);
+		SetFont(&font);
+		SetHighColor(kLabelColor);
+		DrawString("Link Quality (SNR)", BPoint(lx, y + 9));
+		font.SetFace(0);
+		SetFont(&font);
+
+		y += 14;
+		struct { rgb_color color; const char* label; float thickness; } linkItems[] = {
+			{kLinkExcellent, "> 5 dB",     3.5f},
+			{kLinkGood,      "0 to 5 dB",  3.0f},
+			{kLinkFair,      "-5 to 0 dB", 2.5f},
+			{kLinkPoor,      "-10 to -5",  2.0f},
+			{kLinkBad,       "< -10 dB",   1.5f},
+			{kLinkUnknown,   "No data",    1.0f}
+		};
+
+		for (int i = 0; i < 6; i++) {
+			SetHighColor(linkItems[i].color);
+			SetPenSize(linkItems[i].thickness);
+			float lineY = y + i * 12 + 4;
+			StrokeLine(BPoint(lx, lineY), BPoint(lx + 16, lineY));
+
+			SetHighColor(kLabelColor);
+			font.SetSize(9);
+			SetFont(&font);
+			DrawString(linkItems[i].label, BPoint(lx + 22, y + i * 12 + 8));
+		}
+		SetPenSize(1.0f);
+	}
 }
 
 
@@ -2659,6 +2769,50 @@ NetworkMapView::_ShowNodeContextMenu(BPoint where, MapNode* node)
 
 	ConvertToScreen(&where);
 	menu->Go(where, true, true, true);
+}
+
+
+bool
+NetworkMapView::_IsNodeHidden(const MapNode& node) const
+{
+	if (!fHideInactive)
+		return false;
+	if (node.status != STATUS_AWAY && node.status != STATUS_OFFLINE)
+		return false;
+	// Nodes involved in active trace routes are always visible
+	if (_HasActiveTrace(node))
+		return false;
+	return true;
+}
+
+
+bool
+NetworkMapView::_HasActiveTrace(const MapNode& node) const
+{
+	uint32 now = (uint32)time(NULL);
+
+	for (int32 r = 0; r < fTraceRoutes.CountItems(); r++) {
+		TraceRoute* route = fTraceRoutes.ItemAt(r);
+		if (route == NULL || route->numHops == 0)
+			continue;
+
+		// Skip fully faded traces (>120s)
+		uint32 age = (now > route->timestamp) ? (now - route->timestamp) : 0;
+		if (age > 120)
+			continue;
+
+		// Check if node is the trace destination
+		if (memcmp(node.pubKeyPrefix, route->destKeyPrefix,
+				kPubKeyPrefixSize) == 0)
+			return true;
+
+		// Check if node is an intermediate hop (match first byte like hop hash)
+		for (uint8 h = 0; h < route->numHops; h++) {
+			if (node.pubKeyPrefix[0] == route->hops[h].hopPrefix[0])
+				return true;
+		}
+	}
+	return false;
 }
 
 

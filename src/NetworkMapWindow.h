@@ -197,10 +197,8 @@ private:
 			void			_DrawStats();
 			void			_ShowNodeContextMenu(BPoint where, MapNode* node);
 
-	inline	bool			_IsNodeHidden(const MapNode& node) const
-								{ return fHideInactive
-									&& (node.status == STATUS_AWAY
-										|| node.status == STATUS_OFFLINE); }
+			bool			_IsNodeHidden(const MapNode& node) const;
+			bool			_HasActiveTrace(const MapNode& node) const;
 
 			float			_RadiusForNode(const MapNode& node) const;
 			float			_OpacityForNode(const MapNode& node) const;
@@ -223,6 +221,7 @@ private:
 			bool			fShowLabels;
 			bool			fShowSignalStrength;
 			bool			fHideInactive;
+			bool			fLayoutDirty;
 
 			MapNode*		fSelectedNode;
 			MapNode*		fDragNode;
