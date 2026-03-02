@@ -292,6 +292,10 @@ MainWindow::MainWindow()
 	fPingPending = false;
 	fPingTimeoutRunner = NULL;
 	memset(fPingTargetKey, 0, sizeof(fPingTargetKey));
+	fPingAllActive = false;
+	fPingAllIndex = 0;
+	fPingAllTotal = 0;
+	fPingAllResponded = 0;
 	memset(fLoggedInKey, 0, sizeof(fLoggedInKey));
 	fHasDeviceInfo = false;
 	fRadioFreq = 0;
@@ -415,6 +419,8 @@ MainWindow::_BuildMenuBar()
 		new BMessage(MSG_SEND_ADVERT), 'A'));
 	deviceMenu->AddItem(new BMenuItem("Trace Path",
 		new BMessage(MSG_SHOW_TRACE_PATH), 'T'));
+	deviceMenu->AddItem(new BMenuItem("Ping All Contacts",
+		new BMessage(MSG_PING_ALL)));
 	deviceMenu->AddSeparatorItem();
 	deviceMenu->AddItem(new BMenuItem("Login to Repeater/Room" B_UTF8_ELLIPSIS,
 		new BMessage(MSG_SHOW_LOGIN)));
@@ -1788,9 +1794,137 @@ MainWindow::MessageReceived(BMessage* message)
 				strlcpy(pingResult.text, result.String(),
 					sizeof(pingResult.text));
 				fChatView->AddMessage(pingResult, "Ping");
+
+				// Advance to next contact in ping-all mode
+				if (fPingAllActive) {
+					fPingAllIndex++;
+					BMessage nextMsg(MSG_PING_ALL_NEXT);
+					nextMsg.AddInt32("index", fPingAllIndex);
+					BMessageRunner::StartSending(this, &nextMsg, 2000000, 1);
+				}
 			}
 			delete fPingTimeoutRunner;
 			fPingTimeoutRunner = NULL;
+			break;
+		}
+
+		case MSG_PING_ALL:
+		{
+			if (!fConnected) {
+				BAlert* alert = new BAlert("Ping All",
+					"Cannot ping: radio not connected",
+					"OK", NULL, NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+				alert->Go(NULL);
+				break;
+			}
+			if (fPingAllActive) {
+				_LogMessage("WARN", "Ping All already in progress");
+				break;
+			}
+
+			// Count valid contacts (exclude channel)
+			int32 total = 0;
+			for (int32 i = 0; i < fContacts.CountItems(); i++) {
+				ContactInfo* c = fContacts.ItemAt(i);
+				if (c != NULL && c->isValid && c->type != 0)
+					total++;
+			}
+
+			if (total == 0) {
+				ChatMessage noContacts;
+				noContacts.timestamp = (uint32)time(NULL);
+				noContacts.isOutgoing = false;
+				noContacts.isChannel = true;
+				strlcpy(noContacts.text, "Ping All: no contacts to ping",
+					sizeof(noContacts.text));
+				fChatView->AddMessage(noContacts, "Ping");
+				break;
+			}
+
+			fPingAllActive = true;
+			fPingAllIndex = 0;
+			fPingAllTotal = total;
+			fPingAllResponded = 0;
+
+			ChatMessage startMsg;
+			startMsg.timestamp = (uint32)time(NULL);
+			startMsg.isOutgoing = false;
+			startMsg.isChannel = true;
+			snprintf(startMsg.text, sizeof(startMsg.text),
+				"Pinging %d contacts...", (int)total);
+			fChatView->AddMessage(startMsg, "Ping");
+			_LogMessage("PING", BString().SetToFormat(
+				"Ping All started: %d contacts", (int)total));
+
+			// Start with first contact
+			BMessage nextMsg(MSG_PING_ALL_NEXT);
+			nextMsg.AddInt32("index", 0);
+			PostMessage(&nextMsg);
+			break;
+		}
+
+		case MSG_PING_ALL_NEXT:
+		{
+			if (!fPingAllActive || !fConnected) {
+				fPingAllActive = false;
+				break;
+			}
+
+			int32 startIdx = 0;
+			message->FindInt32("index", &startIdx);
+
+			// Find next valid contact
+			for (int32 i = startIdx; i < fContacts.CountItems(); i++) {
+				ContactInfo* c = fContacts.ItemAt(i);
+				if (c == NULL || !c->isValid || c->type == 0)
+					continue;
+
+				fPingAllIndex = i;
+				const char* name = c->name[0] ? c->name : "(unknown)";
+
+				// Set up ping state
+				fPingStartTime = system_time();
+				memcpy(fPingTargetKey, c->publicKey, kPubKeyPrefixSize);
+				fPingPending = true;
+
+				status_t result = fProtocol->SendTracePath(c);
+				if (result != B_OK) {
+					_LogMessage("PING", BString().SetToFormat(
+						"Ping failed for %s (send error)", name));
+					fPingPending = false;
+					// Try next after 2s
+					fPingAllIndex = i + 1;
+					BMessage nextMsg(MSG_PING_ALL_NEXT);
+					nextMsg.AddInt32("index", i + 1);
+					BMessageRunner::StartSending(this, &nextMsg, 2000000, 1);
+					return;
+				}
+
+				_LogMessage("PING", BString().SetToFormat(
+					"Pinging %s (%d/%d)...", name,
+					(int)(fPingAllResponded + 1), (int)fPingAllTotal));
+
+				// Start 10s timeout (shorter than single-ping 30s)
+				delete fPingTimeoutRunner;
+				BMessage timeoutMsg(MSG_PING_TIMEOUT);
+				fPingTimeoutRunner = new BMessageRunner(this,
+					&timeoutMsg, 10000000LL, 1);
+				return;  // Wait for response or timeout
+			}
+
+			// All contacts pinged — show summary
+			fPingAllActive = false;
+			BString summary;
+			summary.SetToFormat("Ping All complete: %d/%d responded",
+				(int)fPingAllResponded, (int)fPingAllTotal);
+			_LogMessage("PING", summary.String());
+
+			ChatMessage doneMsg;
+			doneMsg.timestamp = (uint32)time(NULL);
+			doneMsg.isOutgoing = false;
+			doneMsg.isChannel = true;
+			strlcpy(doneMsg.text, summary.String(), sizeof(doneMsg.text));
+			fChatView->AddMessage(doneMsg, "Ping");
 			break;
 		}
 
@@ -4903,6 +5037,15 @@ MainWindow::_HandlePushTraceData(const uint8* data, size_t length)
 		pingResult.isChannel = true;
 		strlcpy(pingResult.text, result.String(), sizeof(pingResult.text));
 		fChatView->AddMessage(pingResult, "Ping");
+
+		// Advance to next contact in ping-all mode
+		if (fPingAllActive) {
+			fPingAllResponded++;
+			fPingAllIndex++;
+			BMessage nextMsg(MSG_PING_ALL_NEXT);
+			nextMsg.AddInt32("index", fPingAllIndex);
+			BMessageRunner::StartSending(this, &nextMsg, 2000000, 1);
+		}
 	}
 
 	// Log trace path summary
@@ -5225,6 +5368,12 @@ MainWindow::_OnDisconnected()
 	fLoggedIn = false;
 	memset(fLoggedInKey, 0, kPubKeyPrefixSize);
 	fChatHeader->SetConsoleMode(false);
+
+	// Cancel ping-all if in progress
+	fPingAllActive = false;
+	fPingPending = false;
+	delete fPingTimeoutRunner;
+	fPingTimeoutRunner = NULL;
 
 	// Stop periodic stats timer
 	delete fStatsRefreshTimer;

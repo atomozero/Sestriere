@@ -284,6 +284,8 @@ enum {
 	// Ping
 	MSG_CONTACT_PING = 'cpng',
 	MSG_PING_TIMEOUT = 'pngt',
+	MSG_PING_ALL = 'pall',
+	MSG_PING_ALL_NEXT = 'pan!',
 
 	// Profile export/import
 	MSG_SHOW_PROFILE = 'prof',

@@ -337,6 +337,12 @@ private:
 			bool			fPingPending;
 			BMessageRunner*	fPingTimeoutRunner;
 
+			// Ping All
+			bool			fPingAllActive;
+			int32			fPingAllIndex;
+			int32			fPingAllTotal;
+			int32			fPingAllResponded;
+
 			// Mute state
 			BMessage		fMutedKeys;
 
