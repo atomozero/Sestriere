@@ -37,7 +37,8 @@ SRCS = \
 	MissionControlWindow.cpp \
 	SerialMonitorWindow.cpp \
 	RepeaterMonitorView.cpp \
-	TileCache.cpp
+	TileCache.cpp \
+	SarMarker.cpp
 
 RDEFS = Sestriere.rdef
 

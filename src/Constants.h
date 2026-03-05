@@ -324,6 +324,11 @@ enum {
 
 	// Network Map
 	MSG_TOGGLE_HIDE_INACTIVE = 'nmhi',
+
+	// SAR Markers
+	MSG_SAR_MARKER = 'sarm',
+	MSG_SEND_SAR_MARKER = 'ssrm',
+	MSG_SAR_TYPE_CHOSEN = 'srty',
 };
 
 // =============================================================================
