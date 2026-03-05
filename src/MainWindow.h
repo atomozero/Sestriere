@@ -51,6 +51,27 @@ class TelemetryWindow;
 class TopBarView;
 class TracePathWindow;
 
+// Pending outgoing message tracked for delivery status
+struct PendingMessage {
+	char		contactKey[13];		// 12 hex chars + null
+	uint8		pubKey[32];			// Full 32-byte pubkey for resend
+	uint32		timestamp;			// Message timestamp (for DB lookup)
+	char		text[256];			// Message text (for retry)
+	uint8		txtType;			// TXT_TYPE_PLAIN or TXT_TYPE_CLI_DATA
+	uint8		attemptCount;		// Current attempt (1-based)
+	bigtime_t	sentTime;			// system_time() when sent
+	bool		gotRspSent;			// True after RSP_SENT received
+	int32		chatViewIndex;		// Index in ChatView (-1 if not visible)
+
+	PendingMessage()
+		: timestamp(0), txtType(0), attemptCount(1), sentTime(0),
+		  gotRspSent(false), chatViewIndex(-1) {
+		memset(contactKey, 0, sizeof(contactKey));
+		memset(pubKey, 0, sizeof(pubKey));
+		memset(text, 0, sizeof(text));
+	}
+};
+
 class MainWindow : public BWindow {
 public:
 							MainWindow();
@@ -166,6 +187,13 @@ private:
 			void			_LoadContactGroups();
 			void			_RefreshContactList();
 
+			// Delivery queue management
+			void			_StartDeliveryTimer();
+			void			_StopDeliveryTimer();
+			void			_CheckDeliveryTimeouts();
+			void			_RetryMessage(PendingMessage* pending);
+			void			_FailMessage(PendingMessage* pending);
+
 			// Repeater mode switching
 			void			_SwitchToRepeaterMode();
 			void			_SwitchToChatMode();
@@ -251,8 +279,9 @@ private:
 			bool			fEnumeratingChannels;
 			int32			fSelectedChannelIdx; // -1 = none, >= 0 = channel slot
 
-			// Delivery tracking
-			int32			fPendingMsgIndex;
+			// Delivery tracking — FIFO queue of pending outgoing messages
+			OwningObjectList<PendingMessage>	fPendingMessages;
+			BMessageRunner*	fDeliveryCheckTimer;
 
 			// Mode flags
 			bool			fSendingToChannel;

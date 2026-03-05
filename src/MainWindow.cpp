@@ -105,6 +105,9 @@ enum {
 	MSG_TRACE_ALL = 'tral',
 	MSG_TRACE_ALL_NEXT = 'trn!',
 
+	// Delivery check timer
+	MSG_DELIVERY_CHECK_TICK = 'dlck',
+
 	// Admin toolbar buttons (in chat area)
 	kMsgAdminVersion = 'avrs',
 	kMsgAdminNeighbors = 'anbr',
@@ -122,6 +125,13 @@ static const bigtime_t kStatsRefreshInterval = 10000000; // 10 seconds
 static const bigtime_t kAutoSyncDelay = 3000000;         // 3 seconds
 static const bigtime_t kAdminRefreshInterval = 15000000; // 15 seconds
 static const bigtime_t kHandshakeTimeout = 5000000;      // 5 seconds
+static const bigtime_t kDeliveryCheckInterval = 10000000; // 10 seconds
+
+// Delivery retry constants
+static const bigtime_t kSendTimeout = 60000000;          // 60 seconds for RSP_SENT
+static const bigtime_t kConfirmCleanup = 120000000;      // 2 minutes: remove SENT from queue
+static const int kMaxRetryAttempts = 3;
+static const int kMaxSimultaneousPending = 3;
 
 
 // Thin BListView subclass to detect right-clicks
@@ -243,7 +253,8 @@ MainWindow::MainWindow()
 	fChannelEnumIndex(0),
 	fEnumeratingChannels(false),
 	fSelectedChannelIdx(-1),
-	fPendingMsgIndex(-1),
+	fPendingMessages(10),
+	fDeliveryCheckTimer(NULL),
 	fSendingToChannel(false),
 	fLoginPending(false),
 	fLoggedIn(false),
@@ -365,6 +376,7 @@ MainWindow::~MainWindow()
 	delete fHandshakeTimer;
 	delete fRepeaterMapTimer;
 	delete fPingTimeoutRunner;
+	delete fDeliveryCheckTimer;
 
 	// Protocol handler cleanup
 	delete fProtocol;
@@ -1519,6 +1531,10 @@ MainWindow::MessageReceived(BMessage* message)
 			}
 			break;
 		}
+
+		case MSG_DELIVERY_CHECK_TICK:
+			_CheckDeliveryTimeouts();
+			break;
 
 		case MSG_HANDSHAKE_TIMEOUT:
 		{
@@ -3128,6 +3144,12 @@ MainWindow::_SendCliCommand(const char* command)
 	if (cmdLen == 0 || cmdLen > 160)
 		return;
 
+	// Rate-limit: refuse if too many pending messages
+	if (fPendingMessages.CountItems() >= kMaxSimultaneousPending) {
+		_LogMessage("ERROR", "Too many pending messages — wait for delivery");
+		return;
+	}
+
 	uint32 timestamp = (uint32)time(NULL);
 	fProtocol->SendDM(target->publicKey, TXT_TYPE_CLI_DATA, timestamp,
 		command, cmdLen);
@@ -3152,16 +3174,31 @@ MainWindow::_SendCliCommand(const char* command)
 	DatabaseManager::Instance()->InsertMessage(contactHex, outMsg);
 
 	// Update chat view if this contact is selected
+	int32 chatViewIdx = -1;
 	ContactItem* selItem = dynamic_cast<ContactItem*>(
 		fContactList->ItemAt(fSelectedContact));
 	if (selItem != NULL && !selItem->IsChannel() &&
 		memcmp(selItem->GetContact().publicKey, fLoggedInKey,
 			kPubKeyPrefixSize) == 0) {
 		fChatView->AddMessage(outMsg, "Me");
-		fPendingMsgIndex = fChatView->CountItems() - 1;
+		chatViewIdx = fChatView->CountItems() - 1;
 		selItem->SetLastMessage(command, timestamp);
 		fContactList->InvalidateItem(fSelectedContact);
 	}
+
+	// Add to pending message queue for delivery tracking
+	PendingMessage* pending = new PendingMessage();
+	strlcpy(pending->contactKey, contactHex, sizeof(pending->contactKey));
+	memcpy(pending->pubKey, target->publicKey, kPubKeySize);
+	pending->timestamp = timestamp;
+	strlcpy(pending->text, command, sizeof(pending->text));
+	pending->txtType = TXT_TYPE_CLI_DATA;
+	pending->attemptCount = 1;
+	pending->sentTime = system_time();
+	pending->gotRspSent = false;
+	pending->chatViewIndex = chatViewIdx;
+	fPendingMessages.AddItem(pending);
+	_StartDeliveryTimer();
 
 	_LogMessage("CLI", BString().SetToFormat("> %s", command));
 }
@@ -3204,6 +3241,12 @@ MainWindow::_SendTextMessage(const char* text)
 		return;
 	}
 
+	// Rate-limit: refuse if too many pending messages
+	if (fPendingMessages.CountItems() >= kMaxSimultaneousPending) {
+		_LogMessage("ERROR", "Too many pending messages — wait for delivery");
+		return;
+	}
+
 	{
 		char hex[kContactHexSize];
 		FormatPubKeyPrefix(hex, contact->publicKey);
@@ -3237,8 +3280,7 @@ MainWindow::_SendTextMessage(const char* text)
 	outMsg.deliveryStatus = DELIVERY_PENDING;
 	fChatView->AddMessage(outMsg, "Me");
 
-	// Track pending message index for delivery status updates
-	fPendingMsgIndex = fChatView->CountItems() - 1;
+	int32 chatViewIdx = fChatView->CountItems() - 1;
 
 	// Store message in contact's history
 	ChatMessage* stored = new ChatMessage(outMsg);
@@ -3248,6 +3290,20 @@ MainWindow::_SendTextMessage(const char* text)
 	char contactHex[kContactHexSize];
 	FormatContactKey(contactHex, contact->publicKey);
 	DatabaseManager::Instance()->InsertMessage(contactHex, outMsg);
+
+	// Add to pending message queue for delivery tracking
+	PendingMessage* pending = new PendingMessage();
+	strlcpy(pending->contactKey, contactHex, sizeof(pending->contactKey));
+	memcpy(pending->pubKey, contact->publicKey, kPubKeySize);
+	pending->timestamp = timestamp;
+	strlcpy(pending->text, text, sizeof(pending->text));
+	pending->txtType = txtType;
+	pending->attemptCount = 1;
+	pending->sentTime = system_time();
+	pending->gotRspSent = false;
+	pending->chatViewIndex = chatViewIdx;
+	fPendingMessages.AddItem(pending);
+	_StartDeliveryTimer();
 
 	// Update contact item preview
 	ContactItem* item = dynamic_cast<ContactItem*>(fContactList->ItemAt(fSelectedContact));
@@ -3532,25 +3588,61 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 					(unsigned long)roundTripMs);
 			_LogMessage("OK", logMsg.String());
 
-			// Update pending message to CONFIRMED status
-			if (fPendingMsgIndex >= 0) {
-				fChatView->UpdateDeliveryStatus(fPendingMsgIndex,
-					DELIVERY_CONFIRMED, roundTripMs);
+			// Find first pending message that has RSP_SENT (FIFO)
+			PendingMessage* pending = NULL;
+			int32 pendingIdx = -1;
+			for (int32 i = 0; i < fPendingMessages.CountItems(); i++) {
+				PendingMessage* p = fPendingMessages.ItemAt(i);
+				if (p != NULL && p->gotRspSent) {
+					pending = p;
+					pendingIdx = i;
+					break;
+				}
+			}
 
-				// Also update stored ChatMessage
-				ContactInfo* contact = fChatView->CurrentContact();
+			if (pending != NULL) {
+				// Update ChatView if contact is currently displayed
+				ContactInfo* currentContact = fChatView->CurrentContact();
+				if (currentContact != NULL && pending->chatViewIndex >= 0) {
+					char currentHex[kContactHexSize];
+					FormatContactKey(currentHex,
+						currentContact->publicKey);
+					if (strcmp(currentHex, pending->contactKey) == 0) {
+						fChatView->UpdateDeliveryStatus(
+							pending->chatViewIndex,
+							DELIVERY_CONFIRMED, roundTripMs);
+					}
+				}
+
+				// Update stored ChatMessage in contact history
+				ContactInfo* contact = _FindContactByPrefix(
+					pending->pubKey, kPubKeyPrefixSize);
 				if (contact != NULL) {
-					int32 lastIdx = contact->messages.CountItems() - 1;
-					if (lastIdx >= 0) {
-						ChatMessage* msg = contact->messages.ItemAt(lastIdx);
-						if (msg != NULL && msg->isOutgoing) {
+					for (int32 i = contact->messages.CountItems() - 1;
+						i >= 0; i--) {
+						ChatMessage* msg = contact->messages.ItemAt(i);
+						if (msg != NULL && msg->isOutgoing
+							&& msg->timestamp == pending->timestamp
+							&& (msg->deliveryStatus == DELIVERY_SENT
+								|| msg->deliveryStatus == DELIVERY_PENDING)) {
 							msg->deliveryStatus = DELIVERY_CONFIRMED;
 							msg->roundTripMs = roundTripMs;
+							break;
 						}
 					}
 				}
 
-				fPendingMsgIndex = -1;
+				// Persist to database
+				DatabaseManager::Instance()->UpdateMessageDeliveryStatus(
+					pending->contactKey, pending->timestamp,
+					DELIVERY_CONFIRMED, roundTripMs);
+
+				// Remove from queue
+				fPendingMessages.RemoveItemAt(pendingIdx);
+
+				// Stop timer if queue is empty
+				if (fPendingMessages.CountItems() == 0)
+					_StopDeliveryTimer();
 			}
 			break;
 		}
@@ -5281,21 +5373,50 @@ MainWindow::_HandleMsgSent(const uint8* data, size_t length)
 {
 	_LogMessage("OK", "Message sent successfully");
 
-	// Update pending message to SENT status
-	if (fPendingMsgIndex >= 0) {
-		fChatView->UpdateDeliveryStatus(fPendingMsgIndex, DELIVERY_SENT);
+	// Find first pending message that hasn't received RSP_SENT yet (FIFO)
+	PendingMessage* pending = NULL;
+	for (int32 i = 0; i < fPendingMessages.CountItems(); i++) {
+		PendingMessage* p = fPendingMessages.ItemAt(i);
+		if (p != NULL && !p->gotRspSent) {
+			pending = p;
+			break;
+		}
+	}
 
-		// Also update the stored ChatMessage in contact history
-		ContactInfo* contact = fChatView->CurrentContact();
-		if (contact != NULL) {
-			int32 lastIdx = contact->messages.CountItems() - 1;
-			if (lastIdx >= 0) {
-				ChatMessage* msg = contact->messages.ItemAt(lastIdx);
-				if (msg != NULL && msg->isOutgoing)
-					msg->deliveryStatus = DELIVERY_SENT;
+	if (pending == NULL)
+		return;
+
+	pending->gotRspSent = true;
+
+	// Update ChatView if the pending message's contact is currently displayed
+	ContactInfo* currentContact = fChatView->CurrentContact();
+	if (currentContact != NULL && pending->chatViewIndex >= 0) {
+		char currentHex[kContactHexSize];
+		FormatContactKey(currentHex, currentContact->publicKey);
+		if (strcmp(currentHex, pending->contactKey) == 0) {
+			fChatView->UpdateDeliveryStatus(pending->chatViewIndex,
+				DELIVERY_SENT);
+		}
+	}
+
+	// Update the stored ChatMessage in contact history
+	ContactInfo* contact = _FindContactByPrefix(pending->pubKey,
+		kPubKeyPrefixSize);
+	if (contact != NULL) {
+		for (int32 i = contact->messages.CountItems() - 1; i >= 0; i--) {
+			ChatMessage* msg = contact->messages.ItemAt(i);
+			if (msg != NULL && msg->isOutgoing
+				&& msg->timestamp == pending->timestamp
+				&& msg->deliveryStatus == DELIVERY_PENDING) {
+				msg->deliveryStatus = DELIVERY_SENT;
+				break;
 			}
 		}
 	}
+
+	// Persist status to database
+	DatabaseManager::Instance()->UpdateMessageDeliveryStatus(
+		pending->contactKey, pending->timestamp, DELIVERY_SENT, 0);
 }
 
 
@@ -5307,6 +5428,163 @@ MainWindow::_HandleCmdErr(const uint8* data, size_t length)
 		msg.SetToFormat("Command error: code %d", data[1]);
 	}
 	_LogMessage("ERROR", msg);
+
+	// If there's a pending message waiting for RSP_SENT, this error is for it
+	for (int32 i = 0; i < fPendingMessages.CountItems(); i++) {
+		PendingMessage* pending = fPendingMessages.ItemAt(i);
+		if (pending != NULL && !pending->gotRspSent) {
+			if (pending->attemptCount < kMaxRetryAttempts) {
+				_RetryMessage(pending);
+			} else {
+				_FailMessage(pending);
+				fPendingMessages.RemoveItemAt(i);
+				if (fPendingMessages.CountItems() == 0)
+					_StopDeliveryTimer();
+			}
+			break;
+		}
+	}
+}
+
+
+void
+MainWindow::_StartDeliveryTimer()
+{
+	if (fDeliveryCheckTimer != NULL)
+		return;  // Already running
+
+	BMessage msg(MSG_DELIVERY_CHECK_TICK);
+	fDeliveryCheckTimer = new BMessageRunner(this, &msg,
+		kDeliveryCheckInterval);
+}
+
+
+void
+MainWindow::_StopDeliveryTimer()
+{
+	delete fDeliveryCheckTimer;
+	fDeliveryCheckTimer = NULL;
+}
+
+
+void
+MainWindow::_CheckDeliveryTimeouts()
+{
+	bigtime_t now = system_time();
+
+	for (int32 i = fPendingMessages.CountItems() - 1; i >= 0; i--) {
+		PendingMessage* pending = fPendingMessages.ItemAt(i);
+		if (pending == NULL)
+			continue;
+
+		bigtime_t elapsed = now - pending->sentTime;
+
+		if (!pending->gotRspSent && elapsed > kSendTimeout) {
+			// No RSP_SENT after timeout — retry or fail
+			if (pending->attemptCount < kMaxRetryAttempts) {
+				_RetryMessage(pending);
+			} else {
+				_FailMessage(pending);
+				fPendingMessages.RemoveItemAt(i);
+			}
+		} else if (pending->gotRspSent && elapsed > kConfirmCleanup) {
+			// Got RSP_SENT but no CONFIRMED after 2 minutes
+			// This is normal for offline recipients — just clean up the queue
+			// Status stays as SENT (✓) in the UI
+			fPendingMessages.RemoveItemAt(i);
+		}
+	}
+
+	// Stop timer if queue is empty
+	if (fPendingMessages.CountItems() == 0)
+		_StopDeliveryTimer();
+}
+
+
+void
+MainWindow::_RetryMessage(PendingMessage* pending)
+{
+	pending->attemptCount++;
+	pending->sentTime = system_time();
+	pending->gotRspSent = false;
+
+	_LogMessage("INFO", BString().SetToFormat(
+		"Retrying message (attempt %d/%d)",
+		(int)pending->attemptCount, kMaxRetryAttempts));
+
+	// Update ChatView to show RETRYING status
+	ContactInfo* currentContact = fChatView->CurrentContact();
+	if (currentContact != NULL && pending->chatViewIndex >= 0) {
+		char currentHex[kContactHexSize];
+		FormatContactKey(currentHex, currentContact->publicKey);
+		if (strcmp(currentHex, pending->contactKey) == 0) {
+			fChatView->UpdateDeliveryStatus(pending->chatViewIndex,
+				DELIVERY_RETRYING, 0, pending->attemptCount);
+		}
+	}
+
+	// Update in-memory ChatMessage
+	ContactInfo* contact = _FindContactByPrefix(pending->pubKey,
+		kPubKeyPrefixSize);
+	if (contact != NULL) {
+		for (int32 i = contact->messages.CountItems() - 1; i >= 0; i--) {
+			ChatMessage* msg = contact->messages.ItemAt(i);
+			if (msg != NULL && msg->isOutgoing
+				&& msg->timestamp == pending->timestamp
+				&& (msg->deliveryStatus == DELIVERY_PENDING
+					|| msg->deliveryStatus == DELIVERY_RETRYING)) {
+				msg->deliveryStatus = DELIVERY_RETRYING;
+				msg->retryCount = pending->attemptCount;
+				break;
+			}
+		}
+	}
+
+	// Re-send via protocol
+	size_t textLen = strlen(pending->text);
+	fProtocol->SendDM(pending->pubKey, pending->txtType,
+		pending->timestamp, pending->text, textLen);
+	fTopBar->FlashTx();
+}
+
+
+void
+MainWindow::_FailMessage(PendingMessage* pending)
+{
+	_LogMessage("ERROR", BString().SetToFormat(
+		"Message delivery failed after %d attempt(s)",
+		(int)pending->attemptCount));
+
+	// Update ChatView to show FAILED status
+	ContactInfo* currentContact = fChatView->CurrentContact();
+	if (currentContact != NULL && pending->chatViewIndex >= 0) {
+		char currentHex[kContactHexSize];
+		FormatContactKey(currentHex, currentContact->publicKey);
+		if (strcmp(currentHex, pending->contactKey) == 0) {
+			fChatView->UpdateDeliveryStatus(pending->chatViewIndex,
+				DELIVERY_FAILED);
+		}
+	}
+
+	// Update in-memory ChatMessage
+	ContactInfo* contact = _FindContactByPrefix(pending->pubKey,
+		kPubKeyPrefixSize);
+	if (contact != NULL) {
+		for (int32 i = contact->messages.CountItems() - 1; i >= 0; i--) {
+			ChatMessage* msg = contact->messages.ItemAt(i);
+			if (msg != NULL && msg->isOutgoing
+				&& msg->timestamp == pending->timestamp
+				&& msg->deliveryStatus != DELIVERY_CONFIRMED
+				&& msg->deliveryStatus != DELIVERY_SENT) {
+				msg->deliveryStatus = DELIVERY_FAILED;
+				break;
+			}
+		}
+	}
+
+	// Persist FAILED status to database
+	DatabaseManager::Instance()->UpdateMessageDeliveryStatus(
+		pending->contactKey, pending->timestamp, DELIVERY_FAILED, 0);
 }
 
 
@@ -5364,7 +5642,16 @@ MainWindow::_OnDisconnected()
 	_SwitchToChatMode();
 	fSyncingMessages = false;
 	fEnumeratingChannels = false;
-	fPendingMsgIndex = -1;
+
+	// Mark all pending messages as FAILED on disconnect
+	while (fPendingMessages.CountItems() > 0) {
+		PendingMessage* pending = fPendingMessages.ItemAt(0);
+		if (pending != NULL)
+			_FailMessage(pending);
+		fPendingMessages.RemoveItemAt(0);
+	}
+	_StopDeliveryTimer();
+
 	fLoggedIn = false;
 	memset(fLoggedInKey, 0, kPubKeyPrefixSize);
 	fChatHeader->SetConsoleMode(false);
