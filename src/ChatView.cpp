@@ -166,7 +166,8 @@ ChatView::AddMessage(const ChatMessage& message, const char* senderName)
 
 
 void
-ChatView::UpdateDeliveryStatus(int32 index, uint8 status, uint32 rtt)
+ChatView::UpdateDeliveryStatus(int32 index, uint8 status, uint32 rtt,
+	uint8 retryCount)
 {
 	if (index < 0 || index >= CountItems())
 		return;
@@ -175,7 +176,7 @@ ChatView::UpdateDeliveryStatus(int32 index, uint8 status, uint32 rtt)
 	if (item == NULL)
 		return;
 
-	item->SetDeliveryStatus(status, rtt);
+	item->SetDeliveryStatus(status, rtt, retryCount);
 	InvalidateItem(index);
 }
 

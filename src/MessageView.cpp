@@ -69,6 +69,7 @@ MessageView::MessageView(const ChatMessage& message, const char* senderName)
 	fDeliveryStatus(message.deliveryStatus),
 	fRoundTripMs(message.roundTripMs),
 	fTxtType(message.txtType),
+	fRetryCount(message.retryCount),
 	fHopsClickRect(),
 	fBaselineOffset(0)
 {
@@ -160,6 +161,13 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 						timeStr, (unsigned long)fRoundTripMs);
 				else
 					displayMeta.SetToFormat("%s \xE2\x9C\x93\xE2\x9C\x93", timeStr);
+				break;
+			case DELIVERY_FAILED:
+				displayMeta.SetToFormat("%s \xE2\x9C\x97", timeStr);  // ✗
+				break;
+			case DELIVERY_RETRYING:
+				displayMeta.SetToFormat("%s \xE2\x86\xBB %d/3",       // ↻ N/3
+					timeStr, (int)fRetryCount);
 				break;
 			default:  // DELIVERY_SENT
 				displayMeta.SetToFormat("%s \xE2\x9C\x93", timeStr);  // ✓
@@ -276,8 +284,13 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	// Draw timestamp and delivery info
 	owner->SetFont(&metaFont);
 
-	// Draw base meta text
-	owner->SetHighColor(MetaTextColor());
+	// Draw base meta text — color-code by delivery status
+	if (fOutgoing && fDeliveryStatus == DELIVERY_FAILED)
+		owner->SetHighColor(kColorBad);
+	else if (fOutgoing && fDeliveryStatus == DELIVERY_RETRYING)
+		owner->SetHighColor(kColorFair);
+	else
+		owner->SetHighColor(MetaTextColor());
 
 	float metaWidthActual = metaFont.StringWidth(displayMeta.String());
 	snrWidth = showSnr ? (metaFont.StringWidth(snrStr.String()) + 4) : 0;
@@ -394,10 +407,11 @@ MessageView::Update(BView* owner, const BFont* font)
 
 
 void
-MessageView::SetDeliveryStatus(uint8 status, uint32 rtt)
+MessageView::SetDeliveryStatus(uint8 status, uint32 rtt, uint8 retryCount)
 {
 	fDeliveryStatus = status;
 	fRoundTripMs = rtt;
+	fRetryCount = retryCount;
 }
 
 

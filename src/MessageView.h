@@ -38,7 +38,8 @@ public:
 								{ return !fOutgoing && fPathLen > 0
 									&& fPathLen != kPathLenDirect; }
 
-			void			SetDeliveryStatus(uint8 status, uint32 rtt = 0);
+			void			SetDeliveryStatus(uint8 status, uint32 rtt = 0,
+								uint8 retryCount = 0);
 			uint8			DeliveryStatus() const { return fDeliveryStatus; }
 
 private:
@@ -57,6 +58,7 @@ private:
 			uint8			fDeliveryStatus;
 			uint32			fRoundTripMs;
 			uint8			fTxtType;
+			uint8			fRetryCount;
 			uint8			fPubKeyPrefix[6];
 			BRect			fHopsClickRect;
 

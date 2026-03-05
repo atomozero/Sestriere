@@ -66,6 +66,12 @@ public:
 								OwningObjectList<ChatMessage>& outMessages,
 								int32 maxResults = 50);
 
+			// Delivery status update
+			bool			UpdateMessageDeliveryStatus(
+								const char* contactKeyHex,
+								uint32 timestamp, uint8 status,
+								uint32 roundTripMs);
+
 			// Statistics
 			int32			GetMessageCount(const char* contactKeyHex);
 			int32			GetTotalMessageCount();

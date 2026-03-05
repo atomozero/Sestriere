@@ -93,6 +93,10 @@ DatabaseManager::Open(const char* directory)
 	// Schema migration: add txt_type column if missing (added in 1.7)
 	_Execute("ALTER TABLE messages ADD COLUMN txt_type INTEGER DEFAULT 0");
 
+	// Schema migration: add delivery_status and round_trip_ms (added in 1.8)
+	_Execute("ALTER TABLE messages ADD COLUMN delivery_status INTEGER DEFAULT 1");
+	_Execute("ALTER TABLE messages ADD COLUMN round_trip_ms INTEGER DEFAULT 0");
+
 	// Migrate old messages.txt if database is empty
 	if (_IsEmpty())
 		_MigrateFromTextFile(directory);
@@ -133,8 +137,9 @@ DatabaseManager::InsertMessage(const char* contactKeyHex,
 
 	const char* sql =
 		"INSERT OR IGNORE INTO messages (contact_key, timestamp, outgoing, "
-		"channel, sender_key, text, path_len, snr, txt_type) "
-		"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+		"channel, sender_key, text, path_len, snr, txt_type, "
+		"delivery_status, round_trip_ms) "
+		"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
@@ -153,6 +158,40 @@ DatabaseManager::InsertMessage(const char* contactKeyHex,
 	sqlite3_bind_int(stmt, 7, message.pathLen);
 	sqlite3_bind_int(stmt, 8, message.snr);
 	sqlite3_bind_int(stmt, 9, message.txtType);
+	sqlite3_bind_int(stmt, 10, message.deliveryStatus);
+	sqlite3_bind_int(stmt, 11, message.roundTripMs);
+
+	rc = sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+	return rc == SQLITE_DONE;
+}
+
+
+bool
+DatabaseManager::UpdateMessageDeliveryStatus(const char* contactKeyHex,
+	uint32 timestamp, uint8 status, uint32 roundTripMs)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL)
+		return false;
+
+	const char* sql =
+		"UPDATE messages SET delivery_status = ?, round_trip_ms = ? "
+		"WHERE contact_key = ? AND timestamp = ? AND outgoing = 1";
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "[DatabaseManager] prepare failed: %s\n",
+			sqlite3_errmsg(fDB));
+		return false;
+	}
+
+	sqlite3_bind_int(stmt, 1, status);
+	sqlite3_bind_int(stmt, 2, roundTripMs);
+	sqlite3_bind_text(stmt, 3, contactKeyHex, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 4, timestamp);
 
 	rc = sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
@@ -171,7 +210,8 @@ DatabaseManager::LoadMessages(const char* contactKeyHex,
 
 	const char* sql =
 		"SELECT timestamp, outgoing, sender_key, text, path_len, snr, "
-		"txt_type FROM messages WHERE contact_key = ? AND channel = 0 "
+		"txt_type, delivery_status, round_trip_ms "
+		"FROM messages WHERE contact_key = ? AND channel = 0 "
 		"ORDER BY timestamp ASC";
 
 	sqlite3_stmt* stmt;
@@ -203,6 +243,8 @@ DatabaseManager::LoadMessages(const char* contactKeyHex,
 		msg->pathLen = (uint8)sqlite3_column_int(stmt, 4);
 		msg->snr = (int8)sqlite3_column_int(stmt, 5);
 		msg->txtType = (uint8)sqlite3_column_int(stmt, 6);
+		msg->deliveryStatus = (uint8)sqlite3_column_int(stmt, 7);
+		msg->roundTripMs = (uint32)sqlite3_column_int(stmt, 8);
 
 		outMessages.AddItem(msg);
 		count++;
@@ -222,7 +264,8 @@ DatabaseManager::LoadChannelMessages(OwningObjectList<ChatMessage>& outMessages)
 
 	const char* sql =
 		"SELECT timestamp, outgoing, sender_key, text, path_len, snr, "
-		"txt_type FROM messages WHERE channel = 1 "
+		"txt_type, delivery_status, round_trip_ms "
+		"FROM messages WHERE channel = 1 "
 		"ORDER BY timestamp ASC";
 
 	sqlite3_stmt* stmt;
@@ -251,6 +294,8 @@ DatabaseManager::LoadChannelMessages(OwningObjectList<ChatMessage>& outMessages)
 		msg->pathLen = (uint8)sqlite3_column_int(stmt, 4);
 		msg->snr = (int8)sqlite3_column_int(stmt, 5);
 		msg->txtType = (uint8)sqlite3_column_int(stmt, 6);
+		msg->deliveryStatus = (uint8)sqlite3_column_int(stmt, 7);
+		msg->roundTripMs = (uint32)sqlite3_column_int(stmt, 8);
 
 		outMessages.AddItem(msg);
 		count++;

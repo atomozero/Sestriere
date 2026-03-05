@@ -29,7 +29,7 @@ public:
 			void			AddMessage(const ChatMessage& message,
 								const char* senderName = NULL);
 			void			UpdateDeliveryStatus(int32 index, uint8 status,
-								uint32 rtt = 0);
+								uint32 rtt = 0, uint8 retryCount = 0);
 			void			ClearMessages();
 
 			void			SetCurrentContact(ContactInfo* contact);

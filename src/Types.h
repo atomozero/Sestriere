@@ -62,7 +62,9 @@ static const uint8 kPathLenDirect = 0xFF;	// Direct path (no hops)
 enum DeliveryStatus {
 	DELIVERY_PENDING	= 0,	// Waiting for radio to transmit
 	DELIVERY_SENT		= 1,	// Radio transmitted (RSP_SENT)
-	DELIVERY_CONFIRMED	= 2		// Recipient ACKed (PUSH_SEND_CONFIRMED)
+	DELIVERY_CONFIRMED	= 2,	// Recipient ACKed (PUSH_SEND_CONFIRMED)
+	DELIVERY_FAILED		= 3,	// All retry attempts exhausted
+	DELIVERY_RETRYING	= 4		// Retrying after timeout
 };
 
 // Chat message for display in ChatView
@@ -77,11 +79,12 @@ struct ChatMessage {
 	uint8	deliveryStatus;		// DeliveryStatus enum value
 	uint32	roundTripMs;		// Round-trip time from PUSH_SEND_CONFIRMED
 	uint8	txtType;			// 0=plain, 1=CLI data
+	uint8	retryCount;			// Number of retry attempts (0 = first try)
 
 	ChatMessage() : pathLen(kPathLenDirect), snr(0), timestamp(0),
 					isOutgoing(false), isChannel(false),
 					deliveryStatus(DELIVERY_SENT), roundTripMs(0),
-					txtType(0) {
+					txtType(0), retryCount(0) {
 		memset(pubKeyPrefix, 0, sizeof(pubKeyPrefix));
 		memset(text, 0, sizeof(text));
 	}
