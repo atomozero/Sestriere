@@ -12,11 +12,30 @@
 #include <View.h>
 #include <Window.h>
 
+#include "SarMarker.h"
 #include "Types.h"
 
 class BButton;
 class BCheckBox;
 class TileCache;
+
+
+// SAR pin on the geographic map
+struct SarMapPin {
+	double		lat;
+	double		lon;
+	char		emoji[8];
+	char		name[64];
+	int			colorIndex;
+	uint32		timestamp;
+
+	SarMapPin()
+		: lat(0), lon(0), colorIndex(0), timestamp(0)
+	{
+		memset(emoji, 0, sizeof(emoji));
+		memset(name, 0, sizeof(name));
+	}
+};
 
 
 // Geographic map node representation
@@ -61,6 +80,11 @@ public:
 								float lat, float lon);
 			void			ClearNodes();
 
+			void			AddSarPin(float lat, float lon,
+								const char* emoji, const char* name,
+								int colorIndex);
+			void			ClearSarPins();
+
 			void			ZoomIn();
 			void			ZoomOut();
 			void			ZoomToFit();
@@ -83,6 +107,7 @@ private:
 			void			_DrawNodes();
 			void			_DrawNode(const GeoMapNode& node);
 			void			_DrawConnections();
+			void			_DrawSarPins();
 			void			_DrawScaleBar();
 			void			_DrawCompass();
 
@@ -92,6 +117,7 @@ private:
 			int				_ZoomToTileZoom() const;
 
 			OwningObjectList<GeoMapNode>	fNodes;
+			OwningObjectList<SarMapPin>		fSarPins;
 			GeoMapNode		fSelfNode;
 			bool			fHasSelfPosition;
 
@@ -134,6 +160,9 @@ public:
 	void				UpdateFromContacts(
 							OwningObjectList<ContactInfo>* contacts,
 							double defaultLat, double defaultLon);
+	void				AddSarPin(float lat, float lon,
+							const char* emoji, const char* name,
+							int colorIndex);
 
 private:
 	MapView*			fMapView;

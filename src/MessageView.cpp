@@ -16,6 +16,7 @@
 #include <ctime>
 
 #include "Constants.h"
+#include "SarMarker.h"
 
 
 // Theme-aware colors derived from Haiku system colors
@@ -54,6 +55,7 @@ static const float kBubbleRadius = 4.0f;       // Haiku uses smaller radii
 static const float kBubbleMaxWidthRatio = 0.75f;
 static const float kBubbleMargin = 6.0f;
 static const float kBorderWidth = 1.0f;
+static const float kSarBorderWidth = 3.0f;
 
 
 MessageView::MessageView(const ChatMessage& message, const char* senderName)
@@ -71,9 +73,12 @@ MessageView::MessageView(const ChatMessage& message, const char* senderName)
 	fTxtType(message.txtType),
 	fRetryCount(message.retryCount),
 	fHopsClickRect(),
+	fIsSarMarker(false),
+	fSarMarker(),
 	fBaselineOffset(0)
 {
 	memcpy(fPubKeyPrefix, message.pubKeyPrefix, sizeof(fPubKeyPrefix));
+	fIsSarMarker = ParseSarMarker(fText.String(), fSarMarker);
 }
 
 
@@ -94,6 +99,7 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	owner->FillRect(frame, B_SOLID_LOW);
 
 	bool isCli = (fTxtType == 1);
+	bool isSar = fIsSarMarker;
 
 	// Set font explicitly to ensure consistent measurement and drawing.
 	// CLI uses monospace; regular messages use the system plain font.
@@ -221,7 +227,17 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	// Draw bubble background with Haiku-style subtle shadow
 	rgb_color bubbleColor;
 	rgb_color borderColor;
-	if (isCli) {
+	rgb_color sarColor = {0, 0, 0, 255};
+	if (isSar) {
+		sarColor = SarMarkerColor(fSarMarker.colorIndex);
+		// Mix 15% SAR color + 85% panel background
+		rgb_color panelBg = ui_color(B_PANEL_BACKGROUND_COLOR);
+		bubbleColor.red = (uint8)(panelBg.red * 0.85f + sarColor.red * 0.15f);
+		bubbleColor.green = (uint8)(panelBg.green * 0.85f + sarColor.green * 0.15f);
+		bubbleColor.blue = (uint8)(panelBg.blue * 0.85f + sarColor.blue * 0.15f);
+		bubbleColor.alpha = 255;
+		borderColor = tint_color(sarColor, B_DARKEN_2_TINT);
+	} else if (isCli) {
 		// Terminal-style: very dark background for CLI messages
 		bubbleColor = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_MAX_TINT);
 		borderColor = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_4_TINT);
@@ -244,6 +260,14 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	owner->SetHighColor(borderColor);
 	owner->StrokeRoundRect(bubbleRect, kBubbleRadius, kBubbleRadius);
 
+	// SAR marker: colored left border stripe
+	if (isSar) {
+		owner->SetHighColor(sarColor);
+		BRect stripe(bubbleRect.left, bubbleRect.top + kBubbleRadius,
+			bubbleRect.left + kSarBorderWidth, bubbleRect.bottom - kBubbleRadius);
+		owner->FillRect(stripe);
+	}
+
 	// Draw content
 	float yPos = bubbleRect.top + kBubblePadding + fh.ascent;
 
@@ -265,20 +289,68 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	}
 
 	// Draw message text
-	if (isCli && fOutgoing) {
+	float contentLeft = bubbleRect.left + kBubblePadding
+		+ (isSar ? kSarBorderWidth : 0);
+
+	if (isSar) {
+		// SAR marker: emoji + type name in bold
+		BFont savedFont;
+		owner->GetFont(&savedFont);
+		BFont boldFont(savedFont);
+		boldFont.SetFace(B_BOLD_FACE);
+		owner->SetFont(&boldFont);
+		owner->SetHighColor(BubbleTextColor());
+
+		BString titleLine;
+		titleLine.SetToFormat("%s %s", fSarMarker.emoji,
+			SarMarkerTypeName(fSarMarker.type));
+		owner->DrawString(titleLine.String(), BPoint(contentLeft, yPos));
+		yPos += lineHeight;
+
+		// Coordinates in monospace
+		owner->SetFont(be_fixed_font);
+		owner->SetHighColor(MetaTextColor());
+		char coordBuf[64];
+		snprintf(coordBuf, sizeof(coordBuf), "%.4f%c, %.4f%c",
+			fSarMarker.lat < 0 ? -fSarMarker.lat : fSarMarker.lat,
+			fSarMarker.lat >= 0 ? 'N' : 'S',
+			fSarMarker.lon < 0 ? -fSarMarker.lon : fSarMarker.lon,
+			fSarMarker.lon >= 0 ? 'E' : 'W');
+		owner->DrawString(coordBuf, BPoint(contentLeft, yPos));
+		yPos += lineHeight;
+
+		// Note (if present)
+		if (fSarMarker.notes[0] != '\0') {
+			owner->SetFont(&savedFont);
+			owner->SetHighColor(BubbleTextColor());
+			owner->DrawString(fSarMarker.notes, BPoint(contentLeft, yPos));
+			yPos += lineHeight;
+		}
+
+		owner->SetFont(&savedFont);
+	} else if (isCli && fOutgoing) {
 		// Bright amber prompt for outgoing CLI commands
 		owner->SetHighColor((rgb_color){255, 210, 80, 255});
+		for (const auto& line : lines) {
+			owner->DrawString(line.String(),
+				BPoint(contentLeft, yPos));
+			yPos += lineHeight;
+		}
 	} else if (isCli) {
 		// Bright green text for incoming CLI responses (terminal-style)
 		owner->SetHighColor((rgb_color){130, 255, 200, 255});
+		for (const auto& line : lines) {
+			owner->DrawString(line.String(),
+				BPoint(contentLeft, yPos));
+			yPos += lineHeight;
+		}
 	} else {
 		owner->SetHighColor(BubbleTextColor());
-	}
-
-	for (const auto& line : lines) {
-		owner->DrawString(line.String(),
-			BPoint(bubbleRect.left + kBubblePadding, yPos));
-		yPos += lineHeight;
+		for (const auto& line : lines) {
+			owner->DrawString(line.String(),
+				BPoint(contentLeft, yPos));
+			yPos += lineHeight;
+		}
 	}
 
 	// Draw timestamp and delivery info
@@ -359,6 +431,7 @@ MessageView::Update(BView* owner, const BFont* font)
 	BListItem::Update(owner, font);
 
 	bool isCli = (fTxtType == 1);
+	bool isSar = fIsSarMarker;
 
 	// Use monospace font metrics for CLI messages
 	const BFont* measureFont = isCli ? be_fixed_font : font;
@@ -375,21 +448,31 @@ MessageView::Update(BView* owner, const BFont* font)
 	BRect ownerBounds = owner->Bounds();
 	float maxBubbleWidth = ownerBounds.Width() * kBubbleMaxWidthRatio;
 
-	// For CLI messages, prepend "> " to outgoing commands
-	BString displayText = fText;
-	if (isCli && fOutgoing)
-		displayText.Prepend("> ");
+	int32 lineCount;
 
-	// Estimate line count for height calculation.
-	// NOTE: Do NOT call owner->SetFont() here — it triggers
-	// BListView::_UpdateItems() → Update() infinite recursion.
-	// Use measureFont->StringWidth() directly for consistent results.
-	float availWidth = maxBubbleWidth - kBubblePadding * 2;
-	float textWidth = measureFont->StringWidth(displayText.String());
-	int32 lineCount = (textWidth > availWidth)
-		? (int32)(textWidth / availWidth) + 1 : 1;
-	if (lineCount < 1)
-		lineCount = 1;
+	if (isSar) {
+		// SAR marker: title + coordinates + optional note = 2-3 lines
+		lineCount = 2;
+		if (fSarMarker.notes[0] != '\0')
+			lineCount = 3;
+	} else {
+		// For CLI messages, prepend "> " to outgoing commands
+		BString displayText = fText;
+		if (isCli && fOutgoing)
+			displayText.Prepend("> ");
+
+		// Estimate line count for height calculation.
+		// NOTE: Do NOT call owner->SetFont() here — it triggers
+		// BListView::_UpdateItems() → Update() infinite recursion.
+		// Use measureFont->StringWidth() directly for consistent results.
+		float availWidth = maxBubbleWidth - kBubblePadding * 2;
+		float textWidth = measureFont->StringWidth(displayText.String());
+		lineCount = (textWidth > availWidth)
+			? (int32)(textWidth / availWidth) + 1 : 1;
+		if (lineCount < 1)
+			lineCount = 1;
+	}
+
 	std::vector<BString> lines;
 	for (int32 i = 0; i < lineCount; i++)
 		lines.push_back("");

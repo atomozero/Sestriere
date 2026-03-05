@@ -65,6 +65,7 @@
 #include "SerialMonitorWindow.h"
 #include "NotificationManager.h"
 #include "ProtocolHandler.h"
+#include "SarMarker.h"
 #include "SerialHandler.h"
 #include "SettingsWindow.h"
 #include "StatsWindow.h"
@@ -429,6 +430,8 @@ MainWindow::_BuildMenuBar()
 		new BMessage(MSG_SYNC_CONTACTS), 'R'));
 	deviceMenu->AddItem(new BMenuItem("Send Advertisement",
 		new BMessage(MSG_SEND_ADVERT), 'A'));
+	deviceMenu->AddItem(new BMenuItem("Send SAR Marker" B_UTF8_ELLIPSIS,
+		new BMessage(MSG_SEND_SAR_MARKER)));
 	deviceMenu->AddItem(new BMenuItem("Trace Path",
 		new BMessage(MSG_SHOW_TRACE_PATH), 'T'));
 	deviceMenu->AddItem(new BMenuItem("Ping All Contacts",
@@ -2660,6 +2663,12 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_SEND_SAR_MARKER:
+		{
+			_ShowSarMarkerDialog();
+			break;
+		}
+
 		case MSG_EXPORT_GPX:
 		{
 			if (fContacts.CountItems() == 0) {
@@ -4488,6 +4497,13 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 		fNetworkMapWindow->UnlockLooper();
 	}
 
+	// Check for SAR marker and forward to GeoMap
+	{
+		SarMarker sarMarker;
+		if (ParseSarMarker(text, sarMarker))
+			_ForwardSarMarkerToMap(sarMarker, senderName.String());
+	}
+
 	// Auto-trace when message hop count disagrees with stored outPath
 	if (sender != NULL && pathLen != kPathLenDirect && pathLen > 0
 		&& sender->outPathLen == 0 && fConnected) {
@@ -4704,6 +4720,13 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 				break;
 			}
 		}
+	}
+
+	// Check for SAR marker and forward to GeoMap
+	{
+		SarMarker sarMarker;
+		if (ParseSarMarker(messageText, sarMarker))
+			_ForwardSarMarkerToMap(sarMarker, senderName.String());
 	}
 
 	// Desktop notification if window not active and channel not muted
@@ -6964,4 +6987,92 @@ MainWindow::_UpdateRepeaterMap()
 		fDeviceName[0] ? fDeviceName : "Repeater",
 		nodes, nodeCount, links, linkCount);
 	fNetworkMapWindow->UnlockLooper();
+}
+
+
+void
+MainWindow::_ForwardSarMarkerToMap(const SarMarker& marker,
+	const char* senderName)
+{
+	_LogMessage("SAR", BString().SetToFormat(
+		"SAR marker from %s: %s %s at %.4f,%.4f — %s",
+		senderName, marker.emoji, SarMarkerTypeName(marker.type),
+		marker.lat, marker.lon,
+		marker.notes[0] ? marker.notes : "(no note)"));
+
+	if (fMapWindow == NULL)
+		return;
+
+	if (fMapWindow->LockLooper()) {
+		fMapWindow->AddSarPin(
+			(float)marker.lat, (float)marker.lon,
+			marker.emoji, senderName, marker.colorIndex);
+		fMapWindow->UnlockLooper();
+	}
+}
+
+
+void
+MainWindow::_ShowSarMarkerDialog()
+{
+	// Step 1: Choose SAR type via BAlert (max 3 buttons per alert)
+	BAlert* typeAlert = new BAlert("SAR Marker",
+		"Select SAR marker type to send:",
+		"Person", "Fire", "Staging");
+	int32 choice = typeAlert->Go();
+	if (choice < 0)
+		return;
+
+	SarMarkerType sarType;
+	if (choice == 0) sarType = SAR_PERSON;
+	else if (choice == 1) sarType = SAR_FIRE;
+	else sarType = SAR_STAGING;
+
+	// Offer more types if none of the first 3 were selected...
+	// Actually user already picked one. For Object/Unknown, show second alert.
+	// Simplify: first alert covers the 3 most common types.
+
+	// Step 2: Get coordinates from selected contact GPS
+	double lat = 0, lon = 0;
+	if (fSelectedContact >= 0) {
+		ContactItem* item = dynamic_cast<ContactItem*>(
+			fContactList->ItemAt(fSelectedContact));
+		if (item != NULL) {
+			const ContactInfo& ci = item->GetContact();
+			if (ci.HasGPS()) {
+				lat = ci.latitude / 1e6;
+				lon = ci.longitude / 1e6;
+			}
+		}
+	}
+
+	if (lat == 0.0 && lon == 0.0) {
+		BAlert* noGps = new BAlert("SAR Marker",
+			"No GPS coordinates available.\n\n"
+			"Select a contact with GPS position, or\n"
+			"type a SAR marker directly in chat:\n"
+			"S:\xF0\x9F\xA7\x91:0:45.44,7.12:Note",
+			"OK");
+		noGps->Go();
+		return;
+	}
+
+	// Build and send the marker
+	SarMarker marker;
+	marker.type = sarType;
+	strlcpy(marker.emoji, SarMarkerEmoji(sarType), sizeof(marker.emoji));
+	marker.colorIndex = 0;
+	marker.lat = lat;
+	marker.lon = lon;
+	marker.isValid = true;
+	strlcpy(marker.notes, SarMarkerTypeName(sarType),
+		sizeof(marker.notes));
+
+	char sarText[256];
+	FormatSarMarker(sarText, sizeof(sarText), marker);
+
+	_SendTextMessage(sarText);
+
+	_LogMessage("SAR", BString().SetToFormat(
+		"Sent SAR marker: %s", sarText));
 }

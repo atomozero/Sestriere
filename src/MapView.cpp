@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 
 #include "CoastlineData.h"
 #include "Constants.h"
@@ -124,7 +125,10 @@ MapView::Draw(BRect /*updateRect*/)
 	// 6. Nodes
 	_DrawNodes();
 
-	// 7. Scale bar + compass
+	// 7. SAR pins (on top of nodes)
+	_DrawSarPins();
+
+	// 8. Scale bar + compass
 	_DrawScaleBar();
 	_DrawCompass();
 }
@@ -299,6 +303,91 @@ MapView::ClearNodes()
 	fSelectedNode = NULL;
 	fHoverNode = NULL;
 	Invalidate();
+}
+
+
+void
+MapView::AddSarPin(float lat, float lon, const char* emoji,
+	const char* name, int colorIndex)
+{
+	SarMapPin* pin = new SarMapPin();
+	pin->lat = lat;
+	pin->lon = lon;
+	strlcpy(pin->emoji, emoji, sizeof(pin->emoji));
+	strlcpy(pin->name, name, sizeof(pin->name));
+	pin->colorIndex = colorIndex;
+	pin->timestamp = (uint32)time(NULL);
+	fSarPins.AddItem(pin);
+	Invalidate();
+}
+
+
+void
+MapView::ClearSarPins()
+{
+	fSarPins.MakeEmpty();
+	Invalidate();
+}
+
+
+void
+MapView::_DrawSarPins()
+{
+	for (int32 i = 0; i < fSarPins.CountItems(); i++) {
+		SarMapPin* pin = fSarPins.ItemAt(i);
+		BPoint pos = _LatLonToScreen((float)pin->lat, (float)pin->lon);
+
+		// Skip if off-screen
+		BRect bounds = Bounds();
+		if (pos.x < bounds.left - 20 || pos.x > bounds.right + 20
+			|| pos.y < bounds.top - 20 || pos.y > bounds.bottom + 20)
+			continue;
+
+		rgb_color pinColor = SarMarkerColor(pin->colorIndex);
+		float radius = 8.0f;
+
+		// Filled circle with pin color
+		SetHighColor(pinColor);
+		FillEllipse(pos, radius, radius);
+
+		// Dark border
+		rgb_color dark = tint_color(pinColor, B_DARKEN_3_TINT);
+		SetHighColor(dark);
+		StrokeEllipse(pos, radius, radius);
+
+		// Draw emoji centered in circle
+		SetHighColor(255, 255, 255);
+		font_height fh;
+		GetFontHeight(&fh);
+		float emojiWidth = StringWidth(pin->emoji);
+		DrawString(pin->emoji,
+			BPoint(pos.x - emojiWidth / 2,
+				pos.y + fh.ascent / 2 - 1));
+
+		// Label below pin
+		if (pin->name[0] != '\0') {
+			BFont labelFont(be_plain_font);
+			labelFont.SetSize(9.0f);
+			SetFont(&labelFont);
+
+			float nameWidth = labelFont.StringWidth(pin->name);
+			float labelX = pos.x - nameWidth / 2;
+			float labelY = pos.y + radius + fh.ascent + 2;
+
+			// Background for readability
+			rgb_color labelBg = ui_color(B_PANEL_BACKGROUND_COLOR);
+			labelBg.alpha = 200;
+			BRect labelRect(labelX - 2, labelY - fh.ascent,
+				labelX + nameWidth + 2, labelY + fh.descent);
+			SetHighColor(labelBg);
+			FillRoundRect(labelRect, 2, 2);
+
+			SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
+			DrawString(pin->name, BPoint(labelX, labelY));
+
+			SetFont(be_plain_font);
+		}
+	}
 }
 
 
@@ -952,6 +1041,20 @@ MapWindow::MessageReceived(BMessage* message)
 			fMapView->SetTilesEnabled(
 				fTilesCheckBox->Value() == B_CONTROL_ON);
 			break;
+		case MSG_SAR_MARKER:
+		{
+			float lat = 0, lon = 0;
+			int32 colorIndex = 0;
+			const char* emoji = "";
+			const char* name = "";
+			message->FindFloat("lat", &lat);
+			message->FindFloat("lon", &lon);
+			message->FindInt32("color", &colorIndex);
+			message->FindString("emoji", &emoji);
+			message->FindString("name", &name);
+			fMapView->AddSarPin(lat, lon, emoji, name, (int)colorIndex);
+			break;
+		}
 		default:
 			BWindow::MessageReceived(message);
 			break;
@@ -971,6 +1074,14 @@ void
 MapWindow::SetSelfPosition(float lat, float lon, const char* name)
 {
 	fMapView->SetSelfPosition(lat, lon, name);
+}
+
+
+void
+MapWindow::AddSarPin(float lat, float lon, const char* emoji,
+	const char* name, int colorIndex)
+{
+	fMapView->AddSarPin(lat, lon, emoji, name, colorIndex);
 }
 
 

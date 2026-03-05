@@ -15,6 +15,7 @@ class BCardView;
 class BFilePanel;
 
 #include "MqttClient.h"
+#include "SarMarker.h"
 #include "Types.h"
 
 class BButton;
@@ -201,6 +202,11 @@ private:
 
 			// Admin toolbar (in chat area, above input bar)
 			void			_ShowAdminToolbar(bool show);
+
+			// SAR marker forwarding
+			void			_ForwardSarMarkerToMap(const SarMarker& marker,
+								const char* senderName);
+			void			_ShowSarMarkerDialog();
 
 			SerialHandler*	fSerialHandler;
 			ProtocolHandler* fProtocol;

@@ -14,6 +14,7 @@
 
 #include <vector>
 
+#include "SarMarker.h"
 #include "Types.h"
 
 class MessageView : public BListItem {
@@ -61,6 +62,9 @@ private:
 			uint8			fRetryCount;
 			uint8			fPubKeyPrefix[6];
 			BRect			fHopsClickRect;
+
+			bool			fIsSarMarker;
+			SarMarker		fSarMarker;
 
 			float			fBaselineOffset;
 };
