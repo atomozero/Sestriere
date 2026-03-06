@@ -365,7 +365,11 @@ EmojiRenderer::DrawLine(BView* owner, const char* text, BPoint pos,
 					+ (emojiSize - size) / 2;
 				BRect src = bmp->Bounds();
 				BRect dst(x, ey, x + size - 1, ey + size - 1);
+				owner->SetDrawingMode(B_OP_ALPHA);
+				owner->SetBlendingMode(B_PIXEL_ALPHA,
+					B_ALPHA_OVERLAY);
 				owner->DrawBitmap(bmp, src, dst);
+				owner->SetDrawingMode(B_OP_COPY);
 				x += size;
 			} else {
 				// Emoji not yet cached — draw the raw bytes
