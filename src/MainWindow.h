@@ -14,6 +14,7 @@
 class BCardView;
 class BFilePanel;
 
+#include "ImageSession.h"
 #include "MqttClient.h"
 #include "SarMarker.h"
 #include "Types.h"
@@ -208,6 +209,16 @@ private:
 								const char* senderName);
 			void			_ShowSarMarkerDialog();
 
+			// Image sharing
+			void			_HandleImageSelected(BMessage* message);
+			void			_SendNextImageFragment();
+			void			_HandleIncomingImageFragment(const uint8* payload,
+								size_t length);
+			void			_HandleIncomingFetchRequest(const uint8* payload,
+								size_t length);
+			void			_StartImageFetch(uint32 sessionId);
+			void			_UpdateImageMessageView(uint32 sessionId);
+
 			SerialHandler*	fSerialHandler;
 			ProtocolHandler* fProtocol;
 
@@ -383,6 +394,15 @@ private:
 
 			// Contact groups
 			OwningObjectList<BString>	fGroupNames;
+
+			// Image sharing
+			ImageSessionManager*	fImageSessions;
+			BFilePanel*		fImageOpenPanel;
+			BButton*		fAttachButton;
+			BMessageRunner*	fImageFragmentTimer;
+			BMessageRunner*	fImageExpireTimer;
+			uint32			fCurrentSendSession;
+			uint8			fCurrentSendIndex;
 };
 
 

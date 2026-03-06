@@ -329,6 +329,13 @@ enum {
 	MSG_SAR_MARKER = 'sarm',
 	MSG_SEND_SAR_MARKER = 'ssrm',
 	MSG_SAR_TYPE_CHOSEN = 'srty',
+
+	// Image sharing
+	MSG_SELECT_IMAGE = 'imgs',
+	MSG_IMAGE_SELECTED = 'imsl',
+	MSG_IMAGE_SEND_NEXT = 'imfr',
+	MSG_IMAGE_FETCH_REQ = 'imft',
+	MSG_IMAGE_EXPIRE = 'imex',
 };
 
 // =============================================================================

@@ -51,6 +51,9 @@
 #include "ContactInfoPanel.h"
 #include "DatabaseManager.h"
 #include "GrowingTextView.h"
+#include "ImageCodec.h"
+#include "ImageSession.h"
+#include "MessageView.h"
 #include "ContactItem.h"
 #include "DebugLogWindow.h"
 #include "LoginWindow.h"
@@ -289,7 +292,14 @@ MainWindow::MainWindow()
 	fNoiseFloor(0),
 	fTxPackets(0),
 	fRxPackets(0),
-	fDeviceUptime(0)
+	fDeviceUptime(0),
+	fImageSessions(NULL),
+	fImageOpenPanel(NULL),
+	fAttachButton(NULL),
+	fImageFragmentTimer(NULL),
+	fImageExpireTimer(NULL),
+	fCurrentSendSession(0),
+	fCurrentSendIndex(0)
 {
 	// Initialize device info
 	memset(fDeviceName, 0, sizeof(fDeviceName));
@@ -310,6 +320,7 @@ MainWindow::MainWindow()
 	fPingAllResponded = 0;
 	memset(fLoggedInKey, 0, sizeof(fLoggedInKey));
 	fHasDeviceInfo = false;
+	fImageSessions = new ImageSessionManager();
 	fRadioFreq = 0;
 	fRadioBw = 0;
 	fRadioSf = 0;
@@ -401,6 +412,12 @@ MainWindow::~MainWindow()
 	}
 
 	delete fGpxSavePanel;
+
+	// Image sharing cleanup
+	delete fImageSessions;
+	delete fImageOpenPanel;
+	delete fImageFragmentTimer;
+	delete fImageExpireTimer;
 
 	// Child windows and singletons are destroyed in QuitRequested()
 }
@@ -614,11 +631,17 @@ MainWindow::_BuildUI()
 
 	fMessageInput->SetModificationMessage(new BMessage(MSG_INPUT_MODIFIED));
 
-	// Input bar: [input] [counter] [send]
+	// Image attach button
+	fAttachButton = new BButton("attach", "Img",
+		new BMessage(MSG_SELECT_IMAGE));
+	fAttachButton->SetEnabled(false);
+
+	// Input bar: [attach] [input] [counter] [send]
 	BView* inputBar = new BView("input_bar", 0);
 	inputBar->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	BLayoutBuilder::Group<>(inputBar, B_HORIZONTAL, B_USE_SMALL_SPACING)
 		.SetInsets(B_USE_SMALL_SPACING)
+		.Add(fAttachButton)
 		.Add(inputScroll, 1.0)
 		.Add(fCharCounter)
 		.Add(fSendButton)
@@ -777,6 +800,7 @@ MainWindow::_UpdateConnectionUI()
 		fTopBar->SetConnected(false);
 		fMessageInput->SetEnabled(false);
 		fSendButton->SetEnabled(false);
+		fAttachButton->SetEnabled(false);
 	}
 }
 
@@ -2858,6 +2882,38 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		// --- Image sharing ---
+		case MSG_SELECT_IMAGE:
+		{
+			if (fImageOpenPanel == NULL) {
+				fImageOpenPanel = new BFilePanel(B_OPEN_PANEL, new BMessenger(this),
+					NULL, B_FILE_NODE, false, new BMessage(MSG_IMAGE_SELECTED));
+			}
+			fImageOpenPanel->Show();
+			break;
+		}
+
+		case MSG_IMAGE_SELECTED:
+			_HandleImageSelected(message);
+			break;
+
+		case MSG_IMAGE_SEND_NEXT:
+			_SendNextImageFragment();
+			break;
+
+		case MSG_IMAGE_FETCH_REQ:
+		{
+			uint32 sid;
+			if (message->FindUInt32("session_id", &sid) == B_OK)
+				_StartImageFetch(sid);
+			break;
+		}
+
+		case MSG_IMAGE_EXPIRE:
+			if (fImageSessions != NULL)
+				fImageSessions->PurgeExpired();
+			break;
+
 		default:
 			BWindow::MessageReceived(message);
 			break;
@@ -2993,6 +3049,7 @@ MainWindow::_SelectContact(int32 index)
 		_ShowAdminToolbar(false);
 		fMessageInput->SetEnabled(fConnected);
 		fSendButton->SetEnabled(fConnected);
+		fAttachButton->SetEnabled(fConnected);
 
 		// Load channel message history
 		fChatView->ClearMessages();
@@ -3038,6 +3095,7 @@ MainWindow::_SelectContact(int32 index)
 		_ShowAdminToolbar(false);
 		fMessageInput->SetEnabled(fConnected);
 		fSendButton->SetEnabled(fConnected);
+		fAttachButton->SetEnabled(fConnected);
 
 		// Load private channel message history
 		fChatView->ClearMessages();
@@ -3080,6 +3138,7 @@ MainWindow::_SelectContact(int32 index)
 			_ShowAdminToolbar(isLoggedInContact);
 			fMessageInput->SetEnabled(fConnected);
 			fSendButton->SetEnabled(fConnected);
+			fAttachButton->SetEnabled(fConnected);
 
 			// Clear unread badge for this contact
 			selectedItem->ClearUnread();
@@ -3107,6 +3166,7 @@ MainWindow::_SelectContact(int32 index)
 		_ShowAdminToolbar(false);
 		fMessageInput->SetEnabled(false);
 		fSendButton->SetEnabled(false);
+		fAttachButton->SetEnabled(false);
 	}
 
 	_UpdateCharCounter();
@@ -3690,6 +3750,11 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			_HandlePushRawData(data, length);
 			break;
 
+		case PUSH_BINARY_RESPONSE:
+			// Same payload format as PUSH_RAW_DATA for image fragments
+			_HandlePushRawData(data, length);
+			break;
+
 		case RSP_CUSTOM_VARS:
 			_HandleCustomVars(data, length);
 			break;
@@ -3788,6 +3853,18 @@ MainWindow::_HandlePushRawData(const uint8* data, size_t length)
 	int8 rssi = (int8)data[2];
 	size_t payloadLen = length - 4;
 	float snrDb = snr / 4.0f;
+
+	// Check magic byte for image protocol
+	if (payloadLen > 0) {
+		const uint8* payload = data + 4;
+		if (payload[0] == kImageMagic) {
+			_HandleIncomingImageFragment(payload, payloadLen);
+			return;
+		} else if (payload[0] == kFetchMagic) {
+			_HandleIncomingFetchRequest(payload, payloadLen);
+			return;
+		}
+	}
 
 	_LogMessage("INFO", BString().SetToFormat(
 		"Raw data received: SNR=%.1fdB RSSI=%ddBm payload=%zu bytes",
@@ -4458,6 +4535,18 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 	DatabaseManager* db = DatabaseManager::Instance();
 	db->InsertMessage(contactHex, chatMsg);
 
+	// Check for IE2 image envelope — auto-fetch fragments
+	if (ImageSessionManager::IsImageEnvelope(text)) {
+		ImageSession* imgSession = fImageSessions->CreateFromEnvelope(text);
+		if (imgSession != NULL) {
+			_LogMessage("IMG", BString().SetToFormat(
+				"Received image envelope: session %08x, %dx%d, %d fragments",
+				imgSession->sessionId, (int)imgSession->width,
+				(int)imgSession->height, (int)imgSession->totalFragments));
+			_StartImageFetch(imgSession->sessionId);
+		}
+	}
+
 	// Store message in contact's in-memory history and update lastSeen
 	if (sender != NULL) {
 		ChatMessage* stored = new ChatMessage(chatMsg);
@@ -4663,6 +4752,17 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 		// Public channel
 		fChannelMessages.AddItem(stored);
 		db->InsertMessage("channel", chatMsg);
+	}
+
+	// Check for IE2 image envelope — auto-fetch fragments
+	if (ImageSessionManager::IsImageEnvelope(messageText)) {
+		ImageSession* imgSession = fImageSessions->CreateFromEnvelope(messageText);
+		if (imgSession != NULL) {
+			_LogMessage("IMG", BString().SetToFormat(
+				"Received channel image envelope: session %08x",
+				imgSession->sessionId));
+			_StartImageFetch(imgSession->sessionId);
+		}
 	}
 
 	// Record SNR data point for sender contact
@@ -5627,6 +5727,7 @@ MainWindow::_OnConnected(BMessage* message)
 	if (fSelectedContact >= 0) {
 		fMessageInput->SetEnabled(true);
 		fSendButton->SetEnabled(true);
+		fAttachButton->SetEnabled(true);
 	}
 
 	// Forward to Mission Control
@@ -7075,4 +7176,333 @@ MainWindow::_ShowSarMarkerDialog()
 
 	_LogMessage("SAR", BString().SetToFormat(
 		"Sent SAR marker: %s", sarText));
+}
+
+
+// =============================================================================
+// Image Sharing
+// =============================================================================
+
+
+void
+MainWindow::_HandleImageSelected(BMessage* message)
+{
+	entry_ref ref;
+	if (message->FindRef("refs", &ref) != B_OK)
+		return;
+
+	BPath path;
+	BEntry entry(&ref);
+	if (entry.GetPath(&path) != B_OK)
+		return;
+
+	if (!fConnected) {
+		_LogMessage("WARN", "Cannot send image: not connected");
+		return;
+	}
+
+	// Compress image
+	uint8* jpegData = NULL;
+	size_t jpegSize = 0;
+	int32 w = 0, h = 0;
+	status_t status = ImageCodec::CompressImageFile(path.Path(),
+		&jpegData, &jpegSize, &w, &h, 128, 65);
+	if (status != B_OK) {
+		_LogMessage("ERROR", BString().SetToFormat(
+			"Failed to compress image: %s", strerror(status)));
+		return;
+	}
+
+	_LogMessage("IMG", BString().SetToFormat(
+		"Compressed %s → %zd bytes (%ldx%ld grayscale JPEG)",
+		path.Leaf(), jpegSize, (long)w, (long)h));
+
+	// Get self key prefix for envelope
+	uint8 selfKey[6];
+	for (int i = 0; i < 6 && fPublicKey[i * 2] != '\0'; i++) {
+		unsigned int byte;
+		if (sscanf(fPublicKey + i * 2, "%2x", &byte) == 1)
+			selfKey[i] = (uint8)byte;
+	}
+
+	// Create outgoing session
+	uint32 sid = fImageSessions->CreateOutgoing(jpegData, jpegSize,
+		w, h, selfKey);
+	free(jpegData);
+
+	ImageSession* session = fImageSessions->FindSession(sid);
+	if (session == NULL) {
+		_LogMessage("ERROR", "Failed to create image session");
+		return;
+	}
+
+	// Format and send IE2 envelope as a text message
+	BString envelope = ImageSessionManager::FormatEnvelope(sid,
+		session->format, session->totalFragments, w, h,
+		(uint32)session->jpegSize, selfKey,
+		session->timestamp);
+
+	// Send envelope as regular text (this adds it to chat view too)
+	if (fSendingToChannel)
+		_SendChannelMessage(envelope.String());
+	else
+		_SendTextMessage(envelope.String());
+
+	// Set decoded bitmap on the outgoing MessageView so it's visible immediately
+	BBitmap* previewBitmap = ImageCodec::DecompressImageData(
+		session->jpegData, session->jpegSize);
+	if (previewBitmap != NULL) {
+		for (int32 i = fChatView->CountItems() - 1; i >= 0; i--) {
+			MessageView* mv = dynamic_cast<MessageView*>(
+				fChatView->ItemAt(i));
+			if (mv != NULL && mv->IsImageMessage()
+				&& mv->ImageSessionId() == sid) {
+				mv->SetImageBitmap(previewBitmap);
+				BFont font;
+				fChatView->GetFont(&font);
+				mv->Update(fChatView, &font);
+				fChatView->InvalidateItem(i);
+				break;
+			}
+		}
+	}
+
+	// Save image to DB
+	if (fChatView->CurrentContact() != NULL) {
+		char contactKey[13];
+		for (int i = 0; i < 6; i++)
+			snprintf(contactKey + i * 2, 3, "%02x",
+				fChatView->CurrentContact()->publicKey[i]);
+		DatabaseManager::Instance()->InsertImage(contactKey, sid,
+			w, h, session->jpegData, session->jpegSize);
+	}
+
+	// Start fragment transmission timer
+	fCurrentSendSession = sid;
+	fCurrentSendIndex = 0;
+
+	delete fImageFragmentTimer;
+	BMessage timerMsg(MSG_IMAGE_SEND_NEXT);
+	fImageFragmentTimer = new BMessageRunner(this, &timerMsg, 200000, -1);
+
+	_LogMessage("IMG", BString().SetToFormat(
+		"Sending %d fragments for session %08x",
+		(int)session->totalFragments, sid));
+}
+
+
+void
+MainWindow::_SendNextImageFragment()
+{
+	ImageSession* session = fImageSessions->FindSession(fCurrentSendSession);
+	if (session == NULL || fCurrentSendIndex >= session->totalFragments) {
+		// Done sending
+		delete fImageFragmentTimer;
+		fImageFragmentTimer = NULL;
+		if (session != NULL) {
+			session->state = IMAGE_COMPLETE;
+			_LogMessage("IMG", BString().SetToFormat(
+				"All %d fragments sent for session %08x",
+				(int)session->totalFragments, fCurrentSendSession));
+		}
+		return;
+	}
+
+	// Build fragment packet
+	uint8 packet[kImageHeaderSize + kMaxFragmentPayload];
+	ImageFragment& frag = session->fragments[fCurrentSendIndex];
+	size_t pktLen = ImageSessionManager::BuildFragmentPacket(packet,
+		session->sessionId, session->format, fCurrentSendIndex,
+		session->totalFragments, frag.data, frag.length);
+
+	// Send via CMD_SEND_RAW_DATA
+	if (fProtocol != NULL)
+		fProtocol->SendRawData(packet, pktLen);
+
+	fCurrentSendIndex++;
+}
+
+
+void
+MainWindow::_HandleIncomingImageFragment(const uint8* payload, size_t length)
+{
+	if (length < kImageHeaderSize)
+		return;
+
+	// Parse header: [magic:1][sid:4][fmt:1][idx:1][total:1][data...]
+	uint32 sid = (uint32)payload[1]
+		| ((uint32)payload[2] << 8)
+		| ((uint32)payload[3] << 16)
+		| ((uint32)payload[4] << 24);
+	uint8 idx = payload[6];
+	uint8 total = payload[7];
+
+	const uint8* fragData = payload + kImageHeaderSize;
+	uint16 fragLen = (uint16)(length - kImageHeaderSize);
+
+	// If session doesn't exist yet, create a stub (envelope might arrive later)
+	ImageSession* session = fImageSessions->FindSession(sid);
+	if (session == NULL) {
+		// Create a minimal session stub
+		ImageSession* stub = new ImageSession();
+		stub->sessionId = sid;
+		stub->format = payload[5];
+		stub->totalFragments = total;
+		stub->state = IMAGE_LOADING;
+		stub->createdTime = system_time();
+		// Can't add to manager directly — just wait for envelope
+		delete stub;
+		_LogMessage("IMG", BString().SetToFormat(
+			"Fragment %d/%d for unknown session %08x (waiting for envelope)",
+			idx + 1, total, sid));
+		return;
+	}
+
+	bool complete = fImageSessions->AddFragment(sid, idx, fragData, fragLen);
+
+	_LogMessage("IMG", BString().SetToFormat(
+		"Fragment %d/%d for session %08x (%d/%d received)",
+		idx + 1, total, sid,
+		(int)session->receivedCount, (int)session->totalFragments));
+
+	// Update the message view
+	_UpdateImageMessageView(sid);
+
+	if (complete) {
+		session->state = IMAGE_COMPLETE;
+		if (session->Reassemble()) {
+			_LogMessage("IMG", BString().SetToFormat(
+				"Session %08x complete, %zu bytes JPEG",
+				sid, session->jpegSize));
+
+			// Decompress and assign bitmap to message view
+			BBitmap* bitmap = ImageCodec::DecompressImageData(
+				session->jpegData, session->jpegSize);
+			if (bitmap != NULL) {
+				// Find the MessageView for this session and set bitmap
+				for (int32 i = 0; i < fChatView->CountItems(); i++) {
+					MessageView* mv = dynamic_cast<MessageView*>(
+						fChatView->ItemAt(i));
+					if (mv != NULL && mv->IsImageMessage()
+						&& mv->ImageSessionId() == sid) {
+						mv->SetImageBitmap(bitmap);
+						BFont font;
+						fChatView->GetFont(&font);
+						mv->Update(fChatView, &font);
+						fChatView->InvalidateItem(i);
+						break;
+					}
+				}
+			}
+
+			// Save to DB
+			if (fChatView->CurrentContact() != NULL) {
+				char contactKey[13];
+				for (int i = 0; i < 6; i++)
+					snprintf(contactKey + i * 2, 3, "%02x",
+						fChatView->CurrentContact()->publicKey[i]);
+				DatabaseManager::Instance()->InsertImage(contactKey, sid,
+					session->width, session->height,
+					session->jpegData, session->jpegSize);
+			}
+		}
+	}
+}
+
+
+void
+MainWindow::_HandleIncomingFetchRequest(const uint8* payload, size_t length)
+{
+	if (length < 6)
+		return;
+
+	// Parse: [magic:1][sid:4][count:1][indices...]
+	uint32 sid = (uint32)payload[1]
+		| ((uint32)payload[2] << 8)
+		| ((uint32)payload[3] << 16)
+		| ((uint32)payload[4] << 24);
+	uint8 count = payload[5];
+
+	ImageSession* session = fImageSessions->FindSession(sid);
+	if (session == NULL || session->state != IMAGE_SENDING) {
+		_LogMessage("IMG", BString().SetToFormat(
+			"Fetch request for unknown/non-outgoing session %08x", sid));
+		return;
+	}
+
+	_LogMessage("IMG", BString().SetToFormat(
+		"Fetch request: %d fragments for session %08x", (int)count, sid));
+
+	// Resend requested fragments
+	for (uint8 i = 0; i < count && (size_t)(6 + i) < length; i++) {
+		uint8 idx = payload[6 + i];
+		if (idx >= session->totalFragments)
+			continue;
+
+		uint8 packet[kImageHeaderSize + kMaxFragmentPayload];
+		ImageFragment& frag = session->fragments[idx];
+		size_t pktLen = ImageSessionManager::BuildFragmentPacket(packet,
+			sid, session->format, idx, session->totalFragments,
+			frag.data, frag.length);
+
+		if (fProtocol != NULL)
+			fProtocol->SendRawData(packet, pktLen);
+	}
+}
+
+
+void
+MainWindow::_StartImageFetch(uint32 sessionId)
+{
+	ImageSession* session = fImageSessions->FindSession(sessionId);
+	if (session == NULL)
+		return;
+
+	// Build list of missing fragments
+	uint8 missing[255];
+	uint8 count = 0;
+	for (uint8 i = 0; i < session->totalFragments && count < 255; i++) {
+		if (!session->fragments[i].received)
+			missing[count++] = i;
+	}
+
+	if (count == 0) {
+		_LogMessage("IMG", "No missing fragments to fetch");
+		return;
+	}
+
+	// Build fetch request
+	uint8 packet[6 + 255];
+	size_t pktLen = ImageSessionManager::BuildFetchRequest(packet,
+		sessionId, missing, count);
+
+	// Find the sender's pubkey from the session
+	if (fProtocol != NULL)
+		fProtocol->SendBinaryRequest(session->senderKey, packet, pktLen);
+
+	session->state = IMAGE_LOADING;
+	_UpdateImageMessageView(sessionId);
+
+	_LogMessage("IMG", BString().SetToFormat(
+		"Sent fetch request for %d fragments of session %08x",
+		(int)count, sessionId));
+}
+
+
+void
+MainWindow::_UpdateImageMessageView(uint32 sid)
+{
+	ImageSession* session = fImageSessions->FindSession(sid);
+	if (session == NULL)
+		return;
+
+	for (int32 i = 0; i < fChatView->CountItems(); i++) {
+		MessageView* mv = dynamic_cast<MessageView*>(fChatView->ItemAt(i));
+		if (mv != NULL && mv->IsImageMessage()
+			&& mv->ImageSessionId() == sid) {
+			mv->SetImageState(session->state, session->receivedCount);
+			fChatView->InvalidateItem(i);
+			break;
+		}
+	}
 }

@@ -38,7 +38,9 @@ SRCS = \
 	SerialMonitorWindow.cpp \
 	RepeaterMonitorView.cpp \
 	TileCache.cpp \
-	SarMarker.cpp
+	SarMarker.cpp \
+	ImageCodec.cpp \
+	ImageSession.cpp
 
 RDEFS = Sestriere.rdef
 

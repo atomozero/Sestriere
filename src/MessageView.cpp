@@ -16,6 +16,7 @@
 #include <ctime>
 
 #include "Constants.h"
+#include "ImageSession.h"
 #include "SarMarker.h"
 
 
@@ -75,15 +76,42 @@ MessageView::MessageView(const ChatMessage& message, const char* senderName)
 	fHopsClickRect(),
 	fIsSarMarker(false),
 	fSarMarker(),
+	fIsImageMsg(false),
+	fImageSessionId(0),
+	fImageWidth(0),
+	fImageHeight(0),
+	fImageTotalFragments(0),
+	fImageReceivedFragments(0),
+	fImageState(IMAGE_PENDING),
+	fImageBitmap(NULL),
 	fBaselineOffset(0)
 {
 	memcpy(fPubKeyPrefix, message.pubKeyPrefix, sizeof(fPubKeyPrefix));
-	fIsSarMarker = ParseSarMarker(fText.String(), fSarMarker);
+
+	// Check for IE2 image envelope before SAR marker
+	if (ImageSessionManager::IsImageEnvelope(fText.String())) {
+		fIsImageMsg = true;
+		uint32 sid = 0;
+		uint8 fmt = 0, total = 0;
+		int32 w = 0, h = 0;
+		uint32 bytes = 0, ts = 0;
+		uint8 senderKey[6];
+		if (ImageSessionManager::ParseEnvelope(fText.String(), &sid, &fmt,
+			&total, &w, &h, &bytes, senderKey, &ts)) {
+			fImageSessionId = sid;
+			fImageWidth = w;
+			fImageHeight = h;
+			fImageTotalFragments = total;
+		}
+	} else {
+		fIsSarMarker = ParseSarMarker(fText.String(), fSarMarker);
+	}
 }
 
 
 MessageView::~MessageView()
 {
+	delete fImageBitmap;
 }
 
 
@@ -97,6 +125,13 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	rgb_color chatBg = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_1_TINT);
 	owner->SetLowColor(chatBg);
 	owner->FillRect(frame, B_SOLID_LOW);
+
+	// Image message — separate rendering path
+	if (fIsImageMsg) {
+		_DrawImageBubble(owner, frame);
+		owner->PopState();
+		return;
+	}
 
 	bool isCli = (fTxtType == 1);
 	bool isSar = fIsSarMarker;
@@ -430,6 +465,24 @@ MessageView::Update(BView* owner, const BFont* font)
 {
 	BListItem::Update(owner, font);
 
+	// Image messages have fixed height based on content
+	if (fIsImageMsg) {
+		font_height fontHeight;
+		font->GetHeight(&fontHeight);
+		float lineHeight = fontHeight.ascent + fontHeight.descent
+			+ fontHeight.leading;
+		float headerHeight = (!fOutgoing && fSenderName.Length() > 0)
+			? lineHeight : 0;
+		float metaHeight = lineHeight * 0.8f;
+		float imgH = 100.0f;  // placeholder height
+		if (fImageBitmap != NULL)
+			imgH = fImageBitmap->Bounds().Height() + 1;
+		float height = headerHeight + imgH + metaHeight
+			+ kBubblePadding * 2 + kBubbleMargin;
+		SetHeight(height);
+		return;
+	}
+
 	bool isCli = (fTxtType == 1);
 	bool isSar = fIsSarMarker;
 
@@ -495,6 +548,212 @@ MessageView::SetDeliveryStatus(uint8 status, uint32 rtt, uint8 retryCount)
 	fDeliveryStatus = status;
 	fRoundTripMs = rtt;
 	fRetryCount = retryCount;
+}
+
+
+void
+MessageView::SetImageState(ImageSessionState state, uint8 receivedCount)
+{
+	fImageState = state;
+	fImageReceivedFragments = receivedCount;
+}
+
+
+void
+MessageView::SetImageBitmap(BBitmap* bitmap)
+{
+	delete fImageBitmap;
+	fImageBitmap = bitmap;
+	if (bitmap != NULL)
+		fImageState = IMAGE_COMPLETE;
+}
+
+
+void
+MessageView::_DrawImageBubble(BView* owner, BRect frame)
+{
+	owner->SetFont(be_plain_font);
+	font_height fh;
+	owner->GetFontHeight(&fh);
+	float lineHeight = fh.ascent + fh.descent + fh.leading;
+
+	// Meta text (timestamp + delivery)
+	char timeStr[16];
+	_FormatTimestamp(timeStr, sizeof(timeStr));
+	BString displayMeta;
+	if (fOutgoing) {
+		switch (fDeliveryStatus) {
+			case DELIVERY_PENDING:
+				displayMeta.SetToFormat("%s \xE2\x8F\xB3", timeStr);
+				break;
+			case DELIVERY_CONFIRMED:
+				displayMeta.SetToFormat("%s \xE2\x9C\x93\xE2\x9C\x93", timeStr);
+				break;
+			default:
+				displayMeta.SetToFormat("%s \xE2\x9C\x93", timeStr);
+				break;
+		}
+	} else {
+		displayMeta.SetToFormat("%s", timeStr);
+	}
+
+	BFont metaFont;
+	owner->GetFont(&metaFont);
+	metaFont.SetSize(metaFont.Size() * 0.85f);
+	float metaWidth = metaFont.StringWidth(displayMeta.String());
+	float metaHeight = lineHeight * 0.8f;
+
+	// Image area dimensions
+	float imgW, imgH;
+	if (fImageBitmap != NULL) {
+		imgW = fImageBitmap->Bounds().Width() + 1;
+		imgH = fImageBitmap->Bounds().Height() + 1;
+	} else {
+		imgW = 128;
+		imgH = 100;
+	}
+
+	float headerHeight = (!fOutgoing && fSenderName.Length() > 0)
+		? lineHeight : 0;
+	float contentWidth = std::max(imgW, metaWidth);
+	float bubbleWidth = contentWidth + kBubblePadding * 2;
+	float bubbleHeight = headerHeight + imgH + metaHeight + kBubblePadding * 2;
+
+	// Position bubble
+	BRect bubbleRect;
+	if (fOutgoing) {
+		bubbleRect.left = frame.right - bubbleWidth - kBubbleMargin;
+		bubbleRect.right = frame.right - kBubbleMargin;
+	} else {
+		bubbleRect.left = frame.left + kBubbleMargin;
+		bubbleRect.right = frame.left + kBubbleMargin + bubbleWidth;
+	}
+	bubbleRect.top = frame.top + kBubbleMargin / 2;
+	bubbleRect.bottom = bubbleRect.top + bubbleHeight;
+
+	// Draw bubble
+	rgb_color bubbleColor = fOutgoing
+		? OutgoingBubbleColor() : IncomingBubbleColor();
+	rgb_color borderColor = fOutgoing
+		? OutgoingBorderColor() : IncomingBorderColor();
+
+	// Shadow
+	owner->SetHighColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR),
+		B_DARKEN_2_TINT));
+	BRect shadowRect = bubbleRect;
+	shadowRect.OffsetBy(1, 1);
+	owner->FillRoundRect(shadowRect, kBubbleRadius, kBubbleRadius);
+
+	owner->SetHighColor(bubbleColor);
+	owner->FillRoundRect(bubbleRect, kBubbleRadius, kBubbleRadius);
+	owner->SetHighColor(borderColor);
+	owner->StrokeRoundRect(bubbleRect, kBubbleRadius, kBubbleRadius);
+
+	float yPos = bubbleRect.top + kBubblePadding + fh.ascent;
+
+	// Sender name
+	if (!fOutgoing && fSenderName.Length() > 0) {
+		BFont savedFont;
+		owner->GetFont(&savedFont);
+		BFont boldFont(savedFont);
+		boldFont.SetFace(B_BOLD_FACE);
+		owner->SetFont(&boldFont);
+		owner->SetHighColor(SenderNameColor());
+		owner->DrawString(fSenderName.String(),
+			BPoint(bubbleRect.left + kBubblePadding, yPos));
+		owner->SetFont(&savedFont);
+		yPos += lineHeight;
+	}
+
+	float contentLeft = bubbleRect.left + kBubblePadding;
+	float imageTop = yPos - fh.ascent;
+
+	if (fImageState == IMAGE_COMPLETE && fImageBitmap != NULL) {
+		// Draw the decoded image
+		BRect srcRect = fImageBitmap->Bounds();
+		BRect destRect(contentLeft, imageTop,
+			contentLeft + imgW - 1, imageTop + imgH - 1);
+		owner->DrawBitmap(fImageBitmap, srcRect, destRect);
+	} else if (fImageState == IMAGE_LOADING) {
+		// Gray placeholder with progress bar
+		rgb_color placeholderBg = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR),
+			B_DARKEN_2_TINT);
+		BRect imgRect(contentLeft, imageTop,
+			contentLeft + imgW - 1, imageTop + imgH - 1);
+		owner->SetHighColor(placeholderBg);
+		owner->FillRect(imgRect);
+
+		// Progress bar
+		float progress = 0;
+		if (fImageTotalFragments > 0)
+			progress = (float)fImageReceivedFragments / fImageTotalFragments;
+		float barY = imageTop + imgH * 0.5f - 4;
+		float barW = imgW - 20;
+		BRect barBg(contentLeft + 10, barY,
+			contentLeft + 10 + barW, barY + 8);
+		owner->SetHighColor(tint_color(placeholderBg, B_DARKEN_1_TINT));
+		owner->FillRoundRect(barBg, 3, 3);
+		if (progress > 0) {
+			BRect barFill(barBg.left, barBg.top,
+				barBg.left + barW * progress, barBg.bottom);
+			owner->SetHighColor(kColorGood);
+			owner->FillRoundRect(barFill, 3, 3);
+		}
+
+		// Fragment count text
+		BString fragText;
+		fragText.SetToFormat("%d/%d fragments",
+			(int)fImageReceivedFragments, (int)fImageTotalFragments);
+		float tw = owner->StringWidth(fragText.String());
+		owner->SetHighColor(BubbleTextColor());
+		owner->DrawString(fragText.String(),
+			BPoint(contentLeft + (imgW - tw) / 2, barY + 24));
+	} else if (fImageState == IMAGE_FAILED) {
+		// Failed state
+		BRect imgRect(contentLeft, imageTop,
+			contentLeft + imgW - 1, imageTop + imgH - 1);
+		rgb_color placeholderBg = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR),
+			B_DARKEN_2_TINT);
+		owner->SetHighColor(placeholderBg);
+		owner->FillRect(imgRect);
+		owner->SetHighColor(kColorBad);
+		const char* failText = "Image transfer failed";
+		float tw = owner->StringWidth(failText);
+		owner->DrawString(failText,
+			BPoint(contentLeft + (imgW - tw) / 2,
+				imageTop + imgH / 2 + fh.ascent / 2));
+	} else {
+		// PENDING — placeholder with "tap to download"
+		BRect imgRect(contentLeft, imageTop,
+			contentLeft + imgW - 1, imageTop + imgH - 1);
+		rgb_color placeholderBg = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR),
+			B_DARKEN_2_TINT);
+		owner->SetHighColor(placeholderBg);
+		owner->FillRect(imgRect);
+
+		owner->SetHighColor(BubbleTextColor());
+		BString sizeText;
+		sizeText.SetToFormat("Image %ldx%ld", (long)fImageWidth,
+			(long)fImageHeight);
+		float tw = owner->StringWidth(sizeText.String());
+		owner->DrawString(sizeText.String(),
+			BPoint(contentLeft + (imgW - tw) / 2,
+				imageTop + imgH / 2 - 4));
+
+		owner->SetHighColor(ui_color(B_CONTROL_HIGHLIGHT_COLOR));
+		const char* dlText = "Waiting for fragments...";
+		tw = owner->StringWidth(dlText);
+		owner->DrawString(dlText,
+			BPoint(contentLeft + (imgW - tw) / 2,
+				imageTop + imgH / 2 + fh.ascent + 4));
+	}
+
+	// Draw meta text
+	owner->SetFont(&metaFont);
+	owner->SetHighColor(MetaTextColor());
+	float metaX = bubbleRect.right - kBubblePadding - metaWidth;
+	float metaY = bubbleRect.bottom - kBubblePadding / 2;
+	owner->DrawString(displayMeta.String(), BPoint(metaX, metaY));
 }
 
 

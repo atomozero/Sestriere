@@ -512,6 +512,9 @@ DatabaseManager::PruneOldData(uint32 maxAgeDays)
 		sqlite3_step(stmt);
 		sqlite3_finalize(stmt);
 	}
+
+	// Prune old images
+	PruneOldImages(maxAgeDays);
 }
 
 
@@ -534,6 +537,108 @@ DatabaseManager::PruneOldMessages(uint32 maxAgeDays)
 
 	fprintf(stderr, "[DatabaseManager] Pruned messages older than %" B_PRIu32
 		" days\n", maxAgeDays);
+}
+
+
+// =============================================================================
+// Image persistence
+// =============================================================================
+
+
+bool
+DatabaseManager::InsertImage(const char* contactKey, uint32 sessionId,
+	int32 width, int32 height, const uint8* jpegData, size_t jpegSize)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL || jpegData == NULL || jpegSize == 0)
+		return false;
+
+	const char* sql =
+		"INSERT OR REPLACE INTO images "
+		"(session_id, contact_key, timestamp, width, height, jpeg_data, jpeg_size) "
+		"VALUES (?, ?, ?, ?, ?, ?, ?)";
+
+	sqlite3_stmt* stmt = NULL;
+	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) != SQLITE_OK)
+		return false;
+
+	sqlite3_bind_int(stmt, 1, (int)sessionId);
+	sqlite3_bind_text(stmt, 2, contactKey, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 3, (int)time(NULL));
+	sqlite3_bind_int(stmt, 4, width);
+	sqlite3_bind_int(stmt, 5, height);
+	sqlite3_bind_blob(stmt, 6, jpegData, (int)jpegSize, SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 7, (int)jpegSize);
+
+	int rc = sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+	return rc == SQLITE_DONE;
+}
+
+
+bool
+DatabaseManager::LoadImage(uint32 sessionId, uint8** outJpegData,
+	size_t* outSize, int32* outWidth, int32* outHeight)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL || outJpegData == NULL || outSize == NULL)
+		return false;
+
+	const char* sql =
+		"SELECT jpeg_data, jpeg_size, width, height FROM images "
+		"WHERE session_id = ?";
+
+	sqlite3_stmt* stmt = NULL;
+	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) != SQLITE_OK)
+		return false;
+
+	sqlite3_bind_int(stmt, 1, (int)sessionId);
+
+	bool found = false;
+	if (sqlite3_step(stmt) == SQLITE_ROW) {
+		const void* blob = sqlite3_column_blob(stmt, 0);
+		int blobSize = sqlite3_column_bytes(stmt, 0);
+		int jpegSize = sqlite3_column_int(stmt, 1);
+
+		// Use the smaller of blob size and recorded jpeg_size
+		int dataSize = (blobSize < jpegSize) ? blobSize : jpegSize;
+		if (blob != NULL && dataSize > 0) {
+			uint8* data = (uint8*)malloc(dataSize);
+			if (data != NULL) {
+				memcpy(data, blob, dataSize);
+				*outJpegData = data;
+				*outSize = (size_t)dataSize;
+				if (outWidth != NULL)
+					*outWidth = sqlite3_column_int(stmt, 2);
+				if (outHeight != NULL)
+					*outHeight = sqlite3_column_int(stmt, 3);
+				found = true;
+			}
+		}
+	}
+
+	sqlite3_finalize(stmt);
+	return found;
+}
+
+
+void
+DatabaseManager::PruneOldImages(uint32 maxAgeDays)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL)
+		return;
+
+	int32 cutoff = (int32)((uint32)time(NULL) - (maxAgeDays * 86400));
+
+	const char* sql = "DELETE FROM images WHERE timestamp < ?";
+	sqlite3_stmt* stmt = NULL;
+	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) == SQLITE_OK) {
+		sqlite3_bind_int(stmt, 1, cutoff);
+		sqlite3_step(stmt);
+		sqlite3_finalize(stmt);
+	}
 }
 
 
@@ -1270,8 +1375,29 @@ DatabaseManager::_CreateTables()
 		"  timestamp INTEGER NOT NULL,"
 		"  PRIMARY KEY (from_key, to_key)"
 		")");
+	if (!ok)
+		return false;
 
-	return ok;
+	// Images table — BLOB storage for LoRa image sharing
+	ok = _Execute(
+		"CREATE TABLE IF NOT EXISTS images ("
+		"  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+		"  session_id INTEGER NOT NULL UNIQUE,"
+		"  contact_key TEXT NOT NULL,"
+		"  timestamp INTEGER NOT NULL,"
+		"  width INTEGER,"
+		"  height INTEGER,"
+		"  jpeg_data BLOB NOT NULL,"
+		"  jpeg_size INTEGER NOT NULL"
+		")");
+	if (!ok)
+		return false;
+
+	_Execute(
+		"CREATE INDEX IF NOT EXISTS idx_images_contact "
+		"ON images (contact_key, timestamp)");
+
+	return true;
 }
 
 

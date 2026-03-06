@@ -8,12 +8,14 @@
 #ifndef MESSAGEVIEW_H
 #define MESSAGEVIEW_H
 
+#include <Bitmap.h>
 #include <ListItem.h>
 #include <Rect.h>
 #include <String.h>
 
 #include <vector>
 
+#include "ImageSession.h"
 #include "SarMarker.h"
 #include "Types.h"
 
@@ -43,11 +45,20 @@ public:
 								uint8 retryCount = 0);
 			uint8			DeliveryStatus() const { return fDeliveryStatus; }
 
+			// Image message support
+			bool			IsImageMessage() const { return fIsImageMsg; }
+			uint32			ImageSessionId() const { return fImageSessionId; }
+			ImageSessionState ImageState() const { return fImageState; }
+			void			SetImageState(ImageSessionState state,
+								uint8 receivedCount);
+			void			SetImageBitmap(BBitmap* bitmap);
+
 private:
 			void			_FormatTimestamp(char* buffer, size_t size) const;
 			void			_WrapText(BView* owner, const BString& text,
 								float maxWidth,
 								std::vector<BString>& outLines) const;
+			void			_DrawImageBubble(BView* owner, BRect frame);
 
 			BString			fText;
 			BString			fSenderName;
@@ -65,6 +76,16 @@ private:
 
 			bool			fIsSarMarker;
 			SarMarker		fSarMarker;
+
+			// Image message fields
+			bool			fIsImageMsg;
+			uint32			fImageSessionId;
+			int32			fImageWidth;
+			int32			fImageHeight;
+			uint8			fImageTotalFragments;
+			uint8			fImageReceivedFragments;
+			ImageSessionState fImageState;
+			BBitmap*		fImageBitmap;
 
 			float			fBaselineOffset;
 };

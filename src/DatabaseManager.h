@@ -112,6 +112,15 @@ public:
 								BMessage* outEdges);
 			void			PruneOldEdges(uint32 maxAgeDays);
 
+			// Image persistence (BLOB storage for LoRa image sharing)
+			bool			InsertImage(const char* contactKey,
+								uint32 sessionId, int32 width, int32 height,
+								const uint8* jpegData, size_t jpegSize);
+			bool			LoadImage(uint32 sessionId,
+								uint8** outJpegData, size_t* outSize,
+								int32* outWidth, int32* outHeight);
+			void			PruneOldImages(uint32 maxAgeDays);
+
 			// Maintenance
 			void			PruneOldData(uint32 maxAgeDays);
 			void			PruneOldMessages(uint32 maxAgeDays);

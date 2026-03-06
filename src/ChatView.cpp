@@ -16,6 +16,9 @@
 #include <cstring>
 
 #include "Constants.h"
+#include "DatabaseManager.h"
+#include "ImageCodec.h"
+#include "ImageSession.h"
 #include "MessageView.h"
 
 
@@ -94,19 +97,29 @@ ChatView::MouseDown(BPoint where)
 		return;
 	}
 
-	// Check for left-click on "X hops" link
+	// Check for left-click on "X hops" link or image download
 	if (buttons & B_PRIMARY_MOUSE_BUTTON) {
 		int32 index = IndexOf(where);
 		if (index >= 0) {
 			MessageView* item = dynamic_cast<MessageView*>(ItemAt(index));
-			if (item != NULL && item->HasClickableHops()
-				&& item->HopsClickRect().Contains(where)) {
-				// Post trace path request to parent window
-				BMessage msg(MSG_TRACE_PATH);
-				msg.AddData("pubkey", B_RAW_TYPE,
-					item->PubKeyPrefix(), kPubKeyPrefixSize);
-				Window()->PostMessage(&msg);
-				return;
+			if (item != NULL) {
+				// Click on hops link
+				if (item->HasClickableHops()
+					&& item->HopsClickRect().Contains(where)) {
+					BMessage msg(MSG_TRACE_PATH);
+					msg.AddData("pubkey", B_RAW_TYPE,
+						item->PubKeyPrefix(), kPubKeyPrefixSize);
+					Window()->PostMessage(&msg);
+					return;
+				}
+				// Click on pending image to download
+				if (item->IsImageMessage()
+					&& item->ImageState() == IMAGE_PENDING) {
+					BMessage msg(MSG_IMAGE_FETCH_REQ);
+					msg.AddUInt32("session_id", item->ImageSessionId());
+					Window()->PostMessage(&msg);
+					return;
+				}
 			}
 		}
 	}
@@ -214,6 +227,23 @@ ChatView::SetCurrentContact(ContactInfo* contact)
 			if (msg != NULL) {
 				const char* senderName = msg->isOutgoing ? "Me" : contact->name;
 				MessageView* item = new MessageView(*msg, senderName);
+
+				// Load saved image from DB if this is an IE2 message
+				if (item->IsImageMessage()) {
+					uint8* jpegData = NULL;
+					size_t jpegSize = 0;
+					int32 w = 0, h = 0;
+					if (DatabaseManager::Instance()->LoadImage(
+						item->ImageSessionId(), &jpegData, &jpegSize,
+						&w, &h)) {
+						BBitmap* bitmap = ImageCodec::DecompressImageData(
+							jpegData, jpegSize);
+						if (bitmap != NULL)
+							item->SetImageBitmap(bitmap);
+						free(jpegData);
+					}
+				}
+
 				AddItem(item);
 			}
 		}
