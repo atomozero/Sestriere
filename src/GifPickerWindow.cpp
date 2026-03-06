@@ -269,7 +269,7 @@ struct ThumbnailContext {
 
 GifPickerWindow::GifPickerWindow(BWindow* target)
 	:
-	BWindow(BRect(200, 200, 600, 650), "GIPHY",
+	BWindow(BRect(200, 200, 660, 650), "GIPHY",
 		B_FLOATING_WINDOW_LOOK, B_NORMAL_WINDOW_FEEL,
 		B_AUTO_UPDATE_SIZE_LIMITS | B_CLOSE_ON_ESCAPE),
 	fTarget(target),
