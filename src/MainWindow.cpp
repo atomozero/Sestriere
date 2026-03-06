@@ -7476,9 +7476,16 @@ MainWindow::_StartImageFetch(uint32 sessionId)
 	size_t pktLen = ImageSessionManager::BuildFetchRequest(packet,
 		sessionId, missing, count);
 
-	// Find the sender's pubkey from the session
-	if (fProtocol != NULL)
-		fProtocol->SendBinaryRequest(session->senderKey, packet, pktLen);
+	// Look up sender's full 32-byte pubkey from contact list
+	// (session->senderKey is only 6 bytes — passing it to SendBinaryRequest
+	// would cause a buffer overread)
+	ContactInfo* sender = _FindContactByPrefix(session->senderKey,
+		kPubKeyPrefixSize);
+	if (sender == NULL || fProtocol == NULL) {
+		_LogMessage("IMG", "Cannot fetch: sender not in contact list");
+		return;
+	}
+	fProtocol->SendBinaryRequest(sender->publicKey, packet, pktLen);
 
 	session->state = IMAGE_LOADING;
 	_UpdateImageMessageView(sessionId);
