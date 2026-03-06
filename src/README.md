@@ -30,6 +30,10 @@
 - **Message Persistence** — SQLite database with deduplication and SNR metadata
 - **Desktop Notifications** — System notifications (suppressed for muted items)
 - **Ping** — Single-hop ping via trace path with RTT measurement
+- **GIF Sharing** — GIPHY animated GIF picker with thumbnail grid, cross-compatible with meshcore-open
+- **Emoji Rendering** — Unicode emoji displayed as PNG sprites with alpha compositing
+- **Image Sharing** — LoRa chunked image transfer with auto-fetch and chat integration
+- **SAR Markers** — Search and rescue marker parsing and display
 
 ### Network Visualization
 - **Network Map** (Cmd+M) — Force-directed topology with SNR-colored links
@@ -44,6 +48,9 @@
 
 - **Geographic Map** (Cmd+G) — Coordinate grid with zoom/pan/compass
   - GPS node positions with hop-count colored connections
+  - OSM tile overlay with offline cache (TileCache)
+  - Coastline rendering (CoastlineData)
+  - SAR marker display
   - Scale bar and compass for orientation
   - GPX export for contacts with coordinates
 
@@ -101,7 +108,7 @@
 
 ### Install Dependencies
 ```bash
-pkgman install mosquitto_devel sqlite_devel
+pkgman install mosquitto_devel sqlite_devel curl_devel giflib_devel
 ```
 
 ### Build
@@ -188,8 +195,20 @@ src/
 ├── MqttClient.cpp/h              # MQTT client (libmosquitto)
 ├── MqttLogWindow.cpp/h           # MQTT event log
 ├── NotificationManager.cpp/h     # Desktop notifications
-└── DeskbarReplicant.cpp/h        # Deskbar tray integration
+├── DeskbarReplicant.cpp/h        # Deskbar tray integration
+├── GiphyClient.cpp/h             # GIPHY API client (search, trending, download)
+├── GifPickerWindow.cpp/h         # Animated GIF picker grid window
+├── EmojiRenderer.cpp/h           # Unicode emoji PNG sprite rendering
+├── ImageCodec.cpp/h              # Image compress/decompress + GIF frame decode
+├── ImageSession.cpp/h            # LoRa chunked image transfer session
+├── SarMarker.cpp/h               # SAR marker parsing (meshcore-sar protocol)
+├── TileCache.cpp/h               # OSM map tile download and cache
+└── CoastlineData.h               # Coastline polygon data for geographic map
 ```
+
+## Author
+
+Created by **Andrea Bernardi**.
 
 ## Credits
 

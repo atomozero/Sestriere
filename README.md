@@ -40,12 +40,16 @@ Unified dashboard with device status, radio health metrics, network health score
 - **Message Search** -- Full-text search across chat history (Cmd+F)
 - **Auto-growing Input** -- Multi-line input (1-4 lines), Enter to send, Shift+Enter for newline
 - **Contact Management** -- Search, sync, export/import, right-click context menu
-- **Contact Type Filters** -- Sidebar checkboxes to show/hide Chat, Repeater, and Room contacts
+- **Contact Type Filters** -- Sidebar checkboxes to show/hide Chat, Repeater, and Room contacts (persistent)
 - **Ping with Feedback** -- Round-trip time measurement with results shown directly in chat
+- **GIF Sharing** -- GIPHY-powered animated GIF picker, compatible with meshcore-open (`g:ID` format)
+- **Emoji Rendering** -- Unicode emoji displayed as PNG sprites with transparent alpha compositing
+- **Image Sharing** -- LoRa image transfer with chunked encoding, auto-fetch, and chat integration
+- **SAR Markers** -- Search and rescue marker parsing, display in chat and geographic map
 
 ### Visualization
 - **Network Map** -- Force-directed topology with SNR-colored links, animated flow dots, trace route visualization, auto-trace, full mesh discovery, and edge persistence
-- **Geographic Map** -- Lat/lon map with zoom, pan, grid, compass, scale bar, and hop-count colored connections
+- **Geographic Map** -- Lat/lon map with zoom, pan, grid, compass, scale bar, hop-count colored connections, and OSM tile overlay with offline cache
 - **Telemetry Dashboard** -- Battery, storage, radio stats graphs with time ranges up to 7 days, CSV export
 - **Mission Control** -- Unified dashboard: health score arc, SNR/RSSI trend, packet rate histogram, mini topology, session timeline, activity feed, and alert banners
 
@@ -75,7 +79,7 @@ Unified dashboard with device status, radio health metrics, network health score
 ### Dependencies
 
 ```bash
-pkgman install mosquitto_devel sqlite_devel
+pkgman install mosquitto_devel sqlite_devel curl_devel giflib_devel
 ```
 
 ### USB Serial Driver Note
@@ -186,6 +190,14 @@ Sestriere/
 │   ├── MqttLogWindow.cpp/h         # MQTT event log
 │   ├── NotificationManager.cpp/h   # Desktop notifications
 │   ├── DeskbarReplicant.cpp/h      # Deskbar tray integration
+│   ├── GiphyClient.cpp/h           # GIPHY API client (search, trending, download)
+│   ├── GifPickerWindow.cpp/h       # Animated GIF picker grid window
+│   ├── EmojiRenderer.cpp/h         # Unicode emoji PNG sprite rendering
+│   ├── ImageCodec.cpp/h            # Image compression/decompression + GIF frame decode
+│   ├── ImageSession.cpp/h          # LoRa chunked image transfer session
+│   ├── SarMarker.cpp/h             # SAR marker parsing (meshcore-sar protocol)
+│   ├── TileCache.cpp/h             # OSM map tile download and cache
+│   ├── CoastlineData.h             # Coastline polygon data for geographic map
 │   ├── Types.h                     # Protocol structures & radio presets
 │   ├── Constants.h                 # Application constants & thresholds
 │   ├── Compat.h                    # BObjectList API compatibility
@@ -233,6 +245,10 @@ Sestriere/
 ## License
 
 MIT License -- See LICENSE file for details.
+
+## Author
+
+Created by **Andrea Bernardi**.
 
 ## Acknowledgments
 

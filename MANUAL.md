@@ -1,7 +1,7 @@
 # SESTRIERE — User Manual
 
 **MeshCore Companion for Haiku OS**
-Version 1.5 beta | February 2026
+Version 1.7 | March 2026
 
 ---
 
@@ -26,9 +26,12 @@ Version 1.5 beta | February 2026
 17. [Serial Monitor](#17-serial-monitor)
 18. [Repeater Monitor](#18-repeater-monitor)
 19. [Profile Export and Import](#19-profile-export-and-import)
-20. [Radio Configuration](#20-radio-configuration)
-21. [Notifications and Deskbar](#21-notifications-and-deskbar)
-22. [Keyboard Shortcuts](#22-keyboard-shortcuts)
+20. [GIF Sharing](#20-gif-sharing)
+21. [Image Sharing](#21-image-sharing)
+22. [SAR Markers](#22-sar-markers)
+23. [Radio Configuration](#23-radio-configuration)
+24. [Notifications and Deskbar](#24-notifications-and-deskbar)
+25. [Keyboard Shortcuts](#25-keyboard-shortcuts)
 - [Appendix A: Radio Presets Reference](#appendix-a-radio-presets-reference)
 - [Appendix B: MeshCore Protocol Reference](#appendix-b-meshcore-protocol-reference)
 
@@ -43,9 +46,13 @@ MeshCore is an open-source firmware for LoRa radios that creates multi-hop mesh 
 ### Key Features
 
 - **Real-time messaging** — direct messages and public/private channels
+- **GIF sharing** — GIPHY-powered animated GIF picker, cross-compatible with meshcore-open
+- **Image sharing** — LoRa chunked image transfer with auto-fetch
+- **Emoji rendering** — Unicode emoji displayed as PNG sprites
+- **SAR markers** — Search and rescue marker display in chat and map
 - **Contact management** — groups, mute controls, People files integration
 - **Network topology visualization** — live signal quality and hop paths
-- **Geographic map** — GPS node positions with GPX export
+- **Geographic map** — GPS node positions with OSM tiles and GPX export
 - **Device statistics** — battery, signal, packets, uptime
 - **Sensor telemetry** — temperature, humidity, pressure charts
 - **Packet analyzer** — raw protocol capture with hex dump
@@ -152,6 +159,8 @@ The **search field** at the top filters contacts and group names by text.
 - **Message list**: scrollable conversation history
 - **Search bar**: press Cmd+F to search all stored messages
 - **Input area**: auto-growing text field with character counter (160 for DM, 200 for channels)
+- **Img button**: send an image via LoRa (chunked transfer)
+- **GIF button**: open the GIPHY animated GIF picker
 - **Send button**: send the message (or press Enter)
 
 ### Right Panel: Contact Info
@@ -714,7 +723,68 @@ Bulk configuration transfer using JSON format.
 
 ---
 
-## 20. Radio Configuration
+## 20. GIF Sharing
+
+Sestriere supports animated GIF sharing via GIPHY, fully compatible with meshcore-open.
+
+### How It Works
+
+GIF messages use the compact format `g:{gifId}` — only the short GIPHY identifier is transmitted over LoRa, keeping airtime minimal. The receiving client reconstructs the full GIF URL and downloads it from GIPHY's CDN.
+
+### Sending a GIF
+
+1. Click the **GIF** button next to the message input
+2. The GIF Picker window opens with **trending GIFs** (animated thumbnails)
+3. Type a search query and press Enter to find specific GIFs
+4. Double-click a GIF or select it and click **Send**
+5. The message `g:{id}` is sent to the current contact or channel
+
+### Receiving a GIF
+
+When a `g:ID` message is received (from Sestriere or meshcore-open), the GIF is automatically:
+1. Downloaded from GIPHY's CDN
+2. Decoded into animation frames
+3. Displayed as an animated bubble in the chat with a "GIF" badge
+4. Cached locally for instant re-display
+
+### GIF Cache
+
+Downloaded GIFs are cached in `~/config/settings/Sestriere/gif_cache/`. Files are small (typically 1-5 MB total) and not automatically pruned.
+
+---
+
+## 21. Image Sharing
+
+Sestriere supports LoRa image transfer using chunked encoding, compatible with meshcore image sharing.
+
+### Sending an Image
+
+1. Click the **Img** button next to the message input
+2. Select an image file via the file dialog
+3. The image is compressed and sent in chunks over LoRa
+4. Progress is shown in the chat bubble
+
+### Receiving an Image
+
+Incoming image messages are automatically detected, fetched chunk by chunk, reassembled, and displayed inline in the chat as a scaled bitmap.
+
+---
+
+## 22. SAR Markers
+
+Sestriere can parse and display Search and Rescue (SAR) markers from the meshcore-sar protocol.
+
+### In Chat
+
+SAR marker messages are displayed as special bubbles showing the marker type, coordinates, and description.
+
+### On Geographic Map
+
+SAR markers with GPS coordinates are plotted on the Geographic Map with distinctive icons, making them visible alongside regular contact nodes.
+
+---
+
+## 23. Radio Configuration
 
 **Settings > Device & Radio**
 
@@ -745,7 +815,7 @@ Select from 11 pre-configured presets in the settings dialog. See Appendix A.
 
 ---
 
-## 21. Notifications and Deskbar
+## 24. Notifications and Deskbar
 
 ### Desktop Notifications
 
@@ -774,7 +844,7 @@ Remove via **Settings > Remove from Deskbar**.
 
 ---
 
-## 22. Keyboard Shortcuts
+## 25. Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
@@ -901,7 +971,15 @@ Database location: `~/config/settings/Sestriere/sestriere.db`
 
 MQTT settings: `~/config/settings/Sestriere/mqtt.settings`
 
+Device settings: `~/config/settings/Sestriere/device.settings`
+
+UI settings: `~/config/settings/Sestriere/ui.settings` (contact filter state)
+
+GIF cache: `~/config/settings/Sestriere/gif_cache/`
+
+Map tile cache: `~/config/settings/Sestriere/tiles/`
+
 ---
 
-*Sestriere is open-source software distributed under the MIT license.*
+*Sestriere is open-source software created by Andrea Bernardi, distributed under the MIT license.*
 *MeshCore: https://github.com/zjs81/meshcore-open*
