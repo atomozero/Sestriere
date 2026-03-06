@@ -342,6 +342,7 @@ enum {
 	MSG_GIF_SELECTED = 'gfsl',
 	MSG_GIF_ANIMATE = 'ganm',
 	MSG_GIF_LOADED = 'gfld',
+	MSG_GIF_DOWNLOAD_REQ = 'gfdl',
 
 	// Emoji rendering
 	MSG_EMOJI_LOADED = 'emld',

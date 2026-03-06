@@ -261,18 +261,13 @@ ImageCodec::DecompressGifFrames(const uint8* gifData, size_t size,
 		return B_NO_MEMORY;
 	}
 
-	// Fill canvas with background color
+	// Fill canvas with transparent background
 	ColorMapObject* globalMap = gif->SColorMap;
 	GifColorType bgColor = {0, 0, 0};
 	if (globalMap != NULL && gif->SBackGroundColor < globalMap->ColorCount)
 		bgColor = globalMap->Colors[gif->SBackGroundColor];
 
-	for (int32 p = 0; p < canvasW * canvasH; p++) {
-		canvas[p * 4 + 0] = bgColor.Blue;
-		canvas[p * 4 + 1] = bgColor.Green;
-		canvas[p * 4 + 2] = bgColor.Red;
-		canvas[p * 4 + 3] = 255;
-	}
+	// Canvas starts fully transparent (calloc zeroed it)
 
 	// Save canvas state for dispose-to-previous
 	uint8* prevCanvas = (uint8*)malloc(canvasW * canvasH * 4);
@@ -346,9 +341,9 @@ ImageCodec::DecompressGifFrames(const uint8* gifData, size_t size,
 			}
 		}
 
-		// Create BBitmap from canvas
+		// Create BBitmap from canvas (RGBA for transparency support)
 		BBitmap* bmp = new BBitmap(BRect(0, 0, canvasW - 1, canvasH - 1),
-			B_RGB32);
+			B_RGBA32);
 		if (bmp->InitCheck() != B_OK) {
 			delete bmp;
 			continue;
@@ -366,14 +361,14 @@ ImageCodec::DecompressGifFrames(const uint8* gifData, size_t size,
 
 		// Apply disposal
 		if (disposal == 2) {
-			// Restore to background
+			// Restore to background (transparent)
 			for (int32 y = fTop; y < fTop + fH && y < canvasH; y++) {
 				for (int32 x = fLeft; x < fLeft + fW && x < canvasW; x++) {
 					int32 off = (y * canvasW + x) * 4;
-					canvas[off + 0] = bgColor.Blue;
-					canvas[off + 1] = bgColor.Green;
-					canvas[off + 2] = bgColor.Red;
-					canvas[off + 3] = 255;
+					canvas[off + 0] = 0;
+					canvas[off + 1] = 0;
+					canvas[off + 2] = 0;
+					canvas[off + 3] = 0;
 				}
 			}
 		} else if (disposal == 3 && prevCanvas != NULL) {

@@ -988,12 +988,50 @@ MessageView::_DrawGifBubble(BView* owner, BRect frame)
 
 	if (fGifLoadState == 2 && fGifFrames != NULL
 		&& fGifCurrentFrame < fGifFrameCount) {
-		// Draw current GIF frame
+		// Draw current GIF frame — composite transparent pixels
+		// with bubble color manually (B_OP_ALPHA unreliable with
+		// DrawBitmap scaling on Haiku)
 		BBitmap* currentFrame = fGifFrames[fGifCurrentFrame];
 		BRect srcRect = currentFrame->Bounds();
 		BRect destRect(contentLeft, imageTop,
 			contentLeft + displayW - 1, imageTop + displayH - 1);
-		owner->DrawBitmap(currentFrame, srcRect, destRect);
+
+		int32 sw = (int32)(srcRect.Width() + 1);
+		int32 sh = (int32)(srcRect.Height() + 1);
+
+		BBitmap composite(BRect(0, 0, sw - 1, sh - 1), B_RGB32);
+		if (composite.InitCheck() == B_OK) {
+			uint8* dbits = (uint8*)composite.Bits();
+			int32 dbpr = composite.BytesPerRow();
+			uint8* sbits = (uint8*)currentFrame->Bits();
+			int32 sbpr = currentFrame->BytesPerRow();
+
+			for (int32 y = 0; y < sh; y++) {
+				uint8* drow = dbits + y * dbpr;
+				uint8* srow = sbits + y * sbpr;
+				for (int32 x = 0; x < sw; x++) {
+					uint8 a = srow[x * 4 + 3];
+					if (a == 255) {
+						drow[x * 4 + 0] = srow[x * 4 + 0];
+						drow[x * 4 + 1] = srow[x * 4 + 1];
+						drow[x * 4 + 2] = srow[x * 4 + 2];
+					} else if (a == 0) {
+						drow[x * 4 + 0] = bubbleColor.blue;
+						drow[x * 4 + 1] = bubbleColor.green;
+						drow[x * 4 + 2] = bubbleColor.red;
+					} else {
+						drow[x * 4 + 0] = (srow[x * 4 + 0] * a
+							+ bubbleColor.blue * (255 - a)) / 255;
+						drow[x * 4 + 1] = (srow[x * 4 + 1] * a
+							+ bubbleColor.green * (255 - a)) / 255;
+						drow[x * 4 + 2] = (srow[x * 4 + 2] * a
+							+ bubbleColor.red * (255 - a)) / 255;
+					}
+					drow[x * 4 + 3] = 255;
+				}
+			}
+			owner->DrawBitmap(&composite, srcRect, destRect);
+		}
 
 		// "GIF" badge in top-right corner
 		BFont badgeFont(be_plain_font);

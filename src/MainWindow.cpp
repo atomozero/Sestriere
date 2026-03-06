@@ -2945,6 +2945,18 @@ MainWindow::MessageReceived(BMessage* message)
 			_HandleGifSelected(message);
 			break;
 
+		case MSG_GIF_DOWNLOAD_REQ:
+		{
+			const char* gifId = NULL;
+			int32 itemIndex = 0;
+			if (message->FindString("gif_id", &gifId) == B_OK
+				&& message->FindInt32("item_index", &itemIndex)
+					== B_OK) {
+				_DownloadAndDisplayGif(gifId, itemIndex);
+			}
+			break;
+		}
+
 		case MSG_GIF_LOADED:
 		{
 			int32 itemIndex;

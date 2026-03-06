@@ -322,6 +322,17 @@ ChatView::SetCurrentContact(ContactInfo* contact)
 
 				AddItem(item);
 
+				// Trigger download for GIF messages not found in cache
+				if (item->IsGifMessage() && item->GifLoadState() == 0
+					&& Window() != NULL) {
+					item->SetGifLoadState(1);  // loading
+					BMessage dlMsg(MSG_GIF_DOWNLOAD_REQ);
+					dlMsg.AddString("gif_id", item->GifId());
+					dlMsg.AddInt32("item_index",
+						CountItems() - 1);
+					Window()->PostMessage(&dlMsg);
+				}
+
 				// Request emoji downloads for regular text messages
 				if (!item->IsGifMessage() && !item->IsImageMessage())
 					EmojiRenderer::RequestEmoji(msg->text, this);
