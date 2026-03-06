@@ -8,11 +8,15 @@
 
 ## Screenshots
 
-![Screenshot 1](../img/screenshot01.png)
+![Chat with GIF, Emoji & Images](../img/screenshot01.png)
 
-![Screenshot 2](../img/screenshot02.png)
+![Network Map](../img/screenshot02.png)
 
-![Screenshot 3](../img/screenshot03.jpg)
+![Geographic Map with OSM Tiles](../img/screenshot03.png)
+
+![Packet Analyzer](../img/screenshot04.png)
+
+![Mission Control Dashboard](../img/screenshot05.png)
 
 ## Features
 
