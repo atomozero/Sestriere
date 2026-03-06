@@ -34,6 +34,7 @@ class GrowingTextView;
 class ChatHeaderView;
 class ChatView;
 class ContactInfoPanel;
+class GifPickerWindow;
 class ContactItem;
 class MqttClient;
 class MqttLogWindow;
@@ -209,6 +210,12 @@ private:
 								const char* senderName);
 			void			_ShowSarMarkerDialog();
 
+			// GIF sharing
+			void			_HandleGifSelected(BMessage* msg);
+			void			_DownloadAndDisplayGif(const char* gifId,
+								int32 chatViewIndex);
+	static	int32			_GifDownloadThread(void* data);
+
 			// Image sharing
 			void			_HandleImageSelected(BMessage* message);
 			void			_SendNextImageFragment();
@@ -321,6 +328,7 @@ private:
 			MissionControlWindow* fMissionControlWindow;
 			ProfileWindow*	fProfileWindow;
 			SerialMonitorWindow* fSerialMonitorWindow;
+			GifPickerWindow* fGifPickerWindow;
 
 			// MQTT client
 			MqttClient*		fMqttClient;
@@ -399,6 +407,7 @@ private:
 			ImageSessionManager*	fImageSessions;
 			BFilePanel*		fImageOpenPanel;
 			BButton*		fAttachButton;
+			BButton*		fGifButton;
 			BMessageRunner*	fImageFragmentTimer;
 			BMessageRunner*	fImageExpireTimer;
 			uint32			fCurrentSendSession;

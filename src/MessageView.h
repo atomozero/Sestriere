@@ -53,12 +53,26 @@ public:
 								uint8 receivedCount);
 			void			SetImageBitmap(BBitmap* bitmap);
 
+			// GIF message support
+			bool			IsGifMessage() const { return fIsGifMsg; }
+			const char*		GifId() const { return fGifId; }
+			uint8			GifLoadState() const { return fGifLoadState; }
+			void			SetGifLoadState(uint8 state);
+			void			SetGifFrames(BBitmap** frames,
+								uint32* durations, int32 count);
+			void			AdvanceGifFrame();
+			int32			GifFrameCount() const { return fGifFrameCount; }
+			int32			CurrentGifFrame() const
+								{ return fGifCurrentFrame; }
+			uint32			CurrentFrameDuration() const;
+
 private:
 			void			_FormatTimestamp(char* buffer, size_t size) const;
 			void			_WrapText(BView* owner, const BString& text,
 								float maxWidth,
 								std::vector<BString>& outLines) const;
 			void			_DrawImageBubble(BView* owner, BRect frame);
+			void			_DrawGifBubble(BView* owner, BRect frame);
 
 			BString			fText;
 			BString			fSenderName;
@@ -86,6 +100,16 @@ private:
 			uint8			fImageReceivedFragments;
 			ImageSessionState fImageState;
 			BBitmap*		fImageBitmap;
+
+			// GIF message fields
+			bool			fIsGifMsg;
+			char			fGifId[64];
+			BBitmap**		fGifFrames;
+			uint32*			fGifDurations;
+			int32			fGifFrameCount;
+			int32			fGifCurrentFrame;
+			bigtime_t		fGifLastAdvance;
+			uint8			fGifLoadState;
 
 			float			fBaselineOffset;
 };

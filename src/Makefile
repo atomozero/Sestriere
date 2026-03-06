@@ -40,11 +40,13 @@ SRCS = \
 	TileCache.cpp \
 	SarMarker.cpp \
 	ImageCodec.cpp \
-	ImageSession.cpp
+	ImageSession.cpp \
+	GiphyClient.cpp \
+	GifPickerWindow.cpp
 
 RDEFS = Sestriere.rdef
 
-LIBS = be tracker shared columnlistview mosquitto sqlite3 translation $(STDCPPLIBS)
+LIBS = be tracker shared columnlistview mosquitto sqlite3 translation curl gif $(STDCPPLIBS)
 
 LIBPATHS =
 

@@ -14,6 +14,8 @@
 #include <TranslationUtils.h>
 #include <TranslatorRoster.h>
 
+#include <gif_lib.h>
+
 #include <cstdlib>
 #include <cstring>
 
@@ -182,4 +184,216 @@ ImageCodec::DecompressImageData(const uint8* jpegData, size_t size)
 
 	output.DetachBitmap(&bitmap);
 	return bitmap;
+}
+
+
+// --- GIF frame decoding with giflib ---
+
+struct GifReadContext {
+	const uint8*	data;
+	size_t			size;
+	size_t			offset;
+};
+
+
+static int
+_GifReadFunc(GifFileType* gif, GifByteType* buf, int count)
+{
+	GifReadContext* ctx = (GifReadContext*)gif->UserData;
+	size_t avail = ctx->size - ctx->offset;
+	size_t toRead = (size_t)count < avail ? (size_t)count : avail;
+	memcpy(buf, ctx->data + ctx->offset, toRead);
+	ctx->offset += toRead;
+	return (int)toRead;
+}
+
+
+status_t
+ImageCodec::DecompressGifFrames(const uint8* gifData, size_t size,
+	BBitmap*** outFrames, uint32** outDurations, int32* outFrameCount,
+	int32 maxFrames)
+{
+	if (gifData == NULL || size == 0 || outFrames == NULL
+		|| outDurations == NULL || outFrameCount == NULL)
+		return B_BAD_VALUE;
+
+	*outFrames = NULL;
+	*outDurations = NULL;
+	*outFrameCount = 0;
+
+	GifReadContext ctx;
+	ctx.data = gifData;
+	ctx.size = size;
+	ctx.offset = 0;
+
+	int error = 0;
+	GifFileType* gif = DGifOpen(&ctx, _GifReadFunc, &error);
+	if (gif == NULL)
+		return B_ERROR;
+
+	if (DGifSlurp(gif) != GIF_OK) {
+		DGifCloseFile(gif, &error);
+		return B_ERROR;
+	}
+
+	int32 frameCount = gif->ImageCount;
+	if (frameCount <= 0) {
+		DGifCloseFile(gif, &error);
+		return B_ERROR;
+	}
+	if (frameCount > maxFrames)
+		frameCount = maxFrames;
+
+	int32 canvasW = gif->SWidth;
+	int32 canvasH = gif->SHeight;
+
+	BBitmap** frames = new BBitmap*[frameCount];
+	uint32* durations = new uint32[frameCount];
+	memset(frames, 0, sizeof(BBitmap*) * frameCount);
+	memset(durations, 0, sizeof(uint32) * frameCount);
+
+	// Canvas for frame compositing (persistent across frames)
+	uint8* canvas = (uint8*)calloc(canvasW * canvasH * 4, 1);
+	if (canvas == NULL) {
+		delete[] frames;
+		delete[] durations;
+		DGifCloseFile(gif, &error);
+		return B_NO_MEMORY;
+	}
+
+	// Fill canvas with background color
+	ColorMapObject* globalMap = gif->SColorMap;
+	GifColorType bgColor = {0, 0, 0};
+	if (globalMap != NULL && gif->SBackGroundColor < globalMap->ColorCount)
+		bgColor = globalMap->Colors[gif->SBackGroundColor];
+
+	for (int32 p = 0; p < canvasW * canvasH; p++) {
+		canvas[p * 4 + 0] = bgColor.Blue;
+		canvas[p * 4 + 1] = bgColor.Green;
+		canvas[p * 4 + 2] = bgColor.Red;
+		canvas[p * 4 + 3] = 255;
+	}
+
+	// Save canvas state for dispose-to-previous
+	uint8* prevCanvas = (uint8*)malloc(canvasW * canvasH * 4);
+	if (prevCanvas != NULL)
+		memcpy(prevCanvas, canvas, canvasW * canvasH * 4);
+
+	int32 validFrames = 0;
+
+	for (int32 i = 0; i < frameCount; i++) {
+		SavedImage* si = &gif->SavedImages[i];
+		GifImageDesc* desc = &si->ImageDesc;
+
+		int32 fLeft = desc->Left;
+		int32 fTop = desc->Top;
+		int32 fW = desc->Width;
+		int32 fH = desc->Height;
+
+		ColorMapObject* colorMap = desc->ColorMap
+			? desc->ColorMap : globalMap;
+		if (colorMap == NULL)
+			continue;
+
+		// Extract GCE (Graphics Control Extension)
+		int32 delay = 100;  // default 100ms
+		int32 disposal = 0;
+		int32 transIndex = -1;
+
+		for (int32 e = 0; e < si->ExtensionBlockCount; e++) {
+			ExtensionBlock* ext = &si->ExtensionBlocks[e];
+			if (ext->Function == GRAPHICS_EXT_FUNC_CODE
+				&& ext->ByteCount >= 4) {
+				uint8 packed = ext->Bytes[0];
+				disposal = (packed >> 2) & 7;
+				if (packed & 1)
+					transIndex = (uint8)ext->Bytes[3];
+				int32 d = (uint8)ext->Bytes[1]
+					| ((uint8)ext->Bytes[2] << 8);
+				delay = d * 10;  // centiseconds → ms
+				if (delay == 0)
+					delay = 100;
+			}
+		}
+
+		// Save canvas before rendering (for dispose-to-previous)
+		if (disposal == 3 && prevCanvas != NULL)
+			memcpy(prevCanvas, canvas, canvasW * canvasH * 4);
+
+		// Render frame pixels onto canvas
+		uint8* raster = si->RasterBits;
+		for (int32 y = 0; y < fH; y++) {
+			int32 cy = fTop + y;
+			if (cy < 0 || cy >= canvasH)
+				continue;
+			for (int32 x = 0; x < fW; x++) {
+				int32 cx = fLeft + x;
+				if (cx < 0 || cx >= canvasW)
+					continue;
+
+				uint8 idx = raster[y * fW + x];
+				if (idx == transIndex)
+					continue;
+				if (idx >= colorMap->ColorCount)
+					continue;
+
+				GifColorType* c = &colorMap->Colors[idx];
+				int32 off = (cy * canvasW + cx) * 4;
+				canvas[off + 0] = c->Blue;
+				canvas[off + 1] = c->Green;
+				canvas[off + 2] = c->Red;
+				canvas[off + 3] = 255;
+			}
+		}
+
+		// Create BBitmap from canvas
+		BBitmap* bmp = new BBitmap(BRect(0, 0, canvasW - 1, canvasH - 1),
+			B_RGB32);
+		if (bmp->InitCheck() != B_OK) {
+			delete bmp;
+			continue;
+		}
+
+		// Copy canvas to bitmap
+		int32 bpr = bmp->BytesPerRow();
+		uint8* bits = (uint8*)bmp->Bits();
+		for (int32 y = 0; y < canvasH; y++)
+			memcpy(bits + y * bpr, canvas + y * canvasW * 4, canvasW * 4);
+
+		frames[validFrames] = bmp;
+		durations[validFrames] = (uint32)delay;
+		validFrames++;
+
+		// Apply disposal
+		if (disposal == 2) {
+			// Restore to background
+			for (int32 y = fTop; y < fTop + fH && y < canvasH; y++) {
+				for (int32 x = fLeft; x < fLeft + fW && x < canvasW; x++) {
+					int32 off = (y * canvasW + x) * 4;
+					canvas[off + 0] = bgColor.Blue;
+					canvas[off + 1] = bgColor.Green;
+					canvas[off + 2] = bgColor.Red;
+					canvas[off + 3] = 255;
+				}
+			}
+		} else if (disposal == 3 && prevCanvas != NULL) {
+			// Restore to previous
+			memcpy(canvas, prevCanvas, canvasW * canvasH * 4);
+		}
+	}
+
+	free(canvas);
+	free(prevCanvas);
+	DGifCloseFile(gif, &error);
+
+	if (validFrames == 0) {
+		delete[] frames;
+		delete[] durations;
+		return B_ERROR;
+	}
+
+	*outFrames = frames;
+	*outDurations = durations;
+	*outFrameCount = validFrames;
+	return B_OK;
 }

@@ -8,7 +8,10 @@
 #include "ChatView.h"
 
 #include <Clipboard.h>
+#include <Entry.h>
+#include <File.h>
 #include <MenuItem.h>
+#include <MessageRunner.h>
 #include <PopUpMenu.h>
 #include <ScrollView.h>
 #include <Window.h>
@@ -17,6 +20,7 @@
 
 #include "Constants.h"
 #include "DatabaseManager.h"
+#include "GiphyClient.h"
 #include "ImageCodec.h"
 #include "ImageSession.h"
 #include "MessageView.h"
@@ -30,6 +34,7 @@ ChatView::ChatView(const char* name)
 	BListView(name, B_SINGLE_SELECTION_LIST),
 	fCurrentContact(NULL),
 	fCurrentContactName(""),
+	fGifAnimateRunner(NULL),
 	fCurrentMessages(20)
 {
 }
@@ -37,6 +42,7 @@ ChatView::ChatView(const char* name)
 
 ChatView::~ChatView()
 {
+	delete fGifAnimateRunner;
 	ClearMessages();
 }
 
@@ -132,6 +138,27 @@ void
 ChatView::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
+		case MSG_GIF_ANIMATE:
+		{
+			bool hasGifs = false;
+			for (int32 i = 0; i < CountItems(); i++) {
+				MessageView* mv = dynamic_cast<MessageView*>(ItemAt(i));
+				if (mv != NULL && mv->IsGifMessage()
+					&& mv->GifFrameCount() > 1) {
+					hasGifs = true;
+					int32 oldFrame = mv->CurrentGifFrame();
+					mv->AdvanceGifFrame();
+					if (mv->CurrentGifFrame() != oldFrame)
+						InvalidateItem(i);
+				}
+			}
+			if (!hasGifs) {
+				delete fGifAnimateRunner;
+				fGifAnimateRunner = NULL;
+			}
+			break;
+		}
+
 		case kMsgCopyText:
 		{
 			int32 index;
@@ -197,6 +224,10 @@ ChatView::UpdateDeliveryStatus(int32 index, uint8 status, uint32 rtt,
 void
 ChatView::ClearMessages()
 {
+	// Stop GIF animation
+	delete fGifAnimateRunner;
+	fGifAnimateRunner = NULL;
+
 	// Remove visual items
 	for (int32 i = CountItems() - 1; i >= 0; i--) {
 		MessageView* item = dynamic_cast<MessageView*>(RemoveItem(i));
@@ -244,10 +275,54 @@ ChatView::SetCurrentContact(ContactInfo* contact)
 					}
 				}
 
+				// Load cached GIF if this is a GIF message
+				if (item->IsGifMessage()) {
+					BString cachePath;
+					cachePath.SetToFormat(
+						"/boot/home/config/settings/Sestriere/"
+						"gif_cache/%s.gif", item->GifId());
+					BEntry entry(cachePath.String());
+					if (entry.Exists()) {
+						off_t fileSize;
+						entry.GetSize(&fileSize);
+						if (fileSize > 0) {
+							uint8* gifData = (uint8*)malloc(fileSize);
+							if (gifData != NULL) {
+								BFile file(cachePath.String(),
+									B_READ_ONLY);
+								if (file.Read(gifData, fileSize)
+									== fileSize) {
+									BBitmap** frames = NULL;
+									uint32* durations = NULL;
+									int32 frameCount = 0;
+									if (ImageCodec::DecompressGifFrames(
+										gifData, fileSize, &frames,
+										&durations, &frameCount)
+										== B_OK) {
+										item->SetGifFrames(frames,
+											durations, frameCount);
+									}
+								}
+								free(gifData);
+							}
+						}
+					}
+				}
+
 				AddItem(item);
 			}
 		}
 		_ScrollToBottom();
+
+		// Start GIF animation if any loaded GIFs have multiple frames
+		for (int32 i = 0; i < CountItems(); i++) {
+			MessageView* mv = dynamic_cast<MessageView*>(ItemAt(i));
+			if (mv != NULL && mv->IsGifMessage()
+				&& mv->GifFrameCount() > 1) {
+				StartGifAnimation();
+				break;
+			}
+		}
 	}
 }
 
@@ -256,6 +331,18 @@ OwningObjectList<ChatMessage>*
 ChatView::GetMessageHistory()
 {
 	return &fCurrentMessages;
+}
+
+
+void
+ChatView::StartGifAnimation()
+{
+	if (fGifAnimateRunner != NULL)
+		return;
+
+	BMessage msg(MSG_GIF_ANIMATE);
+	fGifAnimateRunner = new BMessageRunner(BMessenger(this), &msg,
+		50000);  // 50ms = 20fps
 }
 
 

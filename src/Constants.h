@@ -336,6 +336,12 @@ enum {
 	MSG_IMAGE_SEND_NEXT = 'imfr',
 	MSG_IMAGE_FETCH_REQ = 'imft',
 	MSG_IMAGE_EXPIRE = 'imex',
+
+	// GIF sharing (GIPHY)
+	MSG_SELECT_GIF = 'gfpk',
+	MSG_GIF_SELECTED = 'gfsl',
+	MSG_GIF_ANIMATE = 'ganm',
+	MSG_GIF_LOADED = 'gfld',
 };
 
 // =============================================================================

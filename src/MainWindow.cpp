@@ -49,6 +49,8 @@
 #include "Constants.h"
 #include "ContactExportWindow.h"
 #include "ContactInfoPanel.h"
+#include "GifPickerWindow.h"
+#include "GiphyClient.h"
 #include "DatabaseManager.h"
 #include "GrowingTextView.h"
 #include "ImageCodec.h"
@@ -275,6 +277,7 @@ MainWindow::MainWindow()
 	fMissionControlWindow(NULL),
 	fProfileWindow(NULL),
 	fSerialMonitorWindow(NULL),
+	fGifPickerWindow(NULL),
 	fMqttClient(NULL),
 	fRawPacketCount(0),
 	fLastRawPacketTime(0),
@@ -296,6 +299,7 @@ MainWindow::MainWindow()
 	fImageSessions(NULL),
 	fImageOpenPanel(NULL),
 	fAttachButton(NULL),
+	fGifButton(NULL),
 	fImageFragmentTimer(NULL),
 	fImageExpireTimer(NULL),
 	fCurrentSendSession(0),
@@ -636,12 +640,18 @@ MainWindow::_BuildUI()
 		new BMessage(MSG_SELECT_IMAGE));
 	fAttachButton->SetEnabled(false);
 
-	// Input bar: [attach] [input] [counter] [send]
+	// GIF button
+	fGifButton = new BButton("gif", "GIF",
+		new BMessage(MSG_SELECT_GIF));
+	fGifButton->SetEnabled(false);
+
+	// Input bar: [attach] [gif] [input] [counter] [send]
 	BView* inputBar = new BView("input_bar", 0);
 	inputBar->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	BLayoutBuilder::Group<>(inputBar, B_HORIZONTAL, B_USE_SMALL_SPACING)
 		.SetInsets(B_USE_SMALL_SPACING)
 		.Add(fAttachButton)
+		.Add(fGifButton)
 		.Add(inputScroll, 1.0)
 		.Add(fCharCounter)
 		.Add(fSendButton)
@@ -801,6 +811,7 @@ MainWindow::_UpdateConnectionUI()
 		fMessageInput->SetEnabled(false);
 		fSendButton->SetEnabled(false);
 		fAttachButton->SetEnabled(false);
+		fGifButton->SetEnabled(false);
 	}
 }
 
@@ -2914,6 +2925,68 @@ MainWindow::MessageReceived(BMessage* message)
 				fImageSessions->PurgeExpired();
 			break;
 
+		// --- GIF sharing ---
+		case MSG_SELECT_GIF:
+		{
+			if (fGifPickerWindow == NULL)
+				fGifPickerWindow = new GifPickerWindow(this);
+
+			if (fGifPickerWindow->LockLooper()) {
+				if (fGifPickerWindow->IsHidden())
+					fGifPickerWindow->Show();
+				else
+					fGifPickerWindow->Activate();
+				fGifPickerWindow->UnlockLooper();
+			}
+			break;
+		}
+
+		case MSG_GIF_SELECTED:
+			_HandleGifSelected(message);
+			break;
+
+		case MSG_GIF_LOADED:
+		{
+			int32 itemIndex;
+			void* framesPtr = NULL;
+			void* durationsPtr = NULL;
+			int32 frameCount = 0;
+
+			if (message->FindInt32("item_index", &itemIndex) != B_OK)
+				break;
+			if (message->FindPointer("frames", &framesPtr) != B_OK)
+				break;
+			if (message->FindPointer("durations", &durationsPtr) != B_OK)
+				break;
+			if (message->FindInt32("frame_count", &frameCount) != B_OK)
+				break;
+
+			BBitmap** frames = (BBitmap**)framesPtr;
+			uint32* durations = (uint32*)durationsPtr;
+
+			MessageView* mv = dynamic_cast<MessageView*>(
+				fChatView->ItemAt(itemIndex));
+			if (mv != NULL && mv->IsGifMessage()) {
+				mv->SetGifFrames(frames, durations, frameCount);
+
+				// Recalculate height and invalidate
+				BFont font;
+				fChatView->GetFont(&font);
+				mv->Update(fChatView, &font);
+				fChatView->InvalidateItem(itemIndex);
+
+				if (frameCount > 1)
+					fChatView->StartGifAnimation();
+			} else {
+				// Clean up if item no longer valid
+				for (int32 i = 0; i < frameCount; i++)
+					delete frames[i];
+				delete[] frames;
+				delete[] durations;
+			}
+			break;
+		}
+
 		default:
 			BWindow::MessageReceived(message);
 			break;
@@ -3000,6 +3073,11 @@ MainWindow::QuitRequested()
 		fSerialMonitorWindow->Quit();
 		fSerialMonitorWindow = NULL;
 	}
+	if (fGifPickerWindow != NULL) {
+		fGifPickerWindow->Lock();
+		fGifPickerWindow->Quit();
+		fGifPickerWindow = NULL;
+	}
 	// fRepeaterMonitorView is a child of fCardView, destroyed automatically
 
 	// Destroy singletons
@@ -3050,6 +3128,7 @@ MainWindow::_SelectContact(int32 index)
 		fMessageInput->SetEnabled(fConnected);
 		fSendButton->SetEnabled(fConnected);
 		fAttachButton->SetEnabled(fConnected);
+		fGifButton->SetEnabled(fConnected);
 
 		// Load channel message history
 		fChatView->ClearMessages();
@@ -3096,6 +3175,7 @@ MainWindow::_SelectContact(int32 index)
 		fMessageInput->SetEnabled(fConnected);
 		fSendButton->SetEnabled(fConnected);
 		fAttachButton->SetEnabled(fConnected);
+		fGifButton->SetEnabled(fConnected);
 
 		// Load private channel message history
 		fChatView->ClearMessages();
@@ -3139,6 +3219,7 @@ MainWindow::_SelectContact(int32 index)
 			fMessageInput->SetEnabled(fConnected);
 			fSendButton->SetEnabled(fConnected);
 			fAttachButton->SetEnabled(fConnected);
+			fGifButton->SetEnabled(fConnected);
 
 			// Clear unread badge for this contact
 			selectedItem->ClearUnread();
@@ -3167,6 +3248,7 @@ MainWindow::_SelectContact(int32 index)
 		fMessageInput->SetEnabled(false);
 		fSendButton->SetEnabled(false);
 		fAttachButton->SetEnabled(false);
+		fGifButton->SetEnabled(false);
 	}
 
 	_UpdateCharCounter();
@@ -4547,6 +4629,24 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 		}
 	}
 
+	// Check for GIF message — auto-download
+	if (GiphyClient::IsGifMessage(text)) {
+		// Find the MessageView that was just added
+		int32 lastIndex = fChatView->CountItems() - 1;
+		if (lastIndex >= 0) {
+			MessageView* mv = dynamic_cast<MessageView*>(
+				fChatView->ItemAt(lastIndex));
+			if (mv != NULL && mv->IsGifMessage()) {
+				char gifId[64];
+				if (GiphyClient::ExtractGifId(text, gifId, sizeof(gifId))) {
+					mv->SetGifLoadState(1);
+					fChatView->InvalidateItem(lastIndex);
+					_DownloadAndDisplayGif(gifId, lastIndex);
+				}
+			}
+		}
+	}
+
 	// Store message in contact's in-memory history and update lastSeen
 	if (sender != NULL) {
 		ChatMessage* stored = new ChatMessage(chatMsg);
@@ -4762,6 +4862,24 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 				"Received channel image envelope: session %08x",
 				imgSession->sessionId));
 			_StartImageFetch(imgSession->sessionId);
+		}
+	}
+
+	// Check for GIF message — auto-download
+	if (GiphyClient::IsGifMessage(messageText)) {
+		int32 lastIndex = fChatView->CountItems() - 1;
+		if (lastIndex >= 0) {
+			MessageView* mv = dynamic_cast<MessageView*>(
+				fChatView->ItemAt(lastIndex));
+			if (mv != NULL && mv->IsGifMessage()) {
+				char gifId[64];
+				if (GiphyClient::ExtractGifId(messageText,
+					gifId, sizeof(gifId))) {
+					mv->SetGifLoadState(1);
+					fChatView->InvalidateItem(lastIndex);
+					_DownloadAndDisplayGif(gifId, lastIndex);
+				}
+			}
 		}
 	}
 
@@ -5728,6 +5846,7 @@ MainWindow::_OnConnected(BMessage* message)
 		fMessageInput->SetEnabled(true);
 		fSendButton->SetEnabled(true);
 		fAttachButton->SetEnabled(true);
+		fGifButton->SetEnabled(true);
 	}
 
 	// Forward to Mission Control
@@ -7182,6 +7301,148 @@ MainWindow::_ShowSarMarkerDialog()
 // =============================================================================
 // Image Sharing
 // =============================================================================
+
+
+// --- GIF sharing implementation ---
+
+struct GifDownloadContext {
+	char		gifId[64];
+	int32		chatViewIndex;
+	BWindow*	targetWindow;
+};
+
+
+void
+MainWindow::_HandleGifSelected(BMessage* msg)
+{
+	const char* gifId = NULL;
+	if (msg->FindString("gif_id", &gifId) != B_OK || gifId == NULL)
+		return;
+
+	// Compose g:ID text and send as normal message
+	BString gifText;
+	gifText.SetToFormat("g:%s", gifId);
+
+	if (fSendingToChannel || fSelectedChannelIdx >= 0)
+		_SendChannelMessage(gifText.String());
+	else
+		_SendTextMessage(gifText.String());
+
+	// The message was just added to chat — find it and start download
+	int32 lastIndex = fChatView->CountItems() - 1;
+	if (lastIndex >= 0) {
+		MessageView* mv = dynamic_cast<MessageView*>(
+			fChatView->ItemAt(lastIndex));
+		if (mv != NULL && mv->IsGifMessage()) {
+			mv->SetGifLoadState(1);  // loading
+			fChatView->InvalidateItem(lastIndex);
+			_DownloadAndDisplayGif(gifId, lastIndex);
+		}
+	}
+}
+
+
+void
+MainWindow::_DownloadAndDisplayGif(const char* gifId, int32 chatViewIndex)
+{
+	GifDownloadContext* ctx = new GifDownloadContext;
+	strlcpy(ctx->gifId, gifId, sizeof(ctx->gifId));
+	ctx->chatViewIndex = chatViewIndex;
+	ctx->targetWindow = this;
+
+	thread_id tid = spawn_thread(_GifDownloadThread, "gif_download",
+		B_LOW_PRIORITY, ctx);
+	if (tid >= 0)
+		resume_thread(tid);
+	else
+		delete ctx;
+}
+
+
+int32
+MainWindow::_GifDownloadThread(void* data)
+{
+	GifDownloadContext* ctx = (GifDownloadContext*)data;
+
+	// Check cache first
+	BString cachePath;
+	cachePath.SetToFormat(
+		"/boot/home/config/settings/Sestriere/gif_cache/%s.gif",
+		ctx->gifId);
+
+	uint8* gifData = NULL;
+	size_t gifSize = 0;
+
+	// Try loading from cache
+	BEntry entry(cachePath.String());
+	if (entry.Exists()) {
+		off_t fileSize;
+		entry.GetSize(&fileSize);
+		if (fileSize > 0) {
+			gifData = (uint8*)malloc(fileSize);
+			if (gifData != NULL) {
+				BFile file(cachePath.String(), B_READ_ONLY);
+				if (file.Read(gifData, fileSize) == fileSize) {
+					gifSize = (size_t)fileSize;
+				} else {
+					free(gifData);
+					gifData = NULL;
+				}
+			}
+		}
+	}
+
+	// Download if not cached
+	if (gifData == NULL) {
+		char gifUrl[512];
+		GiphyClient::BuildGifUrl(ctx->gifId, gifUrl, sizeof(gifUrl));
+		if (GiphyClient::DownloadData(gifUrl, &gifData, &gifSize) != B_OK) {
+			// Send error state
+			BMessage msg(MSG_GIF_LOADED);
+			msg.AddInt32("item_index", ctx->chatViewIndex);
+			msg.AddPointer("frames", NULL);
+			msg.AddPointer("durations", NULL);
+			msg.AddInt32("frame_count", 0);
+			BMessenger(ctx->targetWindow).SendMessage(&msg);
+			delete ctx;
+			return 0;
+		}
+
+		// Save to cache
+		create_directory(
+			"/boot/home/config/settings/Sestriere/gif_cache",
+			0755);
+		BFile cacheFile(cachePath.String(),
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		if (cacheFile.InitCheck() == B_OK)
+			cacheFile.Write(gifData, gifSize);
+	}
+
+	// Decode GIF frames
+	BBitmap** frames = NULL;
+	uint32* durations = NULL;
+	int32 frameCount = 0;
+
+	status_t status = ImageCodec::DecompressGifFrames(gifData, gifSize,
+		&frames, &durations, &frameCount);
+	free(gifData);
+
+	if (status != B_OK) {
+		delete ctx;
+		return 0;
+	}
+
+	// Post result to main window
+	BMessage msg(MSG_GIF_LOADED);
+	msg.AddInt32("item_index", ctx->chatViewIndex);
+	msg.AddPointer("frames", frames);
+	msg.AddPointer("durations", durations);
+	msg.AddInt32("frame_count", frameCount);
+	BMessenger(ctx->targetWindow).SendMessage(&msg);
+
+	delete ctx;
+	return 0;
+}
 
 
 void

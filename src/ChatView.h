@@ -14,6 +14,7 @@
 
 #include "Types.h"
 
+class BMessageRunner;
 class MessageView;
 
 class ChatView : public BListView {
@@ -38,11 +39,15 @@ public:
 			// Access to message history for the current contact
 			OwningObjectList<ChatMessage>* GetMessageHistory();
 
+			// GIF animation
+			void			StartGifAnimation();
+
 private:
 			void			_ScrollToBottom();
 
 			ContactInfo*	fCurrentContact;
 			BString			fCurrentContactName;
+			BMessageRunner*	fGifAnimateRunner;
 
 			// Message history per contact (pubkey prefix -> messages)
 			// For simplicity, we store messages in memory only

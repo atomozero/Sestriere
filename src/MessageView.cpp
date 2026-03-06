@@ -16,6 +16,7 @@
 #include <ctime>
 
 #include "Constants.h"
+#include "GiphyClient.h"
 #include "ImageSession.h"
 #include "SarMarker.h"
 
@@ -84,12 +85,25 @@ MessageView::MessageView(const ChatMessage& message, const char* senderName)
 	fImageReceivedFragments(0),
 	fImageState(IMAGE_PENDING),
 	fImageBitmap(NULL),
+	fIsGifMsg(false),
+	fGifFrames(NULL),
+	fGifDurations(NULL),
+	fGifFrameCount(0),
+	fGifCurrentFrame(0),
+	fGifLastAdvance(0),
+	fGifLoadState(0),
 	fBaselineOffset(0)
 {
 	memcpy(fPubKeyPrefix, message.pubKeyPrefix, sizeof(fPubKeyPrefix));
 
+	// Check for GIF message (g:ID format)
+	if (GiphyClient::IsGifMessage(fText.String())) {
+		fIsGifMsg = true;
+		GiphyClient::ExtractGifId(fText.String(), fGifId, sizeof(fGifId));
+	}
+
 	// Check for IE2 image envelope before SAR marker
-	if (ImageSessionManager::IsImageEnvelope(fText.String())) {
+	if (!fIsGifMsg && ImageSessionManager::IsImageEnvelope(fText.String())) {
 		fIsImageMsg = true;
 		uint32 sid = 0;
 		uint8 fmt = 0, total = 0;
@@ -112,6 +126,13 @@ MessageView::MessageView(const ChatMessage& message, const char* senderName)
 MessageView::~MessageView()
 {
 	delete fImageBitmap;
+
+	if (fGifFrames != NULL) {
+		for (int32 i = 0; i < fGifFrameCount; i++)
+			delete fGifFrames[i];
+		delete[] fGifFrames;
+		delete[] fGifDurations;
+	}
 }
 
 
@@ -125,6 +146,13 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	rgb_color chatBg = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_1_TINT);
 	owner->SetLowColor(chatBg);
 	owner->FillRect(frame, B_SOLID_LOW);
+
+	// GIF message — separate rendering path
+	if (fIsGifMsg) {
+		_DrawGifBubble(owner, frame);
+		owner->PopState();
+		return;
+	}
 
 	// Image message — separate rendering path
 	if (fIsImageMsg) {
@@ -465,6 +493,30 @@ MessageView::Update(BView* owner, const BFont* font)
 {
 	BListItem::Update(owner, font);
 
+	// GIF messages have fixed height
+	if (fIsGifMsg) {
+		font_height fontHeight;
+		font->GetHeight(&fontHeight);
+		float lineHeight = fontHeight.ascent + fontHeight.descent
+			+ fontHeight.leading;
+		float headerHeight = (!fOutgoing && fSenderName.Length() > 0)
+			? lineHeight : 0;
+		float metaHeight = lineHeight * 0.8f;
+		float imgH = 100.0f;
+		if (fGifFrames != NULL && fGifFrames[0] != NULL) {
+			float imgW = fGifFrames[0]->Bounds().Width() + 1;
+			imgH = fGifFrames[0]->Bounds().Height() + 1;
+			// Scale to max 200px width
+			if (imgW > 200.0f) {
+				imgH = imgH * 200.0f / imgW;
+			}
+		}
+		float height = headerHeight + imgH + metaHeight
+			+ kBubblePadding * 2 + kBubbleMargin;
+		SetHeight(height);
+		return;
+	}
+
 	// Image messages have fixed height based on content
 	if (fIsImageMsg) {
 		font_height fontHeight;
@@ -749,6 +801,243 @@ MessageView::_DrawImageBubble(BView* owner, BRect frame)
 	}
 
 	// Draw meta text
+	owner->SetFont(&metaFont);
+	owner->SetHighColor(MetaTextColor());
+	float metaX = bubbleRect.right - kBubblePadding - metaWidth;
+	float metaY = bubbleRect.bottom - kBubblePadding / 2;
+	owner->DrawString(displayMeta.String(), BPoint(metaX, metaY));
+}
+
+
+void
+MessageView::SetGifLoadState(uint8 state)
+{
+	fGifLoadState = state;
+}
+
+
+void
+MessageView::SetGifFrames(BBitmap** frames, uint32* durations, int32 count)
+{
+	// Clean up old frames
+	if (fGifFrames != NULL) {
+		for (int32 i = 0; i < fGifFrameCount; i++)
+			delete fGifFrames[i];
+		delete[] fGifFrames;
+		delete[] fGifDurations;
+	}
+
+	fGifFrames = frames;
+	fGifDurations = durations;
+	fGifFrameCount = count;
+	fGifCurrentFrame = 0;
+	fGifLastAdvance = system_time();
+	fGifLoadState = 2;  // loaded
+}
+
+
+void
+MessageView::AdvanceGifFrame()
+{
+	if (fGifFrameCount <= 1)
+		return;
+
+	bigtime_t now = system_time();
+	bigtime_t elapsed = now - fGifLastAdvance;
+	if (elapsed >= (bigtime_t)fGifDurations[fGifCurrentFrame] * 1000) {
+		fGifCurrentFrame = (fGifCurrentFrame + 1) % fGifFrameCount;
+		fGifLastAdvance = now;
+	}
+}
+
+
+uint32
+MessageView::CurrentFrameDuration() const
+{
+	if (fGifFrameCount == 0 || fGifDurations == NULL)
+		return 100;
+	return fGifDurations[fGifCurrentFrame];
+}
+
+
+void
+MessageView::_DrawGifBubble(BView* owner, BRect frame)
+{
+	owner->SetFont(be_plain_font);
+	font_height fh;
+	owner->GetFontHeight(&fh);
+	float lineHeight = fh.ascent + fh.descent + fh.leading;
+
+	// Meta text
+	char timeStr[16];
+	_FormatTimestamp(timeStr, sizeof(timeStr));
+	BString displayMeta;
+	if (fOutgoing) {
+		switch (fDeliveryStatus) {
+			case DELIVERY_PENDING:
+				displayMeta.SetToFormat("%s \xE2\x8F\xB3", timeStr);
+				break;
+			case DELIVERY_CONFIRMED:
+				displayMeta.SetToFormat("%s \xE2\x9C\x93\xE2\x9C\x93",
+					timeStr);
+				break;
+			default:
+				displayMeta.SetToFormat("%s \xE2\x9C\x93", timeStr);
+				break;
+		}
+	} else {
+		if (fPathLen == 0 || fPathLen == kPathLenDirect)
+			displayMeta.SetToFormat("%s", timeStr);
+		else
+			displayMeta.SetToFormat("%s \xC2\xB7 %d hops", timeStr, fPathLen);
+	}
+
+	BFont metaFont;
+	owner->GetFont(&metaFont);
+	metaFont.SetSize(metaFont.Size() * 0.85f);
+	float metaWidth = metaFont.StringWidth(displayMeta.String());
+	float metaHeight = lineHeight * 0.8f;
+
+	// Image dimensions
+	float imgW = 128, imgH = 100;
+	float displayW = imgW, displayH = imgH;
+
+	if (fGifFrames != NULL && fGifFrames[0] != NULL) {
+		imgW = fGifFrames[0]->Bounds().Width() + 1;
+		imgH = fGifFrames[0]->Bounds().Height() + 1;
+		displayW = imgW;
+		displayH = imgH;
+		if (displayW > 200.0f) {
+			displayH = displayH * 200.0f / displayW;
+			displayW = 200.0f;
+		}
+	}
+
+	float headerHeight = (!fOutgoing && fSenderName.Length() > 0)
+		? lineHeight : 0;
+	float contentWidth = std::max(displayW, metaWidth);
+	float bubbleWidth = contentWidth + kBubblePadding * 2;
+	float bubbleHeight = headerHeight + displayH + metaHeight
+		+ kBubblePadding * 2;
+
+	// Position bubble
+	BRect bubbleRect;
+	if (fOutgoing) {
+		bubbleRect.left = frame.right - bubbleWidth - kBubbleMargin;
+		bubbleRect.right = frame.right - kBubbleMargin;
+	} else {
+		bubbleRect.left = frame.left + kBubbleMargin;
+		bubbleRect.right = frame.left + kBubbleMargin + bubbleWidth;
+	}
+	bubbleRect.top = frame.top + kBubbleMargin / 2;
+	bubbleRect.bottom = bubbleRect.top + bubbleHeight;
+
+	// Draw bubble
+	rgb_color bubbleColor = fOutgoing
+		? OutgoingBubbleColor() : IncomingBubbleColor();
+	rgb_color borderColor = fOutgoing
+		? OutgoingBorderColor() : IncomingBorderColor();
+
+	// Shadow
+	owner->SetHighColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR),
+		B_DARKEN_2_TINT));
+	BRect shadowRect = bubbleRect;
+	shadowRect.OffsetBy(1, 1);
+	owner->FillRoundRect(shadowRect, kBubbleRadius, kBubbleRadius);
+
+	owner->SetHighColor(bubbleColor);
+	owner->FillRoundRect(bubbleRect, kBubbleRadius, kBubbleRadius);
+	owner->SetHighColor(borderColor);
+	owner->StrokeRoundRect(bubbleRect, kBubbleRadius, kBubbleRadius);
+
+	float yPos = bubbleRect.top + kBubblePadding + fh.ascent;
+
+	// Sender name
+	if (!fOutgoing && fSenderName.Length() > 0) {
+		BFont savedFont;
+		owner->GetFont(&savedFont);
+		BFont boldFont(savedFont);
+		boldFont.SetFace(B_BOLD_FACE);
+		owner->SetFont(&boldFont);
+		owner->SetHighColor(SenderNameColor());
+		owner->DrawString(fSenderName.String(),
+			BPoint(bubbleRect.left + kBubblePadding, yPos));
+		owner->SetFont(&savedFont);
+		yPos += lineHeight;
+	}
+
+	float contentLeft = bubbleRect.left + kBubblePadding;
+	float imageTop = yPos - fh.ascent;
+
+	if (fGifLoadState == 2 && fGifFrames != NULL
+		&& fGifCurrentFrame < fGifFrameCount) {
+		// Draw current GIF frame
+		BBitmap* currentFrame = fGifFrames[fGifCurrentFrame];
+		BRect srcRect = currentFrame->Bounds();
+		BRect destRect(contentLeft, imageTop,
+			contentLeft + displayW - 1, imageTop + displayH - 1);
+		owner->DrawBitmap(currentFrame, srcRect, destRect);
+
+		// "GIF" badge in top-right corner
+		BFont badgeFont(be_plain_font);
+		badgeFont.SetSize(9);
+		owner->SetFont(&badgeFont);
+		float badgeW = badgeFont.StringWidth("GIF") + 8;
+		float badgeH = 14;
+		BRect badgeRect(destRect.right - badgeW - 2, destRect.top + 2,
+			destRect.right - 2, destRect.top + 2 + badgeH);
+		rgb_color badgeBg = {0, 0, 0, 180};
+		owner->SetHighColor(badgeBg);
+		owner->FillRoundRect(badgeRect, 3, 3);
+		owner->SetHighColor((rgb_color){255, 255, 255, 255});
+		font_height bfh;
+		badgeFont.GetHeight(&bfh);
+		owner->DrawString("GIF",
+			BPoint(badgeRect.left + 4,
+				badgeRect.top + bfh.ascent + 1));
+		owner->SetFont(be_plain_font);
+	} else if (fGifLoadState == 1) {
+		// Loading placeholder
+		BRect imgRect(contentLeft, imageTop,
+			contentLeft + displayW - 1, imageTop + displayH - 1);
+		owner->SetHighColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR),
+			B_DARKEN_2_TINT));
+		owner->FillRect(imgRect);
+		owner->SetHighColor(BubbleTextColor());
+		const char* loadText = "Loading GIF...";
+		float tw = owner->StringWidth(loadText);
+		owner->DrawString(loadText,
+			BPoint(contentLeft + (displayW - tw) / 2,
+				imageTop + displayH / 2 + fh.ascent / 2));
+	} else if (fGifLoadState == 3) {
+		// Error
+		BRect imgRect(contentLeft, imageTop,
+			contentLeft + displayW - 1, imageTop + displayH - 1);
+		owner->SetHighColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR),
+			B_DARKEN_2_TINT));
+		owner->FillRect(imgRect);
+		owner->SetHighColor(kColorBad);
+		const char* errText = "GIF not available";
+		float tw = owner->StringWidth(errText);
+		owner->DrawString(errText,
+			BPoint(contentLeft + (displayW - tw) / 2,
+				imageTop + displayH / 2 + fh.ascent / 2));
+	} else {
+		// Not loaded yet
+		BRect imgRect(contentLeft, imageTop,
+			contentLeft + displayW - 1, imageTop + displayH - 1);
+		owner->SetHighColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR),
+			B_DARKEN_2_TINT));
+		owner->FillRect(imgRect);
+		owner->SetHighColor(MetaTextColor());
+		const char* gifText = "GIF";
+		float tw = owner->StringWidth(gifText);
+		owner->DrawString(gifText,
+			BPoint(contentLeft + (displayW - tw) / 2,
+				imageTop + displayH / 2 + fh.ascent / 2));
+	}
+
+	// Meta text
 	owner->SetFont(&metaFont);
 	owner->SetHighColor(MetaTextColor());
 	float metaX = bubbleRect.right - kBubblePadding - metaWidth;

@@ -27,6 +27,15 @@ public:
 	// Caller owns the returned bitmap.
 	static	BBitmap*		DecompressImageData(const uint8* jpegData,
 								size_t size);
+
+	// Decompress GIF into array of frames.
+	// outFrames and outDurations allocated with new[] — caller deletes.
+	// Each BBitmap* in outFrames must be deleted by caller.
+	static	status_t		DecompressGifFrames(const uint8* gifData,
+								size_t size, BBitmap*** outFrames,
+								uint32** outDurations,
+								int32* outFrameCount,
+								int32 maxFrames = 32);
 };
 
 #endif // IMAGECODEC_H
