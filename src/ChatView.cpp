@@ -43,7 +43,6 @@ ChatView::ChatView(const char* name)
 
 ChatView::~ChatView()
 {
-	delete fGifAnimateRunner;
 	ClearMessages();
 }
 
