@@ -87,14 +87,14 @@ _ParseGiphyResults(const char* jsonStr, GiphyResult* results, int32 maxResults)
 		if (item.FindString("title", &titleStr) == B_OK)
 			strlcpy(r.title, titleStr, sizeof(r.title));
 
-		// Images → fixed_width_small_still → url (static preview)
+		// Images → fixed_width_small → url (animated preview)
 		BMessage images;
 		if (item.FindMessage("images", &images) == B_OK) {
-			BMessage still;
-			if (images.FindMessage("fixed_width_small_still", &still)
+			BMessage preview;
+			if (images.FindMessage("fixed_width_small", &preview)
 				== B_OK) {
 				const char* url = NULL;
-				if (still.FindString("url", &url) == B_OK)
+				if (preview.FindString("url", &url) == B_OK)
 					strlcpy(r.previewUrl, url, sizeof(r.previewUrl));
 			}
 

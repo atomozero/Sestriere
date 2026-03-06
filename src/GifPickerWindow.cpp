@@ -12,6 +12,7 @@
 #include <Button.h>
 #include <DataIO.h>
 #include <LayoutBuilder.h>
+#include <MessageRunner.h>
 #include <Messenger.h>
 #include <ScrollBar.h>
 #include <ScrollView.h>
@@ -23,20 +24,21 @@
 
 #include "Constants.h"
 #include "GiphyClient.h"
+#include "ImageCodec.h"
 
 
 static const uint32 kMsgSearchGif = 'gsrc';
 static const uint32 kMsgSearchDone = 'gsdn';
 static const uint32 kMsgThumbnailReady = 'gthm';
 static const uint32 kMsgSendGif = 'gsnd';
-static const uint32 kMsgGridSelect = 'gsel';
 static const uint32 kMsgGridInvoke = 'ginv';
+static const uint32 kMsgAnimate = 'ganm';
 
 static const float kCellPadding = 4.0f;
 static const int32 kMaxCells = 20;
 
 
-// --- GifGridView: custom BView showing thumbnails in a grid ---
+// --- GifGridView: custom BView showing animated thumbnails in a grid ---
 
 class GifGridView : public BView {
 public:
@@ -45,7 +47,8 @@ public:
 		BView("gif_grid", B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE
 			| B_FRAME_EVENTS),
 		fCount(0),
-		fSelected(-1)
+		fSelected(-1),
+		fAnimateRunner(NULL)
 	{
 		memset(fCells, 0, sizeof(fCells));
 		SetViewColor(ui_color(B_LIST_BACKGROUND_COLOR));
@@ -53,8 +56,13 @@ public:
 
 	virtual ~GifGridView()
 	{
-		for (int32 i = 0; i < fCount; i++)
-			delete fCells[i].bitmap;
+		delete fAnimateRunner;
+		_FreeCells();
+	}
+
+	virtual void AttachedToWindow()
+	{
+		BView::AttachedToWindow();
 	}
 
 	virtual void Draw(BRect updateRect)
@@ -68,7 +76,6 @@ public:
 				continue;
 
 			if (i == fSelected) {
-				// Selected highlight
 				rgb_color sel = ui_color(B_CONTROL_HIGHLIGHT_COLOR);
 				SetHighColor(sel);
 				BRect highlight = cell;
@@ -76,9 +83,9 @@ public:
 				FillRoundRect(highlight, 4, 4);
 			}
 
-			if (fCells[i].bitmap != NULL) {
-				// Draw thumbnail fitted in cell, preserving aspect ratio
-				BRect src = fCells[i].bitmap->Bounds();
+			BBitmap* frame = _CurrentFrame(i);
+			if (frame != NULL) {
+				BRect src = frame->Bounds();
 				float srcW = src.Width() + 1;
 				float srcH = src.Height() + 1;
 				float cellW = cell.Width() + 1;
@@ -93,14 +100,22 @@ public:
 				BRect dst(ox, oy, ox + dstW - 1, oy + dstH - 1);
 				SetDrawingMode(B_OP_ALPHA);
 				SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
-				DrawBitmap(fCells[i].bitmap, src, dst);
+				DrawBitmap(frame, src, dst);
 				SetDrawingMode(B_OP_COPY);
 			} else {
-				// Gray placeholder
 				SetHighColor(tint_color(bg, B_DARKEN_2_TINT));
 				FillRoundRect(cell, 3, 3);
 			}
 		}
+	}
+
+	virtual void MessageReceived(BMessage* message)
+	{
+		if (message->what == kMsgAnimate) {
+			_AdvanceFrames();
+			return;
+		}
+		BView::MessageReceived(message);
 	}
 
 	virtual void MouseDown(BPoint where)
@@ -110,7 +125,6 @@ public:
 			fSelected = index;
 			Invalidate();
 
-			// Check for double-click
 			BMessage* msg = Window()->CurrentMessage();
 			int32 clicks = 0;
 			if (msg != NULL)
@@ -131,10 +145,9 @@ public:
 
 	void Clear()
 	{
-		for (int32 i = 0; i < fCount; i++) {
-			delete fCells[i].bitmap;
-			fCells[i].bitmap = NULL;
-		}
+		delete fAnimateRunner;
+		fAnimateRunner = NULL;
+		_FreeCells();
 		fCount = 0;
 		fSelected = -1;
 		_UpdateSize();
@@ -146,20 +159,34 @@ public:
 		if (fCount >= kMaxCells)
 			return -1;
 		int32 idx = fCount;
+		memset(&fCells[idx], 0, sizeof(GridCell));
 		strlcpy(fCells[idx].id, id, sizeof(fCells[idx].id));
-		fCells[idx].bitmap = NULL;
 		fCount++;
 		_UpdateSize();
 		return idx;
 	}
 
-	void SetThumbnail(int32 index, BBitmap* bitmap)
+	void SetFrames(int32 index, BBitmap** frames, uint32* durations,
+		int32 frameCount)
 	{
 		if (index < 0 || index >= fCount)
 			return;
-		delete fCells[index].bitmap;
-		fCells[index].bitmap = bitmap;
+
+		_FreeCell(index);
+		fCells[index].frames = frames;
+		fCells[index].durations = durations;
+		fCells[index].frameCount = frameCount;
+		fCells[index].currentFrame = 0;
+		fCells[index].lastAdvance = system_time();
+
 		Invalidate(_CellRect(index));
+
+		// Start animation timer if needed
+		if (frameCount > 1 && fAnimateRunner == NULL) {
+			BMessage msg(kMsgAnimate);
+			fAnimateRunner = new BMessageRunner(BMessenger(this), &msg,
+				50000);  // 50ms = 20fps
+		}
 	}
 
 	int32 Selection() const { return fSelected; }
@@ -174,12 +201,72 @@ public:
 private:
 	struct GridCell {
 		char		id[64];
-		BBitmap*	bitmap;
+		BBitmap**	frames;
+		uint32*		durations;
+		int32		frameCount;
+		int32		currentFrame;
+		bigtime_t	lastAdvance;
 	};
 
-	GridCell		fCells[kMaxCells];
-	int32			fCount;
-	int32			fSelected;
+	GridCell			fCells[kMaxCells];
+	int32				fCount;
+	int32				fSelected;
+	BMessageRunner*		fAnimateRunner;
+
+	BBitmap* _CurrentFrame(int32 index) const
+	{
+		GridCell& c = const_cast<GridCell&>(fCells[index]);
+		if (c.frames == NULL || c.frameCount == 0)
+			return NULL;
+		return c.frames[c.currentFrame];
+	}
+
+	void _AdvanceFrames()
+	{
+		bigtime_t now = system_time();
+		bool anyAnimated = false;
+
+		for (int32 i = 0; i < fCount; i++) {
+			GridCell& c = fCells[i];
+			if (c.frameCount <= 1)
+				continue;
+
+			anyAnimated = true;
+			bigtime_t elapsed = now - c.lastAdvance;
+			if (elapsed >= (bigtime_t)c.durations[c.currentFrame] * 1000) {
+				int32 oldFrame = c.currentFrame;
+				c.currentFrame = (c.currentFrame + 1) % c.frameCount;
+				c.lastAdvance = now;
+				if (c.currentFrame != oldFrame)
+					Invalidate(_CellRect(i));
+			}
+		}
+
+		if (!anyAnimated) {
+			delete fAnimateRunner;
+			fAnimateRunner = NULL;
+		}
+	}
+
+	void _FreeCell(int32 index)
+	{
+		GridCell& c = fCells[index];
+		if (c.frames != NULL) {
+			for (int32 j = 0; j < c.frameCount; j++)
+				delete c.frames[j];
+			delete[] c.frames;
+			delete[] c.durations;
+			c.frames = NULL;
+			c.durations = NULL;
+			c.frameCount = 0;
+		}
+	}
+
+	void _FreeCells()
+	{
+		for (int32 i = 0; i < fCount; i++)
+			_FreeCell(i);
+	}
 
 	int32 _Columns() const
 	{
@@ -191,7 +278,6 @@ private:
 
 	float _CellSize() const
 	{
-		// Target ~120px cells (20% larger than 100px GIPHY stills)
 		return 120.0f;
 	}
 
@@ -199,7 +285,6 @@ private:
 	{
 		int32 cols = _Columns();
 		float cellSize = _CellSize();
-		// Center the grid horizontally
 		float totalW = cols * cellSize + (cols - 1) * kCellPadding;
 		float offsetX = (Bounds().Width() + 1 - totalW) / 2;
 		if (offsetX < kCellPadding)
@@ -235,11 +320,9 @@ private:
 		float cellSize = _CellSize();
 		float totalH = rows * (cellSize + kCellPadding) + kCellPadding;
 
-		// Resize the view to fit content so scroll bars work
 		BRect bounds = Bounds();
 		ResizeTo(bounds.Width(), totalH);
 
-		// Update scroll bar range
 		BScrollBar* vbar = ScrollBar(B_VERTICAL);
 		if (vbar != NULL) {
 			BRect parent = Parent()->Bounds();
@@ -259,7 +342,7 @@ private:
 // --- Thumbnail download context ---
 
 struct ThumbnailContext {
-	char		url[256];
+	char		url[512];
 	int32		index;
 	BWindow*	window;
 };
@@ -307,7 +390,6 @@ GifPickerWindow::GifPickerWindow(BWindow* target)
 
 	fSearchField->SetTarget(this);
 
-	// Load trending on open
 	_LoadTrending();
 }
 
@@ -358,7 +440,6 @@ GifPickerWindow::MessageReceived(BMessage* message)
 			for (int32 i = 0; i < count; i++) {
 				grid->AddCell(fResults[i].id);
 
-				// Start thumbnail download
 				if (fResults[i].previewUrl[0] != '\0') {
 					ThumbnailContext* ctx = new ThumbnailContext;
 					strlcpy(ctx->url, fResults[i].previewUrl,
@@ -382,17 +463,28 @@ GifPickerWindow::MessageReceived(BMessage* message)
 			if (message->FindInt32("index", &index) != B_OK)
 				break;
 
-			void* dataPtr = NULL;
-			if (message->FindPointer("bitmap", &dataPtr) != B_OK)
-				break;
+			void* framesPtr = NULL;
+			void* durationsPtr = NULL;
+			int32 frameCount = 0;
 
-			BBitmap* bitmap = (BBitmap*)dataPtr;
+			if (message->FindPointer("frames", &framesPtr) != B_OK)
+				break;
+			message->FindPointer("durations", &durationsPtr);
+			message->FindInt32("frame_count", &frameCount);
+
+			BBitmap** frames = (BBitmap**)framesPtr;
+			uint32* durations = (uint32*)durationsPtr;
 
 			GifGridView* grid = dynamic_cast<GifGridView*>(fGridView);
-			if (grid != NULL)
-				grid->SetThumbnail(index, bitmap);
-			else
-				delete bitmap;
+			if (grid != NULL) {
+				grid->SetFrames(index, frames, durations, frameCount);
+			} else {
+				// Clean up
+				for (int32 i = 0; i < frameCount; i++)
+					delete frames[i];
+				delete[] frames;
+				delete[] durations;
+			}
 			break;
 		}
 
@@ -510,30 +602,50 @@ GifPickerWindow::_DownloadThumbnail(void* data)
 {
 	ThumbnailContext* ctx = (ThumbnailContext*)data;
 
-	uint8* imgData = NULL;
-	size_t imgSize = 0;
-	status_t status = GiphyClient::DownloadData(ctx->url, &imgData, &imgSize);
+	uint8* gifData = NULL;
+	size_t gifSize = 0;
+	status_t status = GiphyClient::DownloadData(ctx->url, &gifData, &gifSize);
 
-	if (status == B_OK && imgData != NULL && imgSize > 0) {
-		BMemoryIO input(imgData, imgSize);
-		BBitmap* bitmap = NULL;
+	if (status == B_OK && gifData != NULL && gifSize > 0) {
+		// Decode as animated GIF
+		BBitmap** frames = NULL;
+		uint32* durations = NULL;
+		int32 frameCount = 0;
 
-		BTranslatorRoster* roster = BTranslatorRoster::Default();
-		BBitmapStream output;
-		status_t result = roster->Translate(&input, NULL, NULL, &output,
-			B_TRANSLATOR_BITMAP);
-		if (result == B_OK)
-			output.DetachBitmap(&bitmap);
-
-		if (bitmap != NULL) {
+		if (ImageCodec::DecompressGifFrames(gifData, gifSize, &frames,
+			&durations, &frameCount, 32) == B_OK && frameCount > 0) {
 			BMessage msg(kMsgThumbnailReady);
 			msg.AddInt32("index", ctx->index);
-			msg.AddPointer("bitmap", bitmap);
+			msg.AddPointer("frames", frames);
+			msg.AddPointer("durations", durations);
+			msg.AddInt32("frame_count", frameCount);
 			BMessenger(ctx->window).SendMessage(&msg);
+		} else {
+			// Fallback: decode as single static image
+			BMemoryIO input(gifData, gifSize);
+			BBitmap* bitmap = NULL;
+			BBitmapStream output;
+			if (BTranslatorRoster::Default()->Translate(&input, NULL,
+				NULL, &output, B_TRANSLATOR_BITMAP) == B_OK)
+				output.DetachBitmap(&bitmap);
+
+			if (bitmap != NULL) {
+				BBitmap** singleFrame = new BBitmap*[1];
+				singleFrame[0] = bitmap;
+				uint32* singleDur = new uint32[1];
+				singleDur[0] = 100;
+
+				BMessage msg(kMsgThumbnailReady);
+				msg.AddInt32("index", ctx->index);
+				msg.AddPointer("frames", singleFrame);
+				msg.AddPointer("durations", singleDur);
+				msg.AddInt32("frame_count", 1);
+				BMessenger(ctx->window).SendMessage(&msg);
+			}
 		}
 	}
 
-	free(imgData);
+	free(gifData);
 	delete ctx;
 	return 0;
 }
