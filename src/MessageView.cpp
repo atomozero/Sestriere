@@ -16,6 +16,7 @@
 #include <ctime>
 
 #include "Constants.h"
+#include "EmojiRenderer.h"
 #include "GiphyClient.h"
 #include "ImageSession.h"
 #include "SarMarker.h"
@@ -409,9 +410,10 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 		}
 	} else {
 		owner->SetHighColor(BubbleTextColor());
+		float emojiSize = fh.ascent + fh.descent;
 		for (const auto& line : lines) {
-			owner->DrawString(line.String(),
-				BPoint(contentLeft, yPos));
+			EmojiRenderer::DrawLine(owner, line.String(),
+				BPoint(contentLeft, yPos), emojiSize);
 			yPos += lineHeight;
 		}
 	}

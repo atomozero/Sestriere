@@ -42,7 +42,8 @@ SRCS = \
 	ImageCodec.cpp \
 	ImageSession.cpp \
 	GiphyClient.cpp \
-	GifPickerWindow.cpp
+	GifPickerWindow.cpp \
+	EmojiRenderer.cpp
 
 RDEFS = Sestriere.rdef
 

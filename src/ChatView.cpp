@@ -20,6 +20,7 @@
 
 #include "Constants.h"
 #include "DatabaseManager.h"
+#include "EmojiRenderer.h"
 #include "GiphyClient.h"
 #include "ImageCodec.h"
 #include "ImageSession.h"
@@ -159,6 +160,13 @@ ChatView::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_EMOJI_LOADED:
+		{
+			// An emoji bitmap was downloaded — repaint all items
+			Invalidate();
+			break;
+		}
+
 		case kMsgCopyText:
 		{
 			int32 index;
@@ -200,6 +208,10 @@ ChatView::AddMessage(const ChatMessage& message, const char* senderName)
 	// Create and add visual item
 	MessageView* item = new MessageView(message, senderName);
 	AddItem(item);
+
+	// Request emoji downloads for any emoji in the message text
+	if (!item->IsGifMessage() && !item->IsImageMessage())
+		EmojiRenderer::RequestEmoji(message.text, this);
 
 	_ScrollToBottom();
 }
@@ -310,6 +322,10 @@ ChatView::SetCurrentContact(ContactInfo* contact)
 				}
 
 				AddItem(item);
+
+				// Request emoji downloads for regular text messages
+				if (!item->IsGifMessage() && !item->IsImageMessage())
+					EmojiRenderer::RequestEmoji(msg->text, this);
 			}
 		}
 		_ScrollToBottom();
