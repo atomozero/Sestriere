@@ -173,6 +173,8 @@ private:
 			// Device settings (battery type, etc.)
 			void			_SaveDeviceSettings();
 			void			_LoadDeviceSettings();
+			void			_SaveUISettings();
+			void			_LoadUISettings();
 
 			// People contacts integration
 			void			_SaveContactAsPerson(ContactInfo* contact);

@@ -359,6 +359,9 @@ MainWindow::MainWindow()
 	_LoadDeviceSettings();
 	fTopBar->SetBatteryType(fBatteryType);
 
+	// Load UI settings (contact filter checkboxes, etc.)
+	_LoadUISettings();
+
 	// Load muted keys and contact groups from database
 	DatabaseManager::Instance()->LoadAllMuted(&fMutedKeys);
 	_LoadContactGroups();
@@ -1025,6 +1028,8 @@ MainWindow::MessageReceived(BMessage* message)
 		{
 			const char* filter = fSearchField->Text();
 			_FilterContacts(filter);
+			if (message->what == MSG_TYPE_FILTER)
+				_SaveUISettings();
 			break;
 		}
 
@@ -6511,6 +6516,82 @@ MainWindow::_LoadDeviceSettings()
 	delete[] buffer;
 	fprintf(stderr, "[MainWindow] Device settings loaded (battery=%s)\n",
 		kBatteryChemistryNames[fBatteryType]);
+}
+
+
+void
+MainWindow::_SaveUISettings()
+{
+	BString settingsPath = _GetSettingsPath();
+	if (settingsPath.IsEmpty())
+		return;
+
+	BString filePath = settingsPath;
+	filePath.Append("/ui.settings");
+
+	BFile file(filePath.String(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+	if (file.InitCheck() != B_OK)
+		return;
+
+	BString content;
+	content << "show_chats=" << (fShowChats->Value() == B_CONTROL_ON ? "1" : "0") << "\n";
+	content << "show_repeaters=" << (fShowRepeaters->Value() == B_CONTROL_ON ? "1" : "0") << "\n";
+	content << "show_rooms=" << (fShowRooms->Value() == B_CONTROL_ON ? "1" : "0") << "\n";
+	file.Write(content.String(), content.Length());
+}
+
+
+void
+MainWindow::_LoadUISettings()
+{
+	BString settingsPath = _GetSettingsPath();
+	if (settingsPath.IsEmpty())
+		return;
+
+	BString filePath = settingsPath;
+	filePath.Append("/ui.settings");
+
+	BFile file(filePath.String(), B_READ_ONLY);
+	if (file.InitCheck() != B_OK)
+		return;
+
+	off_t size;
+	file.GetSize(&size);
+	if (size <= 0 || size > 1024)
+		return;
+
+	char* buffer = new char[size + 1];
+	ssize_t bytesRead = file.Read(buffer, size);
+	if (bytesRead <= 0) {
+		delete[] buffer;
+		return;
+	}
+	buffer[bytesRead] = '\0';
+
+	char* saveptr = NULL;
+	char* line = strtok_r(buffer, "\n", &saveptr);
+	while (line != NULL) {
+		char* eq = strchr(line, '=');
+		if (eq != NULL) {
+			*eq = '\0';
+			char* key = line;
+			char* value = eq + 1;
+
+			if (strcmp(key, "show_chats") == 0)
+				fShowChats->SetValue(atoi(value) ? B_CONTROL_ON : B_CONTROL_OFF);
+			else if (strcmp(key, "show_repeaters") == 0)
+				fShowRepeaters->SetValue(atoi(value) ? B_CONTROL_ON : B_CONTROL_OFF);
+			else if (strcmp(key, "show_rooms") == 0)
+				fShowRooms->SetValue(atoi(value) ? B_CONTROL_ON : B_CONTROL_OFF);
+		}
+		line = strtok_r(NULL, "\n", &saveptr);
+	}
+
+	delete[] buffer;
+	fprintf(stderr, "[MainWindow] UI settings loaded (chats=%d, repeaters=%d, rooms=%d)\n",
+		fShowChats->Value() == B_CONTROL_ON,
+		fShowRepeaters->Value() == B_CONTROL_ON,
+		fShowRooms->Value() == B_CONTROL_ON);
 }
 
 
