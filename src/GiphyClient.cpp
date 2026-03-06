@@ -60,10 +60,18 @@ _ParseGiphyResults(const char* jsonStr, GiphyResult* results, int32 maxResults)
 	if (status != B_OK)
 		return 0;
 
+	// BJson stores arrays as BMessage with string keys "0","1","2"...
+	BMessage dataArray;
+	if (root.FindMessage("data", &dataArray) != B_OK)
+		return 0;
+
 	int32 count = 0;
-	BMessage item;
 	for (int32 i = 0; i < maxResults; i++) {
-		if (root.FindMessage("data", i, &item) != B_OK)
+		char indexStr[16];
+		snprintf(indexStr, sizeof(indexStr), "%ld", (long)i);
+
+		BMessage item;
+		if (dataArray.FindMessage(indexStr, &item) != B_OK)
 			break;
 
 		GiphyResult& r = results[count];
@@ -83,7 +91,8 @@ _ParseGiphyResults(const char* jsonStr, GiphyResult* results, int32 maxResults)
 		BMessage images;
 		if (item.FindMessage("images", &images) == B_OK) {
 			BMessage still;
-			if (images.FindMessage("fixed_width_small_still", &still) == B_OK) {
+			if (images.FindMessage("fixed_width_small_still", &still)
+				== B_OK) {
 				const char* url = NULL;
 				if (still.FindString("url", &url) == B_OK)
 					strlcpy(r.previewUrl, url, sizeof(r.previewUrl));
