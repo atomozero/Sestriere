@@ -2,7 +2,7 @@
  * Copyright 2025, Sestriere Authors
  * All rights reserved. Distributed under the terms of the MIT license.
  *
- * GifPickerWindow.cpp — GIPHY GIF search and selection window
+ * GifPickerWindow.cpp — GIPHY GIF search and selection window (grid layout)
  */
 
 #include "GifPickerWindow.h"
@@ -12,13 +12,11 @@
 #include <Button.h>
 #include <DataIO.h>
 #include <LayoutBuilder.h>
-#include <ListItem.h>
-#include <ListView.h>
 #include <Messenger.h>
+#include <ScrollBar.h>
 #include <ScrollView.h>
 #include <StringView.h>
 #include <TextControl.h>
-#include <TranslationUtils.h>
 #include <TranslatorRoster.h>
 
 #include <cstring>
@@ -31,98 +29,230 @@ static const uint32 kMsgSearchGif = 'gsrc';
 static const uint32 kMsgSearchDone = 'gsdn';
 static const uint32 kMsgThumbnailReady = 'gthm';
 static const uint32 kMsgSendGif = 'gsnd';
-static const uint32 kMsgGifDoubleClick = 'gdbl';
+static const uint32 kMsgGridSelect = 'gsel';
+static const uint32 kMsgGridInvoke = 'ginv';
+
+static const float kCellPadding = 4.0f;
+static const int32 kMaxCells = 20;
 
 
-// --- GifResultItem: BListItem subclass showing title + thumbnail ---
+// --- GifGridView: custom BView showing thumbnails in a grid ---
 
-class GifResultItem : public BListItem {
+class GifGridView : public BView {
 public:
-	GifResultItem(const char* id, const char* title, int32 index)
+	GifGridView()
 		:
-		BListItem(),
-		fThumbnail(NULL),
-		fIndex(index)
+		BView("gif_grid", B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE
+			| B_FRAME_EVENTS),
+		fCount(0),
+		fSelected(-1)
 	{
-		strlcpy(fId, id, sizeof(fId));
-		strlcpy(fTitle, title, sizeof(fTitle));
-		// Truncate long titles
-		if (strlen(fTitle) > 40) {
-			fTitle[37] = '.';
-			fTitle[38] = '.';
-			fTitle[39] = '.';
-			fTitle[40] = '\0';
+		memset(fCells, 0, sizeof(fCells));
+		SetViewColor(ui_color(B_LIST_BACKGROUND_COLOR));
+	}
+
+	virtual ~GifGridView()
+	{
+		for (int32 i = 0; i < fCount; i++)
+			delete fCells[i].bitmap;
+	}
+
+	virtual void Draw(BRect updateRect)
+	{
+		rgb_color bg = ui_color(B_LIST_BACKGROUND_COLOR);
+		SetLowColor(bg);
+
+		for (int32 i = 0; i < fCount; i++) {
+			BRect cell = _CellRect(i);
+			if (!cell.Intersects(updateRect))
+				continue;
+
+			if (i == fSelected) {
+				// Selected highlight
+				rgb_color sel = ui_color(B_CONTROL_HIGHLIGHT_COLOR);
+				SetHighColor(sel);
+				BRect highlight = cell;
+				highlight.InsetBy(-2, -2);
+				FillRoundRect(highlight, 4, 4);
+			}
+
+			if (fCells[i].bitmap != NULL) {
+				// Draw thumbnail fitted in cell, preserving aspect ratio
+				BRect src = fCells[i].bitmap->Bounds();
+				float srcW = src.Width() + 1;
+				float srcH = src.Height() + 1;
+				float cellW = cell.Width() + 1;
+				float cellH = cell.Height() + 1;
+
+				float scale = std::min(cellW / srcW, cellH / srcH);
+				float dstW = srcW * scale;
+				float dstH = srcH * scale;
+				float ox = cell.left + (cellW - dstW) / 2;
+				float oy = cell.top + (cellH - dstH) / 2;
+
+				BRect dst(ox, oy, ox + dstW - 1, oy + dstH - 1);
+				SetDrawingMode(B_OP_ALPHA);
+				SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
+				DrawBitmap(fCells[i].bitmap, src, dst);
+				SetDrawingMode(B_OP_COPY);
+			} else {
+				// Gray placeholder
+				SetHighColor(tint_color(bg, B_DARKEN_2_TINT));
+				FillRoundRect(cell, 3, 3);
+			}
 		}
 	}
 
-	virtual ~GifResultItem()
+	virtual void MouseDown(BPoint where)
 	{
-		delete fThumbnail;
-	}
+		int32 index = _IndexAt(where);
+		if (index >= 0 && index < fCount) {
+			fSelected = index;
+			Invalidate();
 
-	virtual void DrawItem(BView* owner, BRect frame, bool complete = false)
-	{
-		rgb_color bgColor;
-		if (IsSelected())
-			bgColor = ui_color(B_LIST_SELECTED_BACKGROUND_COLOR);
-		else
-			bgColor = ui_color(B_LIST_BACKGROUND_COLOR);
+			// Check for double-click
+			BMessage* msg = Window()->CurrentMessage();
+			int32 clicks = 0;
+			if (msg != NULL)
+				msg->FindInt32("clicks", &clicks);
 
-		owner->SetHighColor(bgColor);
-		owner->SetLowColor(bgColor);
-		owner->FillRect(frame);
-
-		float thumbSize = frame.Height() - 4;
-		float thumbLeft = frame.left + 4;
-		float thumbTop = frame.top + 2;
-
-		if (fThumbnail != NULL) {
-			BRect src = fThumbnail->Bounds();
-			BRect dst(thumbLeft, thumbTop,
-				thumbLeft + thumbSize - 1, thumbTop + thumbSize - 1);
-			owner->DrawBitmap(fThumbnail, src, dst);
-		} else {
-			// Placeholder
-			BRect dst(thumbLeft, thumbTop,
-				thumbLeft + thumbSize - 1, thumbTop + thumbSize - 1);
-			owner->SetHighColor(tint_color(bgColor, B_DARKEN_2_TINT));
-			owner->FillRect(dst);
+			if (clicks >= 2)
+				Window()->PostMessage(kMsgGridInvoke);
 		}
-
-		// Title text
-		float textLeft = thumbLeft + thumbSize + 8;
-		font_height fh;
-		owner->GetFontHeight(&fh);
-
-		if (IsSelected())
-			owner->SetHighColor(ui_color(B_LIST_SELECTED_ITEM_TEXT_COLOR));
-		else
-			owner->SetHighColor(ui_color(B_LIST_ITEM_TEXT_COLOR));
-
-		float textY = frame.top + frame.Height() / 2 + fh.ascent / 2;
-		owner->DrawString(fTitle, BPoint(textLeft, textY));
 	}
 
-	virtual void Update(BView* owner, const BFont* font)
+	virtual void FrameResized(float newWidth, float newHeight)
 	{
-		BListItem::Update(owner, font);
-		SetHeight(52);
+		(void)newHeight;
+		(void)newWidth;
+		_UpdateSize();
+		Invalidate();
 	}
 
-	void SetThumbnail(BBitmap* bitmap)
+	void Clear()
 	{
-		delete fThumbnail;
-		fThumbnail = bitmap;
+		for (int32 i = 0; i < fCount; i++) {
+			delete fCells[i].bitmap;
+			fCells[i].bitmap = NULL;
+		}
+		fCount = 0;
+		fSelected = -1;
+		_UpdateSize();
+		Invalidate();
 	}
 
-	const char* Id() const { return fId; }
-	int32 Index() const { return fIndex; }
+	int32 AddCell(const char* id)
+	{
+		if (fCount >= kMaxCells)
+			return -1;
+		int32 idx = fCount;
+		strlcpy(fCells[idx].id, id, sizeof(fCells[idx].id));
+		fCells[idx].bitmap = NULL;
+		fCount++;
+		_UpdateSize();
+		return idx;
+	}
+
+	void SetThumbnail(int32 index, BBitmap* bitmap)
+	{
+		if (index < 0 || index >= fCount)
+			return;
+		delete fCells[index].bitmap;
+		fCells[index].bitmap = bitmap;
+		Invalidate(_CellRect(index));
+	}
+
+	int32 Selection() const { return fSelected; }
+
+	const char* SelectedId() const
+	{
+		if (fSelected < 0 || fSelected >= fCount)
+			return NULL;
+		return fCells[fSelected].id;
+	}
 
 private:
-	char		fId[64];
-	char		fTitle[128];
-	BBitmap*	fThumbnail;
-	int32		fIndex;
+	struct GridCell {
+		char		id[64];
+		BBitmap*	bitmap;
+	};
+
+	GridCell		fCells[kMaxCells];
+	int32			fCount;
+	int32			fSelected;
+
+	int32 _Columns() const
+	{
+		float w = Bounds().Width() + 1;
+		float cellSize = _CellSize();
+		int32 cols = (int32)((w + kCellPadding) / (cellSize + kCellPadding));
+		return (cols < 1) ? 1 : cols;
+	}
+
+	float _CellSize() const
+	{
+		// Target ~120px cells (20% larger than 100px GIPHY stills)
+		return 120.0f;
+	}
+
+	BRect _CellRect(int32 index) const
+	{
+		int32 cols = _Columns();
+		float cellSize = _CellSize();
+		// Center the grid horizontally
+		float totalW = cols * cellSize + (cols - 1) * kCellPadding;
+		float offsetX = (Bounds().Width() + 1 - totalW) / 2;
+		if (offsetX < kCellPadding)
+			offsetX = kCellPadding;
+
+		int32 col = index % cols;
+		int32 row = index / cols;
+
+		float x = offsetX + col * (cellSize + kCellPadding);
+		float y = kCellPadding + row * (cellSize + kCellPadding);
+
+		return BRect(x, y, x + cellSize - 1, y + cellSize - 1);
+	}
+
+	int32 _IndexAt(BPoint point) const
+	{
+		for (int32 i = 0; i < fCount; i++) {
+			if (_CellRect(i).Contains(point))
+				return i;
+		}
+		return -1;
+	}
+
+	void _UpdateSize()
+	{
+		if (fCount == 0) {
+			SetExplicitMinSize(BSize(B_SIZE_UNSET, 0));
+			return;
+		}
+
+		int32 cols = _Columns();
+		int32 rows = (fCount + cols - 1) / cols;
+		float cellSize = _CellSize();
+		float totalH = rows * (cellSize + kCellPadding) + kCellPadding;
+
+		// Resize the view to fit content so scroll bars work
+		BRect bounds = Bounds();
+		ResizeTo(bounds.Width(), totalH);
+
+		// Update scroll bar range
+		BScrollBar* vbar = ScrollBar(B_VERTICAL);
+		if (vbar != NULL) {
+			BRect parent = Parent()->Bounds();
+			float dataHeight = totalH;
+			float viewHeight = parent.Height();
+			if (dataHeight > viewHeight)
+				vbar->SetRange(0, dataHeight - viewHeight);
+			else
+				vbar->SetRange(0, 0);
+			vbar->SetProportion(viewHeight / dataHeight);
+			vbar->SetSteps(cellSize / 4, cellSize + kCellPadding);
+		}
+	}
 };
 
 
@@ -139,7 +269,7 @@ struct ThumbnailContext {
 
 GifPickerWindow::GifPickerWindow(BWindow* target)
 	:
-	BWindow(BRect(200, 200, 550, 600), "GIPHY — Search GIFs",
+	BWindow(BRect(200, 200, 600, 650), "GIPHY",
 		B_FLOATING_WINDOW_LOOK, B_NORMAL_WINDOW_FEEL,
 		B_AUTO_UPDATE_SIZE_LIMITS | B_CLOSE_ON_ESCAPE),
 	fTarget(target),
@@ -151,9 +281,8 @@ GifPickerWindow::GifPickerWindow(BWindow* target)
 	fSearchField = new BTextControl("search", "Search:", "",
 		new BMessage(kMsgSearchGif));
 
-	fResultList = new BListView("gif_results");
-	fResultList->SetInvocationMessage(new BMessage(kMsgGifDoubleClick));
-	BScrollView* scrollView = new BScrollView("gif_scroll", fResultList,
+	fGridView = new GifGridView();
+	BScrollView* scrollView = new BScrollView("gif_scroll", fGridView,
 		0, false, true);
 
 	fSendButton = new BButton("send", "Send", new BMessage(kMsgSendGif));
@@ -177,7 +306,6 @@ GifPickerWindow::GifPickerWindow(BWindow* target)
 	.End();
 
 	fSearchField->SetTarget(this);
-	fResultList->SetTarget(this);
 
 	// Load trending on open
 	_LoadTrending();
@@ -186,7 +314,6 @@ GifPickerWindow::GifPickerWindow(BWindow* target)
 
 GifPickerWindow::~GifPickerWindow()
 {
-	// Wait for search thread to finish
 	if (fSearchThread >= 0) {
 		status_t result;
 		wait_for_thread(fSearchThread, &result);
@@ -222,17 +349,14 @@ GifPickerWindow::MessageReceived(BMessage* message)
 			if (message->FindInt32("count", &count) != B_OK)
 				break;
 
-			// Clear old results
-			while (fResultList->CountItems() > 0) {
-				BListItem* item = fResultList->RemoveItem((int32)0);
-				delete item;
-			}
+			GifGridView* grid = dynamic_cast<GifGridView*>(fGridView);
+			if (grid == NULL)
+				break;
 
-			// Add new result items
+			grid->Clear();
+
 			for (int32 i = 0; i < count; i++) {
-				GifResultItem* item = new GifResultItem(
-					fResults[i].id, fResults[i].title, i);
-				fResultList->AddItem(item);
+				grid->AddCell(fResults[i].id);
 
 				// Start thumbnail download
 				if (fResults[i].previewUrl[0] != '\0') {
@@ -264,36 +388,27 @@ GifPickerWindow::MessageReceived(BMessage* message)
 
 			BBitmap* bitmap = (BBitmap*)dataPtr;
 
-			// Find the matching item
-			for (int32 i = 0; i < fResultList->CountItems(); i++) {
-				GifResultItem* item = dynamic_cast<GifResultItem*>(
-					fResultList->ItemAt(i));
-				if (item != NULL && item->Index() == index) {
-					item->SetThumbnail(bitmap);
-					fResultList->InvalidateItem(i);
-					bitmap = NULL;  // ownership transferred
-					break;
-				}
-			}
-			delete bitmap;  // delete if not used
+			GifGridView* grid = dynamic_cast<GifGridView*>(fGridView);
+			if (grid != NULL)
+				grid->SetThumbnail(index, bitmap);
+			else
+				delete bitmap;
 			break;
 		}
 
-		case kMsgGifDoubleClick:
+		case kMsgGridInvoke:
 		case kMsgSendGif:
 		{
-			int32 sel = fResultList->CurrentSelection();
-			if (sel < 0)
+			GifGridView* grid = dynamic_cast<GifGridView*>(fGridView);
+			if (grid == NULL)
 				break;
 
-			GifResultItem* item = dynamic_cast<GifResultItem*>(
-				fResultList->ItemAt(sel));
-			if (item == NULL)
+			const char* id = grid->SelectedId();
+			if (id == NULL)
 				break;
 
-			// Send GIF selection to target window
 			BMessage msg(MSG_GIF_SELECTED);
-			msg.AddString("gif_id", item->Id());
+			msg.AddString("gif_id", id);
 			BMessenger(fTarget).SendMessage(&msg);
 
 			Hide();
@@ -310,10 +425,8 @@ GifPickerWindow::MessageReceived(BMessage* message)
 void
 GifPickerWindow::_Search(const char* query)
 {
-	if (fSearchThread >= 0) {
-		// Previous search still running — skip
+	if (fSearchThread >= 0)
 		return;
-	}
 
 	struct SearchContext {
 		char		query[256];
@@ -346,7 +459,7 @@ GifPickerWindow::_Search(const char* query)
 	else
 		delete ctx;
 
-	fSearchThread = -1;  // Don't track — fire and forget
+	fSearchThread = -1;
 }
 
 
@@ -387,7 +500,7 @@ GifPickerWindow::_LoadTrending()
 int32
 GifPickerWindow::_SearchThread(void* data)
 {
-	// Not used — inline lambdas above
+	(void)data;
 	return 0;
 }
 
@@ -402,7 +515,6 @@ GifPickerWindow::_DownloadThumbnail(void* data)
 	status_t status = GiphyClient::DownloadData(ctx->url, &imgData, &imgSize);
 
 	if (status == B_OK && imgData != NULL && imgSize > 0) {
-		// Decode image data using Translation Kit
 		BMemoryIO input(imgData, imgSize);
 		BBitmap* bitmap = NULL;
 
@@ -418,7 +530,6 @@ GifPickerWindow::_DownloadThumbnail(void* data)
 			msg.AddInt32("index", ctx->index);
 			msg.AddPointer("bitmap", bitmap);
 			BMessenger(ctx->window).SendMessage(&msg);
-			// Note: bitmap ownership transferred via message
 		}
 	}
 

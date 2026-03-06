@@ -13,8 +13,8 @@
 #include "GiphyClient.h"
 
 class BButton;
-class BListView;
 class BTextControl;
+class BView;
 
 
 class GifPickerWindow : public BWindow {
@@ -32,7 +32,7 @@ private:
 	static	int32			_DownloadThumbnail(void* data);
 
 			BTextControl*	fSearchField;
-			BListView*		fResultList;
+			BView*			fGridView;
 			BButton*		fSendButton;
 			BWindow*		fTarget;
 			thread_id		fSearchThread;
