@@ -70,7 +70,8 @@ private:
 			void			_FormatTimestamp(char* buffer, size_t size) const;
 			void			_WrapText(BView* owner, const BString& text,
 								float maxWidth,
-								std::vector<BString>& outLines) const;
+								std::vector<BString>& outLines,
+								float emojiSize = 0) const;
 			void			_DrawImageBubble(BView* owner, BRect frame);
 			void			_DrawGifBubble(BView* owner, BRect frame);
 

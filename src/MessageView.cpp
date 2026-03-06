@@ -185,15 +185,23 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 		displayText.Prepend("> ");
 
 	// Wrap text if needed
+	float emojiSize = (!isCli && !isSar) ? (fh.ascent + fh.descent) : 0;
 	std::vector<BString> lines;
 	_WrapText(owner, isCli ? displayText : fText,
-		maxBubbleWidth - kBubblePadding * 2, lines);
+		maxBubbleWidth - kBubblePadding * 2, lines, emojiSize);
 
 	// Calculate actual bubble width based on longest line
 	// Use ceilf() to avoid subpixel rounding causing text overflow
+	BFont widthFont;
+	owner->GetFont(&widthFont);
 	float maxLineWidth = 0;
 	for (const auto& line : lines) {
-		float w = ceilf(owner->StringWidth(line.String()));
+		float w;
+		if (emojiSize > 0)
+			w = ceilf(EmojiRenderer::MeasureLine(&widthFont,
+				line.String(), emojiSize));
+		else
+			w = ceilf(owner->StringWidth(line.String()));
 		if (w > maxLineWidth)
 			maxLineWidth = w;
 	}
@@ -573,7 +581,14 @@ MessageView::Update(BView* owner, const BFont* font)
 		// BListView::_UpdateItems() → Update() infinite recursion.
 		// Use measureFont->StringWidth() directly for consistent results.
 		float availWidth = maxBubbleWidth - kBubblePadding * 2;
-		float textWidth = measureFont->StringWidth(displayText.String());
+		float emojiH = (!isCli && !isSar)
+			? (fontHeight.ascent + fontHeight.descent) : 0;
+		float textWidth;
+		if (emojiH > 0)
+			textWidth = EmojiRenderer::MeasureLine(measureFont,
+				displayText.String(), emojiH);
+		else
+			textWidth = measureFont->StringWidth(displayText.String());
 		lineCount = (textWidth > availWidth)
 			? (int32)(textWidth / availWidth) + 1 : 1;
 		if (lineCount < 1)
@@ -1063,7 +1078,7 @@ MessageView::_FormatTimestamp(char* buffer, size_t size) const
 
 void
 MessageView::_WrapText(BView* owner, const BString& text, float maxWidth,
-	std::vector<BString>& outLines) const
+	std::vector<BString>& outLines, float emojiSize) const
 {
 	outLines.clear();
 
@@ -1072,8 +1087,17 @@ MessageView::_WrapText(BView* owner, const BString& text, float maxWidth,
 		return;
 	}
 
+	// Emoji-aware width measurement
+	BFont font;
+	owner->GetFont(&font);
+	auto measure = [&](const char* s) -> float {
+		if (emojiSize > 0)
+			return EmojiRenderer::MeasureLine(&font, s, emojiSize);
+		return owner->StringWidth(s);
+	};
+
 	// Check if text fits on one line
-	if (owner->StringWidth(text.String()) <= maxWidth) {
+	if (measure(text.String()) <= maxWidth) {
 		outLines.push_back(text);
 		return;
 	}
@@ -1101,29 +1125,52 @@ MessageView::_WrapText(BView* owner, const BString& text, float maxWidth,
 			testLine.Append(" ");
 		testLine.Append(word);
 
-		if (owner->StringWidth(testLine.String()) <= maxWidth) {
+		if (measure(testLine.String()) <= maxWidth) {
 			currentLine = testLine;
 		} else {
 			// Word doesn't fit - start new line
 			if (currentLine.Length() > 0) {
 				outLines.push_back(currentLine);
+				currentLine = "";
+			}
+
+			// Check if word alone fits on a line
+			if (measure(word.String()) <= maxWidth) {
 				currentLine = word;
 			} else {
-				// Word alone is too long - need to break it
+				// Word alone is too long - break by character/emoji
+				const char* p = word.String();
 				BString partial;
-				for (int32 i = 0; i < word.Length(); i++) {
-					char c = word.ByteAt(i);
+
+				while (*p != '\0') {
+					int32 advance;
+					if (emojiSize > 0) {
+						char hex[128];
+						int32 seqLen = EmojiRenderer::NextEmojiSequence(
+							p, hex, sizeof(hex));
+						if (seqLen > 0) {
+							advance = seqLen;
+						} else {
+							int32 bytes = 0;
+							EmojiRenderer::DecodeUTF8(p, &bytes);
+							advance = (bytes > 0) ? bytes : 1;
+						}
+					} else {
+						advance = 1;
+					}
+
 					BString test = partial;
-					test.Append(c, 1);
-					if (owner->StringWidth(test.String()) > maxWidth) {
+					test.Append(p, advance);
+					if (measure(test.String()) > maxWidth) {
 						if (partial.Length() > 0) {
 							outLines.push_back(partial);
 							partial = "";
-							partial.Append(c, 1);
+							partial.Append(p, advance);
 						}
 					} else {
-						partial.Append(c, 1);
+						partial.Append(p, advance);
 					}
+					p += advance;
 				}
 				currentLine = partial;
 			}
