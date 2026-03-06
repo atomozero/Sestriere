@@ -204,7 +204,7 @@ _LockIfVisible(BWindow* window)
 
 MainWindow::MainWindow()
 	:
-	BWindow(BRect(0, 0, 799, 529), APP_NAME,
+	BWindow(BRect(0, 0, 729, 489), APP_NAME,
 		B_TITLED_WINDOW, B_AUTO_UPDATE_SIZE_LIMITS),
 	fSerialHandler(NULL),
 	fMenuBar(NULL),
@@ -374,7 +374,7 @@ MainWindow::MainWindow()
 	_LoadPeopleContacts();
 	fprintf(stderr, "[MainWindow] People contacts loaded\n");
 
-	SetSizeLimits(600, B_SIZE_UNLIMITED, 400, B_SIZE_UNLIMITED);
+	SetSizeLimits(500, B_SIZE_UNLIMITED, 350, B_SIZE_UNLIMITED);
 	CenterOnScreen();
 
 	// Start auto-connect timer (will try to connect after 1 second)
@@ -581,8 +581,8 @@ MainWindow::_BuildUI()
 	// Sidebar with search + filters + contact list + device footer
 	BView* sidebar = new BView("sidebar", 0);
 	sidebar->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-	sidebar->SetExplicitMinSize(BSize(220, B_SIZE_UNSET));
-	sidebar->SetExplicitPreferredSize(BSize(260, B_SIZE_UNSET));
+	sidebar->SetExplicitMinSize(BSize(180, B_SIZE_UNSET));
+	sidebar->SetExplicitPreferredSize(BSize(220, B_SIZE_UNSET));
 	BLayoutBuilder::Group<>(sidebar, B_VERTICAL, 0)
 		.AddGroup(B_HORIZONTAL, 0)
 			.SetInsets(4, 4, 4, 4)
@@ -745,9 +745,9 @@ MainWindow::_BuildUI()
 
 	// === MAIN SPLIT VIEW ===
 	fMainSplit = new BSplitView(B_HORIZONTAL);
-	fMainSplit->AddChild(sidebar, 0.22);
-	fMainSplit->AddChild(chatPanel, 0.56);
-	fMainSplit->AddChild(fInfoPanel, 0.22);
+	fMainSplit->AddChild(sidebar, 0.28);
+	fMainSplit->AddChild(chatPanel, 0.52);
+	fMainSplit->AddChild(fInfoPanel, 0.20);
 	fMainSplit->SetCollapsible(0, true);
 	fMainSplit->SetCollapsible(1, false);
 	fMainSplit->SetCollapsible(2, true);

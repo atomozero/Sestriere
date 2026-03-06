@@ -24,7 +24,7 @@
 // Avatar colors — use kAvatarPalette from Constants.h
 
 // Layout constants
-static const float kPanelMinWidth = 200.0f;
+static const float kPanelMinWidth = 160.0f;
 static const float kAvatarSize = 64.0f;
 static const float kMargin = 12.0f;
 static const float kRowHeight = 20.0f;
