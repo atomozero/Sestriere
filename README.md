@@ -13,27 +13,27 @@ The name recalls the Venetian *sestieri* -- interconnected districts like nodes 
 ### Main Window — Chat with GIF, Emoji & Images
 3-panel layout with contact sidebar, chat area showing GIF animations, emoji rendering, image sharing, and SNR-annotated bubbles, plus contact info panel with SNR history chart.
 
-![Main Window](img/screenshot01.png)
+![Main Window](img/screenshot01.png?v=1.7)
 
 ### Network Map
 Force-directed topology with SNR-colored links, animated flow dots, hop count badges, link quality legend, and full mesh discovery.
 
-![Network Map](img/screenshot02.png)
+![Network Map](img/screenshot02.png?v=1.7)
 
 ### Geographic Map with OSM Tiles
 GPS node positions on real OpenStreetMap tiles with offline cache, dashed hop connections, and zoom/pan controls.
 
-![Geographic Map](img/screenshot03.png)
+![Geographic Map](img/screenshot03.png?v=1.7)
 
 ### Packet Analyzer
 Wireshark-style real-time capture with color-coded packet types, decoded detail view, hex dump, SNR trend chart, and desktop notifications.
 
-![Packet Analyzer](img/screenshot04.png)
+![Packet Analyzer](img/screenshot04.png?v=1.7)
 
 ### Mission Control Dashboard
 Unified dashboard with device status, radio health, network health score arc, SNR/RSSI trend chart, packet rate histogram, mini topology, session timeline, and live activity feed.
 
-![Mission Control](img/screenshot05.png)
+![Mission Control](img/screenshot05.png?v=1.7)
 
 ## Features
 
