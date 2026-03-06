@@ -1682,12 +1682,12 @@ NetworkMapView::_DrawNode(const MapNode& node)
 		rgb_color statusColor = _StatusColor(node.status);
 		statusColor.alpha = (uint8)(255 * opacity);
 		SetHighColor(statusColor);
-		SetPenSize(3.0f);
+		SetPenSize(1.5f);
 		BPoint hexOuter[6];
 		for (int i = 0; i < 6; i++) {
 			float angle = i * M_PI / 3.0f - M_PI / 6.0f;
-			hexOuter[i].Set(node.position.x + cosf(angle) * (radius + 2),
-							node.position.y + sinf(angle) * (radius + 2));
+			hexOuter[i].Set(node.position.x + cosf(angle) * (radius + 1),
+							node.position.y + sinf(angle) * (radius + 1));
 		}
 		StrokePolygon(hexOuter, 6, true);
 
@@ -1735,8 +1735,8 @@ NetworkMapView::_DrawNode(const MapNode& node)
 		rgb_color statusColor = _StatusColor(node.status);
 		statusColor.alpha = (uint8)(255 * opacity);
 		SetHighColor(statusColor);
-		SetPenSize(3.0f);
-		StrokeEllipse(node.position, radius + 2, radius + 2);
+		SetPenSize(1.5f);
+		StrokeEllipse(node.position, radius + 1, radius + 1);
 
 		// Selection outline
 		if (node.isSelected) {
