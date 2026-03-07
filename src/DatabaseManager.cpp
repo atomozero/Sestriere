@@ -80,10 +80,30 @@ DatabaseManager::Open(const char* directory)
 		return false;
 	}
 
-	// Enable WAL mode for better concurrent access
-	_Execute("PRAGMA journal_mode=WAL");
-	_Execute("PRAGMA synchronous=NORMAL");
+	// Set busy timeout first — needed before any locking operations
 	_Execute("PRAGMA busy_timeout=5000");
+
+	// Try WAL mode for better concurrent access, fall back to DELETE
+	// if filesystem doesn't support shared-memory locking (common on Haiku)
+	if (!_Execute("PRAGMA journal_mode=WAL")) {
+		fprintf(stderr, "[DatabaseManager] WAL mode not supported, "
+			"falling back to DELETE journal\n");
+		// Close and reopen to reset locking state after WAL failure
+		sqlite3_close_v2(fDB);
+		fDB = NULL;
+		int rc2 = sqlite3_open(dbPath.String(), &fDB);
+		if (rc2 != SQLITE_OK) {
+			fprintf(stderr, "[DatabaseManager] Failed to reopen database: %s\n",
+				sqlite3_errmsg(fDB));
+			sqlite3_close(fDB);
+			fDB = NULL;
+			return false;
+		}
+		_Execute("PRAGMA busy_timeout=5000");
+		_Execute("PRAGMA journal_mode=DELETE");
+	}
+
+	_Execute("PRAGMA synchronous=NORMAL");
 	_Execute("PRAGMA foreign_keys=ON");
 
 	if (!_CreateTables()) {
@@ -1597,8 +1617,8 @@ DatabaseManager::_Execute(const char* sql)
 	char* errMsg = NULL;
 	int rc = sqlite3_exec(fDB, sql, NULL, NULL, &errMsg);
 	if (rc != SQLITE_OK) {
-		fprintf(stderr, "[DatabaseManager] SQL error: %s\n",
-			errMsg ? errMsg : "unknown");
+		fprintf(stderr, "[DatabaseManager] SQL error (rc=%d): %s\n",
+			rc, errMsg ? errMsg : "unknown");
 		sqlite3_free(errMsg);
 		return false;
 	}
