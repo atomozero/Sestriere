@@ -120,6 +120,8 @@ DatabaseManager::Close()
 {
 	BAutolock lock(fLock);
 	if (fDB != NULL) {
+		// Optimize query planner before closing
+		_Execute("PRAGMA optimize");
 		sqlite3_close_v2(fDB);
 		fDB = NULL;
 	}
@@ -153,7 +155,7 @@ DatabaseManager::InsertMessage(const char* contactKeyHex,
 	}
 
 	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
-	sqlite3_bind_int(stmt, 2, message.timestamp);
+	sqlite3_bind_int64(stmt, 2, (int64_t)message.timestamp);
 	sqlite3_bind_int(stmt, 3, message.isOutgoing ? 1 : 0);
 	sqlite3_bind_int(stmt, 4, message.isChannel ? 1 : 0);
 	sqlite3_bind_text(stmt, 5, senderHex, -1, SQLITE_TRANSIENT);
@@ -194,7 +196,7 @@ DatabaseManager::UpdateMessageDeliveryStatus(const char* contactKeyHex,
 	sqlite3_bind_int(stmt, 1, status);
 	sqlite3_bind_int(stmt, 2, roundTripMs);
 	sqlite3_bind_text(stmt, 3, contactKeyHex, -1, SQLITE_TRANSIENT);
-	sqlite3_bind_int(stmt, 4, timestamp);
+	sqlite3_bind_int64(stmt, 4, (int64_t)timestamp);
 
 	rc = sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
@@ -330,7 +332,7 @@ DatabaseManager::InsertSNRDataPoint(const char* contactKeyHex,
 	}
 
 	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
-	sqlite3_bind_int(stmt, 2, timestamp);
+	sqlite3_bind_int64(stmt, 2, (int64_t)timestamp);
 	sqlite3_bind_int(stmt, 3, snr);
 	sqlite3_bind_int(stmt, 4, rssi);
 	sqlite3_bind_int(stmt, 5, pathLen);
@@ -364,7 +366,7 @@ DatabaseManager::LoadSNRHistory(const char* contactKeyHex,
 	}
 
 	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
-	sqlite3_bind_int(stmt, 2, sinceTimestamp);
+	sqlite3_bind_int64(stmt, 2, (int64_t)sinceTimestamp);
 
 	int32 count = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -498,12 +500,12 @@ DatabaseManager::PruneOldData(uint32 maxAgeDays)
 	if (fDB == NULL)
 		return;
 
-	int32 cutoff = (int32)((uint32)time(NULL) - (maxAgeDays * 86400));
+	int64_t cutoff = (int64_t)time(NULL) - (int64_t)(maxAgeDays * 86400);
 
 	const char* sqlSnr = "DELETE FROM snr_history WHERE timestamp < ?";
 	sqlite3_stmt* stmt = NULL;
 	if (sqlite3_prepare_v2(fDB, sqlSnr, -1, &stmt, NULL) == SQLITE_OK) {
-		sqlite3_bind_int(stmt, 1, cutoff);
+		sqlite3_bind_int64(stmt, 1, cutoff);
 		int rc = sqlite3_step(stmt);
 		if (rc != SQLITE_DONE)
 			fprintf(stderr, "[DatabaseManager] prune snr_history: %s\n",
@@ -514,7 +516,7 @@ DatabaseManager::PruneOldData(uint32 maxAgeDays)
 	const char* sqlTelem = "DELETE FROM telemetry_history WHERE timestamp < ?";
 	stmt = NULL;
 	if (sqlite3_prepare_v2(fDB, sqlTelem, -1, &stmt, NULL) == SQLITE_OK) {
-		sqlite3_bind_int(stmt, 1, cutoff);
+		sqlite3_bind_int64(stmt, 1, cutoff);
 		int rc = sqlite3_step(stmt);
 		if (rc != SQLITE_DONE)
 			fprintf(stderr, "[DatabaseManager] prune telemetry_history: %s\n",
@@ -537,12 +539,12 @@ DatabaseManager::PruneOldMessages(uint32 maxAgeDays)
 	if (fDB == NULL)
 		return;
 
-	int32 cutoff = (int32)((uint32)time(NULL) - (maxAgeDays * 86400));
+	int64_t cutoff = (int64_t)time(NULL) - (int64_t)(maxAgeDays * 86400);
 
 	const char* sql = "DELETE FROM messages WHERE timestamp < ?";
 	sqlite3_stmt* stmt = NULL;
 	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) == SQLITE_OK) {
-		sqlite3_bind_int(stmt, 1, cutoff);
+		sqlite3_bind_int64(stmt, 1, cutoff);
 		int rc = sqlite3_step(stmt);
 		if (rc != SQLITE_DONE)
 			fprintf(stderr, "[DatabaseManager] prune messages: %s\n",
@@ -579,7 +581,7 @@ DatabaseManager::InsertImage(const char* contactKey, uint32 sessionId,
 
 	sqlite3_bind_int(stmt, 1, (int)sessionId);
 	sqlite3_bind_text(stmt, 2, contactKey, -1, SQLITE_TRANSIENT);
-	sqlite3_bind_int(stmt, 3, (int)time(NULL));
+	sqlite3_bind_int64(stmt, 3, (int64_t)time(NULL));
 	sqlite3_bind_int(stmt, 4, width);
 	sqlite3_bind_int(stmt, 5, height);
 	sqlite3_bind_blob(stmt, 6, jpegData, (int)jpegSize, SQLITE_TRANSIENT);
@@ -645,12 +647,12 @@ DatabaseManager::PruneOldImages(uint32 maxAgeDays)
 	if (fDB == NULL)
 		return;
 
-	int32 cutoff = (int32)((uint32)time(NULL) - (maxAgeDays * 86400));
+	int64_t cutoff = (int64_t)time(NULL) - (int64_t)(maxAgeDays * 86400);
 
 	const char* sql = "DELETE FROM images WHERE timestamp < ?";
 	sqlite3_stmt* stmt = NULL;
 	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) == SQLITE_OK) {
-		sqlite3_bind_int(stmt, 1, cutoff);
+		sqlite3_bind_int64(stmt, 1, cutoff);
 		int rc = sqlite3_step(stmt);
 		if (rc != SQLITE_DONE)
 			fprintf(stderr, "[DatabaseManager] prune images: %s\n",
@@ -684,7 +686,7 @@ DatabaseManager::InsertVoiceClip(const char* contactKey, uint32 sessionId,
 
 	sqlite3_bind_int(stmt, 1, (int)sessionId);
 	sqlite3_bind_text(stmt, 2, contactKey, -1, SQLITE_TRANSIENT);
-	sqlite3_bind_int(stmt, 3, (int)time(NULL));
+	sqlite3_bind_int64(stmt, 3, (int64_t)time(NULL));
 	sqlite3_bind_int(stmt, 4, (int)durationSec);
 	sqlite3_bind_int(stmt, 5, (int)mode);
 	sqlite3_bind_blob(stmt, 6, codec2Data, (int)dataSize, SQLITE_TRANSIENT);
@@ -749,12 +751,12 @@ DatabaseManager::PruneOldVoiceClips(uint32 maxAgeDays)
 	if (fDB == NULL)
 		return;
 
-	int32 cutoff = (int32)((uint32)time(NULL) - (maxAgeDays * 86400));
+	int64_t cutoff = (int64_t)time(NULL) - (int64_t)(maxAgeDays * 86400);
 
 	const char* sql = "DELETE FROM voice_clips WHERE timestamp < ?";
 	sqlite3_stmt* stmt = NULL;
 	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) == SQLITE_OK) {
-		sqlite3_bind_int(stmt, 1, cutoff);
+		sqlite3_bind_int64(stmt, 1, cutoff);
 		int rc = sqlite3_step(stmt);
 		if (rc != SQLITE_DONE)
 			fprintf(stderr, "[DatabaseManager] prune voice_clips: %s\n",
@@ -786,7 +788,7 @@ DatabaseManager::InsertTopologyEdge(const char* fromHex, const char* toHex,
 	sqlite3_bind_text(stmt, 1, fromHex, -1, SQLITE_TRANSIENT);
 	sqlite3_bind_text(stmt, 2, toHex, -1, SQLITE_TRANSIENT);
 	sqlite3_bind_int(stmt, 3, snr);
-	sqlite3_bind_int(stmt, 4, (int32)time(NULL));
+	sqlite3_bind_int64(stmt, 4, (int64_t)time(NULL));
 
 	bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
 	sqlite3_finalize(stmt);
@@ -833,12 +835,12 @@ DatabaseManager::PruneOldEdges(uint32 maxAgeDays)
 	if (fDB == NULL)
 		return;
 
-	int32 cutoff = (int32)((uint32)time(NULL) - (maxAgeDays * 86400));
+	int64_t cutoff = (int64_t)time(NULL) - (int64_t)(maxAgeDays * 86400);
 
 	const char* sql = "DELETE FROM topology_edges WHERE timestamp < ?";
 	sqlite3_stmt* stmt = NULL;
 	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) == SQLITE_OK) {
-		sqlite3_bind_int(stmt, 1, cutoff);
+		sqlite3_bind_int64(stmt, 1, cutoff);
 		int rc = sqlite3_step(stmt);
 		if (rc != SQLITE_DONE)
 			fprintf(stderr, "[DatabaseManager] prune topology_edges: %s\n",
@@ -1173,13 +1175,13 @@ DatabaseManager::InsertTelemetry(uint32 nodeId, const char* sensorName,
 		return false;
 	}
 
-	uint32 now = (uint32)time(NULL);
+	int64_t now = (int64_t)time(NULL);
 	sqlite3_bind_int(stmt, 1, nodeId);
 	sqlite3_bind_text(stmt, 2, sensorName, -1, SQLITE_TRANSIENT);
 	sqlite3_bind_int(stmt, 3, sensorType);
 	sqlite3_bind_double(stmt, 4, (double)value);
 	sqlite3_bind_text(stmt, 5, unit, -1, SQLITE_TRANSIENT);
-	sqlite3_bind_int(stmt, 6, now);
+	sqlite3_bind_int64(stmt, 6, now);
 
 	rc = sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
@@ -1213,7 +1215,7 @@ DatabaseManager::LoadTelemetryHistory(uint32 nodeId,
 
 	sqlite3_bind_int(stmt, 1, nodeId);
 	sqlite3_bind_text(stmt, 2, sensorName, -1, SQLITE_TRANSIENT);
-	sqlite3_bind_int(stmt, 3, sinceTimestamp);
+	sqlite3_bind_int64(stmt, 3, (int64_t)sinceTimestamp);
 
 	int32 count = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -1328,6 +1330,7 @@ DatabaseManager::_MigrateFromTextFile(const char* directory)
 	_Execute("BEGIN TRANSACTION");
 
 	int migrated = 0;
+	int errors = 0;
 	char* saveptr = NULL;
 	char* line = strtok_r(buffer, "\n", &saveptr);
 	while (line != NULL) {
@@ -1354,8 +1357,10 @@ DatabaseManager::_MigrateFromTextFile(const char* directory)
 				msg.snr = 0;
 				strlcpy(msg.text, text, sizeof(msg.text));
 
-				InsertMessage("channel", msg);
-				migrated++;
+				if (InsertMessage("channel", msg))
+					migrated++;
+				else
+					errors++;
 			}
 		} else if (line[0] == 'D' && line[1] == '|') {
 			// DM: D|contactHex|timestamp|outgoing|text
@@ -1375,15 +1380,26 @@ DatabaseManager::_MigrateFromTextFile(const char* directory)
 				msg.snr = 0;
 				strlcpy(msg.text, text, sizeof(msg.text));
 
-				InsertMessage(contactHex, msg);
-				migrated++;
+				if (InsertMessage(contactHex, msg))
+					migrated++;
+				else
+					errors++;
 			}
 		}
 
 		line = strtok_r(NULL, "\n", &saveptr);
 	}
 
-	_Execute("COMMIT");
+	if (errors > 0 && migrated == 0) {
+		fprintf(stderr, "[DatabaseManager] Migration failed (%d errors), "
+			"rolling back\n", errors);
+		_Execute("ROLLBACK");
+	} else {
+		_Execute("COMMIT");
+		if (errors > 0)
+			fprintf(stderr, "[DatabaseManager] Migration partial: %d errors\n",
+				errors);
+	}
 	delete[] buffer;
 
 	if (migrated > 0) {
@@ -1508,6 +1524,11 @@ DatabaseManager::_CreateTables()
 	if (!ok)
 		return false;
 
+	// Index for fast group membership lookup by contact
+	_Execute(
+		"CREATE INDEX IF NOT EXISTS idx_group_members_contact "
+		"ON contact_group_members (contact_key)");
+
 	// Topology edges table — discovered inter-node connections
 	ok = _Execute(
 		"CREATE TABLE IF NOT EXISTS topology_edges ("
@@ -1519,6 +1540,11 @@ DatabaseManager::_CreateTables()
 		")");
 	if (!ok)
 		return false;
+
+	// Index for fast pruning by timestamp
+	_Execute(
+		"CREATE INDEX IF NOT EXISTS idx_topology_edges_timestamp "
+		"ON topology_edges (timestamp)");
 
 	// Images table — BLOB storage for LoRa image sharing
 	ok = _Execute(
