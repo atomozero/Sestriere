@@ -32,6 +32,7 @@ Version 1.8.0 | March 2026
 23. [Radio Configuration](#23-radio-configuration)
 24. [Notifications and Deskbar](#24-notifications-and-deskbar)
 25. [Keyboard Shortcuts](#25-keyboard-shortcuts)
+26. [Troubleshooting](#26-troubleshooting)
 - [Appendix A: Radio Presets Reference](#appendix-a-radio-presets-reference)
 - [Appendix B: MeshCore Protocol Reference](#appendix-b-meshcore-protocol-reference)
 
@@ -971,6 +972,8 @@ Sestriere stores all persistent data in SQLite:
 
 Database location: `~/config/settings/Sestriere/sestriere.db`
 
+SQLite journal mode: WAL (preferred) with automatic fallback to DELETE on filesystems that do not support shared-memory locking.
+
 MQTT settings: `~/config/settings/Sestriere/mqtt.settings`
 
 Device settings: `~/config/settings/Sestriere/device.settings`
@@ -980,6 +983,69 @@ UI settings: `~/config/settings/Sestriere/ui.settings` (contact filter state)
 GIF cache: `~/config/settings/Sestriere/gif_cache/`
 
 Map tile cache: `~/config/settings/Sestriere/tiles/`
+
+---
+
+## 26. Troubleshooting
+
+### Database: "locking protocol" error
+
+```
+[DatabaseManager] SQL error: locking protocol
+[DatabaseManager] Failed to create tables
+```
+
+**Cause**: SQLite WAL (Write-Ahead Logging) journal mode requires shared-memory file locking that may not work on all Haiku filesystem configurations. When WAL mode fails, the database cannot initialize.
+
+**Solution**: As of version 1.8.0, Sestriere automatically detects this condition and falls back to DELETE journal mode, which works on all filesystems. If you see this error with version 1.7 or earlier, update to the latest version.
+
+If the error persists on 1.8.0+, try deleting the database file and restarting:
+
+```bash
+rm ~/config/settings/Sestriere/sestriere.db
+rm -f ~/config/settings/Sestriere/sestriere.db-wal
+rm -f ~/config/settings/Sestriere/sestriere.db-shm
+```
+
+> **Note**: Deleting the database removes all message history, SNR data, contact groups, and mute settings.
+
+### Serial port: "Device/File/Resource busy"
+
+```
+SerialHandler: Failed to open /dev/ports/usb0: Device/File/Resource busy
+```
+
+**Cause**: Another process is holding the serial port. This is usually a previous Sestriere instance that did not shut down cleanly, or another serial terminal application.
+
+**Solution**:
+
+1. Close any other serial communication programs (SerialConnect, minicom, etc.)
+2. If a previous Sestriere instance is stuck, use ProcessController or `kill` to terminate it:
+   ```bash
+   kill $(pidof Sestriere)
+   ```
+3. If the port remains busy, disconnect and reconnect the USB cable
+4. Try **Connection > Refresh Ports** to rescan available ports
+
+### Application starts but shows no contacts
+
+**Cause**: The device connection may have failed silently, or the contact sync did not complete.
+
+**Solution**:
+
+1. Check the connection status in the top bar (green dot = connected)
+2. Try **Connection > Disconnect** (Cmd+D) then **Connection > Connect** (Cmd+O)
+3. After connecting, press **Cmd+R** to force a contact sync
+4. Check the Debug Log (Cmd+L) for protocol errors
+
+### UI filters hide all contacts
+
+If the sidebar appears empty but you are connected:
+
+1. Check the filter checkboxes below the search field (Chat, Repeater, Room)
+2. Make sure at least one type is checked
+3. Clear the search field if it contains text
+4. Filter settings persist across restarts — unchecked filters remain unchecked
 
 ---
 
