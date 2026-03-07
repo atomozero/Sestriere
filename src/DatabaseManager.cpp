@@ -83,6 +83,8 @@ DatabaseManager::Open(const char* directory)
 	// Enable WAL mode for better concurrent access
 	_Execute("PRAGMA journal_mode=WAL");
 	_Execute("PRAGMA synchronous=NORMAL");
+	_Execute("PRAGMA busy_timeout=5000");
+	_Execute("PRAGMA foreign_keys=ON");
 
 	if (!_CreateTables()) {
 		fprintf(stderr, "[DatabaseManager] Failed to create tables\n");
@@ -502,7 +504,10 @@ DatabaseManager::PruneOldData(uint32 maxAgeDays)
 	sqlite3_stmt* stmt = NULL;
 	if (sqlite3_prepare_v2(fDB, sqlSnr, -1, &stmt, NULL) == SQLITE_OK) {
 		sqlite3_bind_int(stmt, 1, cutoff);
-		sqlite3_step(stmt);
+		int rc = sqlite3_step(stmt);
+		if (rc != SQLITE_DONE)
+			fprintf(stderr, "[DatabaseManager] prune snr_history: %s\n",
+				sqlite3_errmsg(fDB));
 		sqlite3_finalize(stmt);
 	}
 
@@ -510,7 +515,10 @@ DatabaseManager::PruneOldData(uint32 maxAgeDays)
 	stmt = NULL;
 	if (sqlite3_prepare_v2(fDB, sqlTelem, -1, &stmt, NULL) == SQLITE_OK) {
 		sqlite3_bind_int(stmt, 1, cutoff);
-		sqlite3_step(stmt);
+		int rc = sqlite3_step(stmt);
+		if (rc != SQLITE_DONE)
+			fprintf(stderr, "[DatabaseManager] prune telemetry_history: %s\n",
+				sqlite3_errmsg(fDB));
 		sqlite3_finalize(stmt);
 	}
 
@@ -535,7 +543,10 @@ DatabaseManager::PruneOldMessages(uint32 maxAgeDays)
 	sqlite3_stmt* stmt = NULL;
 	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) == SQLITE_OK) {
 		sqlite3_bind_int(stmt, 1, cutoff);
-		sqlite3_step(stmt);
+		int rc = sqlite3_step(stmt);
+		if (rc != SQLITE_DONE)
+			fprintf(stderr, "[DatabaseManager] prune messages: %s\n",
+				sqlite3_errmsg(fDB));
 		sqlite3_finalize(stmt);
 	}
 
@@ -640,7 +651,10 @@ DatabaseManager::PruneOldImages(uint32 maxAgeDays)
 	sqlite3_stmt* stmt = NULL;
 	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) == SQLITE_OK) {
 		sqlite3_bind_int(stmt, 1, cutoff);
-		sqlite3_step(stmt);
+		int rc = sqlite3_step(stmt);
+		if (rc != SQLITE_DONE)
+			fprintf(stderr, "[DatabaseManager] prune images: %s\n",
+				sqlite3_errmsg(fDB));
 		sqlite3_finalize(stmt);
 	}
 }
@@ -741,7 +755,10 @@ DatabaseManager::PruneOldVoiceClips(uint32 maxAgeDays)
 	sqlite3_stmt* stmt = NULL;
 	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) == SQLITE_OK) {
 		sqlite3_bind_int(stmt, 1, cutoff);
-		sqlite3_step(stmt);
+		int rc = sqlite3_step(stmt);
+		if (rc != SQLITE_DONE)
+			fprintf(stderr, "[DatabaseManager] prune voice_clips: %s\n",
+				sqlite3_errmsg(fDB));
 		sqlite3_finalize(stmt);
 	}
 }
@@ -822,7 +839,10 @@ DatabaseManager::PruneOldEdges(uint32 maxAgeDays)
 	sqlite3_stmt* stmt = NULL;
 	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) == SQLITE_OK) {
 		sqlite3_bind_int(stmt, 1, cutoff);
-		sqlite3_step(stmt);
+		int rc = sqlite3_step(stmt);
+		if (rc != SQLITE_DONE)
+			fprintf(stderr, "[DatabaseManager] prune topology_edges: %s\n",
+				sqlite3_errmsg(fDB));
 		sqlite3_finalize(stmt);
 	}
 }
@@ -941,9 +961,6 @@ DatabaseManager::DeleteGroup(const char* name)
 	if (fDB == NULL || name == NULL)
 		return false;
 
-	// Enable foreign keys for CASCADE to work
-	_Execute("PRAGMA foreign_keys = ON");
-
 	const char* sql = "DELETE FROM contact_groups WHERE name = ?";
 
 	sqlite3_stmt* stmt;
@@ -968,14 +985,23 @@ DatabaseManager::AddContactToGroup(const char* groupName,
 	if (fDB == NULL || groupName == NULL || contactKeyHex == NULL)
 		return false;
 
+	// Atomic: remove from old group + insert into new group
+	_Execute("BEGIN TRANSACTION");
+
 	// Remove from any existing group first (1 group per contact)
 	const char* removeSql =
 		"DELETE FROM contact_group_members WHERE contact_key = ?";
 	sqlite3_stmt* removeStmt;
 	if (sqlite3_prepare_v2(fDB, removeSql, -1, &removeStmt, NULL) == SQLITE_OK) {
 		sqlite3_bind_text(removeStmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
-		sqlite3_step(removeStmt);
+		int rc = sqlite3_step(removeStmt);
 		sqlite3_finalize(removeStmt);
+		if (rc != SQLITE_DONE) {
+			fprintf(stderr, "[DatabaseManager] remove from group failed: %s\n",
+				sqlite3_errmsg(fDB));
+			_Execute("ROLLBACK");
+			return false;
+		}
 	}
 
 	const char* sql =
@@ -987,6 +1013,7 @@ DatabaseManager::AddContactToGroup(const char* groupName,
 	if (rc != SQLITE_OK) {
 		fprintf(stderr, "[DatabaseManager] prepare failed: %s\n",
 			sqlite3_errmsg(fDB));
+		_Execute("ROLLBACK");
 		return false;
 	}
 
@@ -996,7 +1023,15 @@ DatabaseManager::AddContactToGroup(const char* groupName,
 	rc = sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
 
-	return rc == SQLITE_DONE;
+	if (rc != SQLITE_DONE) {
+		fprintf(stderr, "[DatabaseManager] insert into group failed: %s\n",
+			sqlite3_errmsg(fDB));
+		_Execute("ROLLBACK");
+		return false;
+	}
+
+	_Execute("COMMIT");
+	return true;
 }
 
 
