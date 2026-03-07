@@ -2969,7 +2969,7 @@ MainWindow::MessageReceived(BMessage* message)
 			if (message->FindString("sender", &sender) == B_OK
 				&& sender[0] != '\0') {
 				BString mention;
-				mention.SetToFormat("@%s ", sender);
+				mention.SetToFormat("@[%s] ", sender);
 				fMessageInput->Insert(fMessageInput->TextLength(),
 					mention.String(), mention.Length());
 				fMessageInput->MakeFocus(true);
@@ -4209,6 +4209,9 @@ MainWindow::_HandleExportContact(const uint8* data, size_t length)
 
 				// Also update MQTT settings with device name
 				strlcpy(fMqttSettings.deviceName, fDeviceName, sizeof(fMqttSettings.deviceName));
+
+				// Update ChatView for @mention detection
+				fChatView->SetSelfName(fDeviceName);
 			}
 		}
 	}

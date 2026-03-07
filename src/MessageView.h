@@ -32,6 +32,9 @@ public:
 
 			bool			IsOutgoing() const { return fOutgoing; }
 			bool			IsChannel() const { return fIsChannel; }
+			bool			IsMention() const { return fIsMention; }
+			void			SetMention(bool mention)
+								{ fIsMention = mention; }
 			uint32			Timestamp() const { return fTimestamp; }
 			const char*		Text() const { return fText.String(); }
 			const char*		SenderName() const { return fSenderName.String(); }
@@ -102,6 +105,8 @@ private:
 			uint8			fRetryCount;
 			uint8			fPubKeyPrefix[6];
 			BRect			fHopsClickRect;
+
+			bool			fIsMention;
 
 			bool			fIsSarMarker;
 			SarMarker		fSarMarker;

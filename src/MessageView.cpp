@@ -40,6 +40,21 @@ static inline rgb_color IncomingBorderColor()
 {
 	return tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_1_TINT);
 }
+static inline rgb_color MentionBubbleColor()
+{
+	rgb_color highlight = ui_color(B_CONTROL_HIGHLIGHT_COLOR);
+	rgb_color panelBg = ui_color(B_PANEL_BACKGROUND_COLOR);
+	rgb_color result;
+	result.red = (uint8)(panelBg.red * 0.82f + highlight.red * 0.18f);
+	result.green = (uint8)(panelBg.green * 0.82f + highlight.green * 0.18f);
+	result.blue = (uint8)(panelBg.blue * 0.82f + highlight.blue * 0.18f);
+	result.alpha = 255;
+	return result;
+}
+static inline rgb_color MentionBorderColor()
+{
+	return tint_color(ui_color(B_CONTROL_HIGHLIGHT_COLOR), B_DARKEN_1_TINT);
+}
 static inline rgb_color BubbleTextColor()
 {
 	return ui_color(B_DOCUMENT_TEXT_COLOR);
@@ -77,6 +92,7 @@ MessageView::MessageView(const ChatMessage& message, const char* senderName)
 	fTxtType(message.txtType),
 	fRetryCount(message.retryCount),
 	fHopsClickRect(),
+	fIsMention(false),
 	fIsSarMarker(false),
 	fSarMarker(),
 	fIsVoiceMsg(false),
@@ -345,6 +361,9 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 		// Terminal-style: very dark background for CLI messages
 		bubbleColor = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_MAX_TINT);
 		borderColor = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_4_TINT);
+	} else if (fIsMention) {
+		bubbleColor = MentionBubbleColor();
+		borderColor = MentionBorderColor();
 	} else {
 		bubbleColor = fOutgoing ? OutgoingBubbleColor() : IncomingBubbleColor();
 		borderColor = fOutgoing ? OutgoingBorderColor() : IncomingBorderColor();

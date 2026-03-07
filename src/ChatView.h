@@ -39,6 +39,8 @@ public:
 			// Access to message history for the current contact
 			OwningObjectList<ChatMessage>* GetMessageHistory();
 
+			void			SetSelfName(const char* name);
+
 			// GIF animation
 			void			StartGifAnimation();
 
@@ -47,6 +49,7 @@ private:
 
 			ContactInfo*	fCurrentContact;
 			BString			fCurrentContactName;
+			BString			fSelfName;
 			BMessageRunner*	fGifAnimateRunner;
 
 			// Message history per contact (pubkey prefix -> messages)

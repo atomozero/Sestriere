@@ -237,6 +237,15 @@ ChatView::AddMessage(const ChatMessage& message, const char* senderName)
 
 	// Create and add visual item
 	MessageView* item = new MessageView(message, senderName);
+
+	// Detect @[selfName] mention in incoming messages
+	if (!message.isOutgoing && fSelfName.Length() > 0) {
+		BString mention;
+		mention.SetToFormat("@[%s]", fSelfName.String());
+		if (BString(message.text).IFindFirst(mention) >= 0)
+			item->SetMention(true);
+	}
+
 	AddItem(item);
 
 	// Request emoji downloads for any emoji in the message text
@@ -244,6 +253,13 @@ ChatView::AddMessage(const ChatMessage& message, const char* senderName)
 		EmojiRenderer::RequestEmoji(message.text, this);
 
 	_ScrollToBottom();
+}
+
+
+void
+ChatView::SetSelfName(const char* name)
+{
+	fSelfName = (name != NULL) ? name : "";
 }
 
 
@@ -300,6 +316,14 @@ ChatView::SetCurrentContact(ContactInfo* contact)
 			if (msg != NULL) {
 				const char* senderName = msg->isOutgoing ? "Me" : contact->name;
 				MessageView* item = new MessageView(*msg, senderName);
+
+				// Detect @[selfName] mention
+				if (!msg->isOutgoing && fSelfName.Length() > 0) {
+					BString mention;
+					mention.SetToFormat("@[%s]", fSelfName.String());
+					if (BString(msg->text).IFindFirst(mention) >= 0)
+						item->SetMention(true);
+				}
 
 				// Load saved image from DB if this is an IE2 message
 				if (item->IsImageMessage()) {
