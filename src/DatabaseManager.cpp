@@ -118,7 +118,7 @@ DatabaseManager::Close()
 {
 	BAutolock lock(fLock);
 	if (fDB != NULL) {
-		sqlite3_close(fDB);
+		sqlite3_close_v2(fDB);
 		fDB = NULL;
 	}
 }

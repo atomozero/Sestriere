@@ -3,6 +3,17 @@
  * All rights reserved. Distributed under the terms of the MIT license.
  *
  * AudioEngine.cpp — Audio recording and playback for voice messages
+ *
+ * On construction, creates a BMediaRecorder that registers as a
+ * Cortex media node named "Sestriere".  This allows users to see
+ * Sestriere in Cortex and route any audio source to it.
+ *
+ * Recording flow:
+ *   1. StartRecording() — if not already connected (via Cortex),
+ *      tries auto-connect to system audio input.
+ *   2. Buffers flow into _RecordBuffer() callback.
+ *   3. StopRecording() — stops accepting buffers but keeps the
+ *      Cortex connection alive for future recordings.
  */
 
 #include "AudioEngine.h"
@@ -11,6 +22,8 @@
 #include <MediaRoster.h>
 #include <Message.h>
 #include <TimeSource.h>
+
+#include <Autolock.h>
 
 #include <cstdio>
 #include <cstring>
@@ -28,26 +41,9 @@ static const size_t kMaxRecordSamples = 30 * kSampleRate;
 static const size_t kInitialRecordCapacity = kSampleRate * 5;  // 5 seconds
 
 
-bool
-AudioEngine::IsInputAvailable()
-{
-	BMediaRoster* roster = BMediaRoster::Roster();
-	if (roster == NULL)
-		return false;
-
-	media_node audioInput;
-	status_t err = roster->GetAudioInput(&audioInput);
-	if (err != B_OK)
-		return false;
-
-	// Release the node — we just wanted to check it exists
-	roster->ReleaseNode(audioInput);
-	return true;
-}
-
-
 AudioEngine::AudioEngine()
 	:
+	fInitErr(B_NO_INIT),
 	fPlayer(NULL),
 	fRecorder(NULL),
 	fRecording(false),
@@ -60,52 +56,20 @@ AudioEngine::AudioEngine()
 	fPlayPosition(0),
 	fPlayNotify(NULL)
 {
-}
-
-
-AudioEngine::~AudioEngine()
-{
-	Stop();
-	if (fRecording)
-		StopRecording(NULL, NULL);
-
-	delete fPlayer;
-	delete fRecorder;
-	delete[] fRecordBuffer;
-}
-
-
-// =============================================================================
-// Recording
-// =============================================================================
-
-
-status_t
-AudioEngine::StartRecording()
-{
-	if (fRecording)
-		return B_BUSY;
-
-	// Allocate recording buffer
-	delete[] fRecordBuffer;
-	fRecordCapacity = kInitialRecordCapacity;
-	fRecordBuffer = new(std::nothrow) int16[fRecordCapacity];
-	if (fRecordBuffer == NULL)
-		return B_NO_MEMORY;
-	fRecordSize = 0;
-
-	// Create media recorder for audio input
-	delete fRecorder;
-	fRecorder = new(std::nothrow) BMediaRecorder("Sestriere Voice",
+	// Create recorder — this registers a Cortex consumer node
+	// named "Sestriere" so it appears in Cortex immediately.
+	fRecorder = new(std::nothrow) BMediaRecorder("Sestriere",
 		B_MEDIA_RAW_AUDIO);
 	if (fRecorder == NULL || fRecorder->InitCheck() != B_OK) {
-		fprintf(stderr, "[AudioEngine] BMediaRecorder init failed\n");
+		fprintf(stderr, "[AudioEngine] BMediaRecorder init failed — "
+			"media_server may not be running\n");
 		delete fRecorder;
 		fRecorder = NULL;
-		return B_ERROR;
+		fInitErr = B_ERROR;
+		return;
 	}
 
-	// Set desired format: 8kHz mono 16-bit signed
+	// Set accepted format: 8kHz mono 16-bit signed
 	media_format format = {};
 	format.type = B_MEDIA_RAW_AUDIO;
 	format.u.raw_audio.frame_rate = kSampleRate;
@@ -118,24 +82,80 @@ AudioEngine::StartRecording()
 	fRecorder->SetAcceptedFormat(format);
 	fRecorder->SetHooks(_RecordBuffer, NULL, this);
 
-	// Connect to system audio input
-	status_t err = fRecorder->Connect(format);
-	if (err != B_OK) {
-		fprintf(stderr, "[AudioEngine] Failed to connect recorder: %s\n",
-			strerror(err));
+	fInitErr = B_OK;
+}
+
+
+AudioEngine::~AudioEngine()
+{
+	Stop();
+	if (fRecording)
+		StopRecording(NULL, NULL);
+
+	if (fRecorder != NULL) {
+		if (fRecorder->IsConnected())
+			fRecorder->Disconnect();
 		delete fRecorder;
-		fRecorder = NULL;
-		return err;
+	}
+
+	delete fPlayer;
+	delete[] fRecordBuffer;
+}
+
+
+// =============================================================================
+// Recording
+// =============================================================================
+
+
+status_t
+AudioEngine::StartRecording()
+{
+	BAutolock lock(fLock);
+
+	if (fRecording)
+		return B_BUSY;
+
+	if (fRecorder == NULL)
+		return B_NO_INIT;
+
+	// Allocate recording buffer
+	delete[] fRecordBuffer;
+	fRecordCapacity = kInitialRecordCapacity;
+	fRecordBuffer = new(std::nothrow) int16[fRecordCapacity];
+	if (fRecordBuffer == NULL)
+		return B_NO_MEMORY;
+	fRecordSize = 0;
+
+	// If not already connected (via Cortex routing), try auto-connect
+	// to the system audio input
+	if (!fRecorder->IsConnected()) {
+		media_format format = {};
+		format.type = B_MEDIA_RAW_AUDIO;
+		format.u.raw_audio.frame_rate = kSampleRate;
+		format.u.raw_audio.channel_count = 1;
+		format.u.raw_audio.format = media_raw_audio_format::B_AUDIO_SHORT;
+		format.u.raw_audio.byte_order =
+			B_HOST_IS_LENDIAN ? B_MEDIA_LITTLE_ENDIAN : B_MEDIA_BIG_ENDIAN;
+		format.u.raw_audio.buffer_size = kBufferSize;
+
+		status_t err = fRecorder->Connect(format);
+		if (err != B_OK) {
+			fprintf(stderr, "[AudioEngine] No audio input — "
+				"connect a source in Cortex or plug in a microphone\n");
+			delete[] fRecordBuffer;
+			fRecordBuffer = NULL;
+			return err;
+		}
 	}
 
 	// Start recording
-	err = fRecorder->Start();
+	status_t err = fRecorder->Start();
 	if (err != B_OK) {
 		fprintf(stderr, "[AudioEngine] Failed to start recording: %s\n",
 			strerror(err));
-		fRecorder->Disconnect();
-		delete fRecorder;
-		fRecorder = NULL;
+		delete[] fRecordBuffer;
+		fRecordBuffer = NULL;
 		return err;
 	}
 
@@ -147,6 +167,8 @@ AudioEngine::StartRecording()
 status_t
 AudioEngine::StopRecording(int16** outPcm, size_t* outSamples)
 {
+	BAutolock lock(fLock);
+
 	if (!fRecording)
 		return B_ERROR;
 
@@ -154,9 +176,8 @@ AudioEngine::StopRecording(int16** outPcm, size_t* outSamples)
 
 	if (fRecorder != NULL) {
 		fRecorder->Stop();
-		fRecorder->Disconnect();
-		delete fRecorder;
-		fRecorder = NULL;
+		// Don't disconnect — keep the Cortex node connection alive
+		// so the user doesn't have to re-route in Cortex each time
 	}
 
 	// Return the recorded buffer
@@ -182,6 +203,10 @@ AudioEngine::_RecordBuffer(void* cookie, bigtime_t timestamp,
 	(void)timestamp;
 	AudioEngine* engine = (AudioEngine*)cookie;
 	if (engine == NULL || !engine->fRecording)
+		return;
+
+	BAutolock lock(engine->fLock);
+	if (!engine->fRecording || engine->fRecordBuffer == NULL)
 		return;
 
 	// Convert to samples
@@ -278,7 +303,12 @@ AudioEngine::Play(const int16* pcmData, size_t sampleCount,
 	if (pcmData == NULL || sampleCount == 0)
 		return B_BAD_VALUE;
 
-	fPlayBuffer = pcmData;
+	// Make an owned copy so caller can free their buffer immediately
+	delete[] fPlayBuffer;
+	fPlayBuffer = new(std::nothrow) int16[sampleCount];
+	if (fPlayBuffer == NULL)
+		return B_NO_MEMORY;
+	memcpy(fPlayBuffer, pcmData, sampleCount * sizeof(int16));
 	fPlaySize = sampleCount;
 	fPlayPosition = 0;
 	fPlayNotify = notifyTarget;
@@ -324,6 +354,7 @@ AudioEngine::Stop()
 		fPlayer = NULL;
 	}
 
+	delete[] fPlayBuffer;
 	fPlayBuffer = NULL;
 	fPlaySize = 0;
 	fPlayPosition = 0;

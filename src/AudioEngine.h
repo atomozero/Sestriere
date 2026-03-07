@@ -4,14 +4,17 @@
  *
  * AudioEngine.h — Audio recording and playback for voice messages
  *
+ * Registers as a Cortex media node on creation, so Sestriere
+ * appears in Cortex and users can route audio sources to it.
+ * Uses BMediaRecorder (consumer node) for recording input.
  * Uses BSoundPlayer for playback (8kHz 16-bit mono PCM).
- * Uses BMediaRecorder for recording audio input.
  */
 
 #ifndef AUDIOENGINE_H
 #define AUDIOENGINE_H
 
 #include <Handler.h>
+#include <Locker.h>
 #include <MediaDefs.h>
 #include <MediaRecorder.h>
 #include <SoundPlayer.h>
@@ -23,8 +26,7 @@ public:
 						AudioEngine();
 						~AudioEngine();
 
-	// Check if audio input is available
-	static bool			IsInputAvailable();
+	status_t			InitCheck() const { return fInitErr; }
 
 	// Recording
 	status_t			StartRecording();
@@ -53,8 +55,10 @@ private:
 							void* data, size_t size,
 							const media_format& format);
 
+	status_t			fInitErr;
 	BSoundPlayer*		fPlayer;
 	BMediaRecorder*		fRecorder;
+	mutable BLocker		fLock;
 	bool				fRecording;
 	bool				fPlaying;
 
@@ -63,8 +67,8 @@ private:
 	size_t				fRecordSize;     // samples written
 	size_t				fRecordCapacity; // samples allocated
 
-	// Play buffer
-	const int16*		fPlayBuffer;
+	// Play buffer (owned copy — safe from caller free)
+	int16*				fPlayBuffer;
 	size_t				fPlaySize;       // total samples
 	size_t				fPlayPosition;   // current sample offset
 	BHandler*			fPlayNotify;     // receives MSG_VOICE_PLAY_DONE

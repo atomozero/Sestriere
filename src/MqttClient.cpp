@@ -241,6 +241,7 @@ void
 MqttClient::PublishStatus(const char* deviceName, const char* firmware,
 	const char* board, uint16 batteryMv, uint32 uptimeS, int8 noiseFloor)
 {
+	BAutolock lock(fStateLock);
 	if (!fConnected || fMosquitto == NULL)
 		return;
 
@@ -290,18 +291,20 @@ MqttClient::PublishPacket(uint32 timestamp, int8 snr, int8 rssi,
 	const char* packetType, const uint8* fromKey, size_t keyLen,
 	const uint8* payload, size_t payloadLen)
 {
+	BAutolock lock(fStateLock);
 	if (!fConnected || fMosquitto == NULL)
 		return;
 
 	// Get current timestamp in ISO8601 format
 	time_t now = time(NULL);
-	struct tm* tm = gmtime(&now);
+	struct tm tmBuf;
+	gmtime_r(&now, &tmBuf);
 	char isoTimestamp[32];
-	strftime(isoTimestamp, sizeof(isoTimestamp), "%Y-%m-%dT%H:%M:%SZ", tm);
+	strftime(isoTimestamp, sizeof(isoTimestamp), "%Y-%m-%dT%H:%M:%SZ", &tmBuf);
 
 	char timeStr[16], dateStr[16];
-	strftime(timeStr, sizeof(timeStr), "%H:%M:%S", tm);
-	strftime(dateStr, sizeof(dateStr), "%m/%d/%Y", tm);
+	strftime(timeStr, sizeof(timeStr), "%H:%M:%S", &tmBuf);
+	strftime(dateStr, sizeof(dateStr), "%m/%d/%Y", &tmBuf);
 
 	// Build from_key hex string
 	char fromKeyHex[32];

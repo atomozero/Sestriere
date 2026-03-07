@@ -339,11 +339,12 @@ MainWindow::MainWindow()
 	fHasDeviceInfo = false;
 	fImageSessions = new ImageSessionManager();
 	fVoiceSessions = new VoiceSessionManager();
-	if (AudioEngine::IsInputAvailable()) {
-		fAudioEngine = new AudioEngine();
-	} else {
-		fprintf(stderr, "[MainWindow] No audio input available — "
+	fAudioEngine = new AudioEngine();
+	if (fAudioEngine->InitCheck() != B_OK) {
+		fprintf(stderr, "[MainWindow] Media services unavailable — "
 			"voice recording disabled\n");
+		delete fAudioEngine;
+		fAudioEngine = NULL;
 	}
 	fRadioFreq = 0;
 	fRadioBw = 0;
@@ -4677,7 +4678,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 		textOffset = kV2DmTextOffset;
 	}
 
-	size_t textLen = length - textOffset;
+	size_t textLen = (length > textOffset) ? (length - textOffset) : 0;
 	char text[256];
 	if (textLen > 255) textLen = 255;
 	if (textLen > 0) memcpy(text, data + textOffset, textLen);
@@ -4914,7 +4915,7 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 		timestamp = ReadLE32(data + kV2ChTimestampOffset);
 		textOffset = kV2ChTextOffset;
 	}
-	size_t textLen = length - textOffset;
+	size_t textLen = (length > textOffset) ? (length - textOffset) : 0;
 	char fullText[256];
 	if (textLen > 255) textLen = 255;
 	if (textLen > 0) memcpy(fullText, data + textOffset, textLen);
