@@ -6722,7 +6722,9 @@ MainWindow::_LoadMessages()
 	if (!db->IsOpen())
 		return;
 
-	// Load public channel messages from database
+	// Load public channel messages from database (clear first to avoid
+	// duplicates when _LoadMessages is called again on re-sync)
+	fChannelMessages.MakeEmpty();
 	int32 loadedChannel = db->LoadChannelMessages(fChannelMessages);
 
 	// Note: private channel messages are loaded when channel enumeration

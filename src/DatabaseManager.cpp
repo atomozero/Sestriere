@@ -210,9 +210,9 @@ DatabaseManager::LoadMessages(const char* contactKeyHex,
 		return 0;
 
 	const char* sql =
-		"SELECT timestamp, outgoing, sender_key, text, path_len, snr, "
-		"txt_type, delivery_status, round_trip_ms "
-		"FROM messages WHERE contact_key = ? AND channel = 0 "
+		"SELECT timestamp, outgoing, channel, sender_key, text, path_len, "
+		"snr, txt_type, delivery_status, round_trip_ms "
+		"FROM messages WHERE contact_key = ? "
 		"ORDER BY timestamp ASC";
 
 	sqlite3_stmt* stmt;
@@ -230,22 +230,22 @@ DatabaseManager::LoadMessages(const char* contactKeyHex,
 		ChatMessage* msg = new ChatMessage();
 		msg->timestamp = (uint32)sqlite3_column_int(stmt, 0);
 		msg->isOutgoing = sqlite3_column_int(stmt, 1) != 0;
-		msg->isChannel = false;
+		msg->isChannel = sqlite3_column_int(stmt, 2) != 0;
 
 		// Parse sender key hex
-		const char* senderHex = (const char*)sqlite3_column_text(stmt, 2);
+		const char* senderHex = (const char*)sqlite3_column_text(stmt, 3);
 		if (senderHex != NULL)
 			ParseHexPrefix(msg->pubKeyPrefix, senderHex);
 
-		const char* text = (const char*)sqlite3_column_text(stmt, 3);
+		const char* text = (const char*)sqlite3_column_text(stmt, 4);
 		if (text != NULL)
 			strlcpy(msg->text, text, sizeof(msg->text));
 
-		msg->pathLen = (uint8)sqlite3_column_int(stmt, 4);
-		msg->snr = (int8)sqlite3_column_int(stmt, 5);
-		msg->txtType = (uint8)sqlite3_column_int(stmt, 6);
-		msg->deliveryStatus = (uint8)sqlite3_column_int(stmt, 7);
-		msg->roundTripMs = (uint32)sqlite3_column_int(stmt, 8);
+		msg->pathLen = (uint8)sqlite3_column_int(stmt, 5);
+		msg->snr = (int8)sqlite3_column_int(stmt, 6);
+		msg->txtType = (uint8)sqlite3_column_int(stmt, 7);
+		msg->deliveryStatus = (uint8)sqlite3_column_int(stmt, 8);
+		msg->roundTripMs = (uint32)sqlite3_column_int(stmt, 9);
 
 		outMessages.AddItem(msg);
 		count++;
@@ -266,7 +266,7 @@ DatabaseManager::LoadChannelMessages(OwningObjectList<ChatMessage>& outMessages)
 	const char* sql =
 		"SELECT timestamp, outgoing, sender_key, text, path_len, snr, "
 		"txt_type, delivery_status, round_trip_ms "
-		"FROM messages WHERE channel = 1 "
+		"FROM messages WHERE contact_key = 'channel' "
 		"ORDER BY timestamp ASC";
 
 	sqlite3_stmt* stmt;
@@ -1397,10 +1397,12 @@ DatabaseManager::_CreateTables()
 		return false;
 
 	// Unique constraint to prevent duplicate messages
+	// Include sender_key so different senders with same text+timestamp
+	// on channel don't collide
+	_Execute("DROP INDEX IF EXISTS idx_messages_unique");
 	_Execute(
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_unique "
-		"ON messages (contact_key, timestamp, text)");
-	// Ignore failure on existing databases where index might conflict
+		"ON messages (contact_key, timestamp, sender_key, text)");
 
 	// SNR history table - time-series signal quality data per contact
 	ok = _Execute(
