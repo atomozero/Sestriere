@@ -37,6 +37,7 @@
 - **GIF Sharing** — GIPHY animated GIF picker with thumbnail grid, cross-compatible with meshcore-open
 - **Emoji Rendering** — Unicode emoji displayed as PNG sprites with alpha compositing
 - **Image Sharing** — LoRa chunked image transfer with auto-fetch and chat integration
+- **Voice Messages** — Push-to-talk Codec2 voice messages, compatible with meshcore-sar
 - **SAR Markers** — Search and rescue marker parsing and display
 
 ### Network Visualization
@@ -205,9 +206,12 @@ src/
 ├── EmojiRenderer.cpp/h           # Unicode emoji PNG sprite rendering
 ├── ImageCodec.cpp/h              # Image compress/decompress + GIF frame decode
 ├── ImageSession.cpp/h            # LoRa chunked image transfer session
+├── VoiceSession.cpp/h            # Voice message session management
+├── VoiceCodec.cpp/h              # Codec2 encode/decode wrapper
+├── AudioEngine.cpp/h             # Audio recording and playback (BSoundPlayer)
 ├── SarMarker.cpp/h               # SAR marker parsing (meshcore-sar protocol)
 ├── TileCache.cpp/h               # OSM map tile download and cache
-└── CoastlineData.h               # Coastline polygon data for geographic map
+└── CoastlineData.cpp/h           # Coastline polygon data for geographic map
 ```
 
 ## Author

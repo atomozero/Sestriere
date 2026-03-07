@@ -1,7 +1,7 @@
 # SESTRIERE — User Manual
 
 **MeshCore Companion for Haiku OS**
-Version 1.7 | March 2026
+Version 1.8.0 | March 2026
 
 ---
 
@@ -49,6 +49,7 @@ MeshCore is an open-source firmware for LoRa radios that creates multi-hop mesh 
 - **GIF sharing** — GIPHY-powered animated GIF picker, cross-compatible with meshcore-open
 - **Image sharing** — LoRa chunked image transfer with auto-fetch
 - **Emoji rendering** — Unicode emoji displayed as PNG sprites
+- **Voice messages** — Push-to-talk voice messages via Codec2, compatible with meshcore-sar
 - **SAR markers** — Search and rescue marker display in chat and map
 - **Contact management** — groups, mute controls, People files integration
 - **Network topology visualization** — live signal quality and hop paths
@@ -966,6 +967,7 @@ Sestriere stores all persistent data in SQLite:
 | `contact_groups` | Group name definitions |
 | `contact_group_members` | Contact-to-group assignments |
 | `topology_edges` | Network map link persistence (30-day expiry) |
+| `voice_clips` | Codec2 voice message audio data |
 
 Database location: `~/config/settings/Sestriere/sestriere.db`
 

@@ -80,7 +80,7 @@ Overlay tile OpenStreetMap sulla mappa geografica con cache offline.
 - Cache locale in `~/config/settings/Sestriere/tiles/`
 - Rendering coastline con dati poligonali
 
-**File**: TileCache.cpp/h, CoastlineData.h, MapView.cpp/h
+**File**: TileCache.cpp/h, CoastlineData.cpp/h, MapView.cpp/h
 
 ---
 
