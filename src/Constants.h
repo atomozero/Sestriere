@@ -416,4 +416,11 @@ const int8 kSnrGood = 0;
 const int8 kSnrFair = -5;
 const int8 kSnrPoor = -10;
 
+// Font scale factors relative to be_plain_font->Size()
+// Default system font is 12pt; these give 9/10/11/14pt at default
+const float kFontScaleSmall = 0.75f;      // badges, compact labels
+const float kFontScaleCompact = 0.833f;    // chart labels, descriptions
+const float kFontScaleSecondary = 0.917f;  // secondary text, info fields
+const float kFontScaleLarge = 1.167f;      // contact names, headers
+
 #endif // CONSTANTS_H

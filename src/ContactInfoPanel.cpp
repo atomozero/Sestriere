@@ -145,7 +145,7 @@ ContactInfoPanel::Draw(BRect updateRect)
 		// No contact selected
 		BFont font;
 		GetFont(&font);
-		font.SetSize(12);
+		font.SetSize(be_plain_font->Size());
 		SetFont(&font);
 
 		font_height fh;
@@ -173,7 +173,7 @@ ContactInfoPanel::Draw(BRect updateRect)
 	// === Name (centered, bold) ===
 	BFont nameFont;
 	GetFont(&nameFont);
-	nameFont.SetSize(14);
+	nameFont.SetSize(be_plain_font->Size() * kFontScaleLarge);
 	nameFont.SetFace(B_BOLD_FACE);
 	SetFont(&nameFont);
 
@@ -200,7 +200,7 @@ ContactInfoPanel::Draw(BRect updateRect)
 	if (!fIsChannel) {
 		BFont smallFont;
 		GetFont(&smallFont);
-		smallFont.SetSize(11);
+		smallFont.SetSize(be_plain_font->Size() * kFontScaleSecondary);
 		smallFont.SetFace(B_REGULAR_FACE);
 		SetFont(&smallFont);
 
@@ -235,7 +235,7 @@ ContactInfoPanel::Draw(BRect updateRect)
 	// === Info rows ===
 	BFont infoFont;
 	GetFont(&infoFont);
-	infoFont.SetSize(11);
+	infoFont.SetSize(be_plain_font->Size() * kFontScaleSecondary);
 	infoFont.SetFace(B_REGULAR_FACE);
 	SetFont(&infoFont);
 
@@ -273,7 +273,7 @@ ContactInfoPanel::Draw(BRect updateRect)
 		// Description
 		BFont descFont;
 		GetFont(&descFont);
-		descFont.SetSize(10);
+		descFont.SetSize(be_plain_font->Size() * kFontScaleCompact);
 		descFont.SetFace(B_REGULAR_FACE);
 		SetFont(&descFont);
 		SetHighColor(LabelColor());
@@ -379,7 +379,7 @@ ContactInfoPanel::Draw(BRect updateRect)
 	// "Signal History" label
 	BFont chartLabelFont;
 	GetFont(&chartLabelFont);
-	chartLabelFont.SetSize(10);
+	chartLabelFont.SetSize(be_plain_font->Size() * kFontScaleCompact);
 	chartLabelFont.SetFace(B_BOLD_FACE);
 	SetFont(&chartLabelFont);
 
@@ -694,7 +694,7 @@ ContactInfoPanel::_DrawSectionHeader(float& y, const char* title)
 	// Section title
 	BFont headerFont;
 	GetFont(&headerFont);
-	headerFont.SetSize(10);
+	headerFont.SetSize(be_plain_font->Size() * kFontScaleCompact);
 	headerFont.SetFace(B_BOLD_FACE);
 	SetFont(&headerFont);
 
@@ -707,7 +707,7 @@ ContactInfoPanel::_DrawSectionHeader(float& y, const char* title)
 	// Restore info font
 	BFont infoFont;
 	GetFont(&infoFont);
-	infoFont.SetSize(11);
+	infoFont.SetSize(be_plain_font->Size() * kFontScaleSecondary);
 	infoFont.SetFace(B_REGULAR_FACE);
 	SetFont(&infoFont);
 }

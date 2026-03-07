@@ -1346,7 +1346,7 @@ MessageView::_DrawGifBubble(BView* owner, BRect frame)
 
 		// "GIF" badge in top-right corner
 		BFont badgeFont(be_plain_font);
-		badgeFont.SetSize(9);
+		badgeFont.SetSize(be_plain_font->Size() * kFontScaleSmall);
 		owner->SetFont(&badgeFont);
 		float badgeW = badgeFont.StringWidth("GIF") + 8;
 		float badgeH = 14;

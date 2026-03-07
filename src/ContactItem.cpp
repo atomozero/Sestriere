@@ -271,7 +271,7 @@ ContactItem::DrawItem(BView* owner, BRect frame, bool complete)
 		owner->SetHighColor(kBadgeTextColor);
 		BFont badgeFont;
 		owner->GetFont(&badgeFont);
-		badgeFont.SetSize(9);
+		badgeFont.SetSize(be_plain_font->Size() * kFontScaleSmall);
 		badgeFont.SetFace(B_BOLD_FACE);
 		owner->SetFont(&badgeFont);
 

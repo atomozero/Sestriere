@@ -282,7 +282,7 @@ TopBarView::_DrawDebugLogIcon(BPoint center)
 
 	BFont font;
 	GetFont(&font);
-	font.SetSize(11);
+	font.SetSize(be_plain_font->Size() * kFontScaleSecondary);
 	SetFont(&font);
 	font_height fh;
 	font.GetHeight(&fh);
@@ -345,7 +345,7 @@ TopBarView::_DrawMqttToggle(BRect rect)
 
 	BFont font;
 	GetFont(&font);
-	font.SetSize(9);
+	font.SetSize(be_plain_font->Size() * kFontScaleSmall);
 	SetFont(&font);
 	font_height fh;
 	font.GetHeight(&fh);
@@ -354,7 +354,7 @@ TopBarView::_DrawMqttToggle(BRect rect)
 	DrawString("MQTT", BPoint(rect.left + (rect.Width() - textW) / 2, textY));
 
 	// Restore font size
-	font.SetSize(11);
+	font.SetSize(be_plain_font->Size() * kFontScaleSecondary);
 	SetFont(&font);
 }
 
@@ -398,7 +398,7 @@ TopBarView::Draw(BRect updateRect)
 
 	BFont font;
 	GetFont(&font);
-	font.SetSize(11);
+	font.SetSize(be_plain_font->Size() * kFontScaleSecondary);
 	SetFont(&font);
 
 	font_height fh;
