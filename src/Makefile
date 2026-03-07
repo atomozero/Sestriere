@@ -38,6 +38,7 @@ SRCS = \
 	SerialMonitorWindow.cpp \
 	RepeaterMonitorView.cpp \
 	TileCache.cpp \
+	CoastlineData.cpp \
 	SarMarker.cpp \
 	ImageCodec.cpp \
 	ImageSession.cpp \
