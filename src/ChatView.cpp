@@ -126,6 +126,15 @@ ChatView::MouseDown(BPoint where)
 					Window()->PostMessage(&msg);
 					return;
 				}
+				// Click on voice play button
+				if (item->IsVoiceMessage()
+					&& item->PlayClickRect().Contains(where)) {
+					BMessage msg(MSG_VOICE_PLAY_REQ);
+					msg.AddUInt32("session_id",
+						item->VoiceSessionId());
+					Window()->PostMessage(&msg);
+					return;
+				}
 			}
 		}
 	}

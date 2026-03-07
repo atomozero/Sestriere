@@ -515,6 +515,9 @@ DatabaseManager::PruneOldData(uint32 maxAgeDays)
 
 	// Prune old images
 	PruneOldImages(maxAgeDays);
+
+	// Prune old voice clips
+	PruneOldVoiceClips(maxAgeDays);
 }
 
 
@@ -633,6 +636,107 @@ DatabaseManager::PruneOldImages(uint32 maxAgeDays)
 	int32 cutoff = (int32)((uint32)time(NULL) - (maxAgeDays * 86400));
 
 	const char* sql = "DELETE FROM images WHERE timestamp < ?";
+	sqlite3_stmt* stmt = NULL;
+	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) == SQLITE_OK) {
+		sqlite3_bind_int(stmt, 1, cutoff);
+		sqlite3_step(stmt);
+		sqlite3_finalize(stmt);
+	}
+}
+
+
+// =============================================================================
+// Voice clips
+// =============================================================================
+
+
+bool
+DatabaseManager::InsertVoiceClip(const char* contactKey, uint32 sessionId,
+	uint32 durationSec, uint8 mode, const uint8* codec2Data, size_t dataSize)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL || codec2Data == NULL || dataSize == 0)
+		return false;
+
+	const char* sql =
+		"INSERT OR REPLACE INTO voice_clips "
+		"(session_id, contact_key, timestamp, duration_sec, codec2_mode, "
+		"codec2_data, codec2_size) VALUES (?, ?, ?, ?, ?, ?, ?)";
+
+	sqlite3_stmt* stmt = NULL;
+	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) != SQLITE_OK)
+		return false;
+
+	sqlite3_bind_int(stmt, 1, (int)sessionId);
+	sqlite3_bind_text(stmt, 2, contactKey, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 3, (int)time(NULL));
+	sqlite3_bind_int(stmt, 4, (int)durationSec);
+	sqlite3_bind_int(stmt, 5, (int)mode);
+	sqlite3_bind_blob(stmt, 6, codec2Data, (int)dataSize, SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 7, (int)dataSize);
+
+	int rc = sqlite3_step(stmt);
+	sqlite3_finalize(stmt);
+
+	return rc == SQLITE_DONE;
+}
+
+
+bool
+DatabaseManager::LoadVoiceClip(uint32 sessionId, uint8** outData,
+	size_t* outSize, uint32* outDuration, uint8* outMode)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL || outData == NULL || outSize == NULL)
+		return false;
+
+	const char* sql =
+		"SELECT codec2_data, codec2_size, duration_sec, codec2_mode "
+		"FROM voice_clips WHERE session_id = ?";
+
+	sqlite3_stmt* stmt = NULL;
+	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) != SQLITE_OK)
+		return false;
+
+	sqlite3_bind_int(stmt, 1, (int)sessionId);
+
+	bool found = false;
+	if (sqlite3_step(stmt) == SQLITE_ROW) {
+		const void* blob = sqlite3_column_blob(stmt, 0);
+		int blobSize = sqlite3_column_bytes(stmt, 0);
+		int c2Size = sqlite3_column_int(stmt, 1);
+
+		int dataSize = (blobSize < c2Size) ? blobSize : c2Size;
+		if (blob != NULL && dataSize > 0) {
+			uint8* data = (uint8*)malloc(dataSize);
+			if (data != NULL) {
+				memcpy(data, blob, dataSize);
+				*outData = data;
+				*outSize = (size_t)dataSize;
+				if (outDuration != NULL)
+					*outDuration = (uint32)sqlite3_column_int(stmt, 2);
+				if (outMode != NULL)
+					*outMode = (uint8)sqlite3_column_int(stmt, 3);
+				found = true;
+			}
+		}
+	}
+
+	sqlite3_finalize(stmt);
+	return found;
+}
+
+
+void
+DatabaseManager::PruneOldVoiceClips(uint32 maxAgeDays)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL)
+		return;
+
+	int32 cutoff = (int32)((uint32)time(NULL) - (maxAgeDays * 86400));
+
+	const char* sql = "DELETE FROM voice_clips WHERE timestamp < ?";
 	sqlite3_stmt* stmt = NULL;
 	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) == SQLITE_OK) {
 		sqlite3_bind_int(stmt, 1, cutoff);
@@ -1396,6 +1500,25 @@ DatabaseManager::_CreateTables()
 	_Execute(
 		"CREATE INDEX IF NOT EXISTS idx_images_contact "
 		"ON images (contact_key, timestamp)");
+
+	// Voice clips table — BLOB storage for voice messages
+	ok = _Execute(
+		"CREATE TABLE IF NOT EXISTS voice_clips ("
+		"  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+		"  session_id INTEGER NOT NULL UNIQUE,"
+		"  contact_key TEXT NOT NULL,"
+		"  timestamp INTEGER NOT NULL,"
+		"  duration_sec INTEGER DEFAULT 0,"
+		"  codec2_mode INTEGER DEFAULT 3,"
+		"  codec2_data BLOB NOT NULL,"
+		"  codec2_size INTEGER NOT NULL"
+		")");
+	if (!ok)
+		return false;
+
+	_Execute(
+		"CREATE INDEX IF NOT EXISTS idx_voice_clips_contact "
+		"ON voice_clips (contact_key, timestamp)");
 
 	return true;
 }

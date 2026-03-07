@@ -78,6 +78,9 @@
 #include "TopBarView.h"
 #include "TracePathWindow.h"
 #include "Utils.h"
+#include "AudioEngine.h"
+#include "VoiceCodec.h"
+#include "VoiceSession.h"
 
 
 // MainWindow-private message codes
@@ -296,6 +299,15 @@ MainWindow::MainWindow()
 	fTxPackets(0),
 	fRxPackets(0),
 	fDeviceUptime(0),
+	fVoiceSessions(NULL),
+	fAudioEngine(NULL),
+	fVoiceButton(NULL),
+	fVoiceFragmentTimer(NULL),
+	fCurrentVoiceSendSession(0),
+	fCurrentVoiceSendIndex(0),
+	fRecordingVoice(false),
+	fVoicePlayPcm(NULL),
+	fVoicePlayPcmSize(0),
 	fImageSessions(NULL),
 	fImageOpenPanel(NULL),
 	fAttachButton(NULL),
@@ -325,6 +337,8 @@ MainWindow::MainWindow()
 	memset(fLoggedInKey, 0, sizeof(fLoggedInKey));
 	fHasDeviceInfo = false;
 	fImageSessions = new ImageSessionManager();
+	fVoiceSessions = new VoiceSessionManager();
+	fAudioEngine = new AudioEngine();
 	fRadioFreq = 0;
 	fRadioBw = 0;
 	fRadioSf = 0;
@@ -419,6 +433,12 @@ MainWindow::~MainWindow()
 	}
 
 	delete fGpxSavePanel;
+
+	// Voice message cleanup
+	delete fVoiceSessions;
+	delete fAudioEngine;
+	delete fVoiceFragmentTimer;
+	delete[] fVoicePlayPcm;
 
 	// Image sharing cleanup
 	delete fImageSessions;
@@ -648,13 +668,19 @@ MainWindow::_BuildUI()
 		new BMessage(MSG_SELECT_GIF));
 	fGifButton->SetEnabled(false);
 
-	// Input bar: [attach] [gif] [input] [counter] [send]
+	// Voice record button
+	fVoiceButton = new BButton("voice", "Mic",
+		new BMessage(MSG_VOICE_RECORD));
+	fVoiceButton->SetEnabled(false);
+
+	// Input bar: [attach] [gif] [mic] [input] [counter] [send]
 	BView* inputBar = new BView("input_bar", 0);
 	inputBar->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	BLayoutBuilder::Group<>(inputBar, B_HORIZONTAL, B_USE_SMALL_SPACING)
 		.SetInsets(B_USE_SMALL_SPACING)
 		.Add(fAttachButton)
 		.Add(fGifButton)
+		.Add(fVoiceButton)
 		.Add(inputScroll, 1.0)
 		.Add(fCharCounter)
 		.Add(fSendButton)
@@ -815,6 +841,7 @@ MainWindow::_UpdateConnectionUI()
 		fSendButton->SetEnabled(false);
 		fAttachButton->SetEnabled(false);
 		fGifButton->SetEnabled(false);
+		fVoiceButton->SetEnabled(false);
 	}
 }
 
@@ -2930,6 +2957,46 @@ MainWindow::MessageReceived(BMessage* message)
 				fImageSessions->PurgeExpired();
 			break;
 
+		// --- Voice messages ---
+		case MSG_VOICE_RECORD:
+			if (fRecordingVoice)
+				_StopVoiceRecord();
+			else
+				_StartVoiceRecord();
+			break;
+
+		case MSG_VOICE_SEND_NEXT:
+			_SendNextVoiceFragment();
+			break;
+
+		case MSG_VOICE_PLAY_REQ:
+		{
+			uint32 sid;
+			if (message->FindUInt32("session_id", &sid) == B_OK)
+				_HandleVoicePlayRequest(sid);
+			break;
+		}
+
+		case MSG_VOICE_PLAY_DONE:
+		{
+			// Reset playing state on all voice messages
+			for (int32 i = 0; i < fChatView->CountItems(); i++) {
+				MessageView* mv = dynamic_cast<MessageView*>(
+					fChatView->ItemAt(i));
+				if (mv != NULL && mv->IsVoiceMessage()
+					&& mv->IsVoicePlaying()) {
+					mv->SetVoicePlaying(false);
+					fChatView->InvalidateItem(i);
+				}
+			}
+			break;
+		}
+
+		case MSG_VOICE_EXPIRE:
+			if (fVoiceSessions != NULL)
+				fVoiceSessions->PurgeExpired();
+			break;
+
 		// --- GIF sharing ---
 		case MSG_SELECT_GIF:
 		{
@@ -3146,6 +3213,7 @@ MainWindow::_SelectContact(int32 index)
 		fSendButton->SetEnabled(fConnected);
 		fAttachButton->SetEnabled(fConnected);
 		fGifButton->SetEnabled(fConnected);
+		fVoiceButton->SetEnabled(fConnected);
 
 		// Load channel message history
 		fChatView->ClearMessages();
@@ -3193,6 +3261,7 @@ MainWindow::_SelectContact(int32 index)
 		fSendButton->SetEnabled(fConnected);
 		fAttachButton->SetEnabled(fConnected);
 		fGifButton->SetEnabled(fConnected);
+		fVoiceButton->SetEnabled(fConnected);
 
 		// Load private channel message history
 		fChatView->ClearMessages();
@@ -3237,6 +3306,7 @@ MainWindow::_SelectContact(int32 index)
 			fSendButton->SetEnabled(fConnected);
 			fAttachButton->SetEnabled(fConnected);
 			fGifButton->SetEnabled(fConnected);
+			fVoiceButton->SetEnabled(fConnected);
 
 			// Clear unread badge for this contact
 			selectedItem->ClearUnread();
@@ -3266,6 +3336,7 @@ MainWindow::_SelectContact(int32 index)
 		fSendButton->SetEnabled(false);
 		fAttachButton->SetEnabled(false);
 		fGifButton->SetEnabled(false);
+		fVoiceButton->SetEnabled(false);
 	}
 
 	_UpdateCharCounter();
@@ -3962,6 +4033,12 @@ MainWindow::_HandlePushRawData(const uint8* data, size_t length)
 		} else if (payload[0] == kFetchMagic) {
 			_HandleIncomingFetchRequest(payload, payloadLen);
 			return;
+		} else if (payload[0] == kVoiceMagic) {
+			_HandleIncomingVoiceFragment(payload, payloadLen);
+			return;
+		} else if (payload[0] == kVoiceFetchMagic) {
+			_HandleIncomingVoiceFetch(payload, payloadLen);
+			return;
 		}
 	}
 
@@ -4634,8 +4711,20 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 	DatabaseManager* db = DatabaseManager::Instance();
 	db->InsertMessage(contactHex, chatMsg);
 
+	// Check for VE2 voice envelope — create incoming session
+	if (VoiceSessionManager::IsVoiceEnvelope(text)) {
+		VoiceSession* voiceSession =
+			fVoiceSessions->CreateFromEnvelope(text);
+		if (voiceSession != NULL) {
+			_LogMessage("VOICE", BString().SetToFormat(
+				"Received voice envelope: session %08x, %lds, %d fragments",
+				voiceSession->sessionId,
+				(long)voiceSession->durationSec,
+				(int)voiceSession->totalFragments));
+		}
+	}
 	// Check for IE2 image envelope — auto-fetch fragments
-	if (ImageSessionManager::IsImageEnvelope(text)) {
+	else if (ImageSessionManager::IsImageEnvelope(text)) {
 		ImageSession* imgSession = fImageSessions->CreateFromEnvelope(text);
 		if (imgSession != NULL) {
 			_LogMessage("IMG", BString().SetToFormat(
@@ -4871,9 +4960,20 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 		db->InsertMessage("channel", chatMsg);
 	}
 
+	// Check for VE2 voice envelope
+	if (VoiceSessionManager::IsVoiceEnvelope(messageText)) {
+		VoiceSession* voiceSession =
+			fVoiceSessions->CreateFromEnvelope(messageText);
+		if (voiceSession != NULL) {
+			_LogMessage("VOICE", BString().SetToFormat(
+				"Received channel voice envelope: session %08x",
+				voiceSession->sessionId));
+		}
+	}
 	// Check for IE2 image envelope — auto-fetch fragments
-	if (ImageSessionManager::IsImageEnvelope(messageText)) {
-		ImageSession* imgSession = fImageSessions->CreateFromEnvelope(messageText);
+	else if (ImageSessionManager::IsImageEnvelope(messageText)) {
+		ImageSession* imgSession =
+			fImageSessions->CreateFromEnvelope(messageText);
 		if (imgSession != NULL) {
 			_LogMessage("IMG", BString().SetToFormat(
 				"Received channel image envelope: session %08x",
@@ -5864,6 +5964,7 @@ MainWindow::_OnConnected(BMessage* message)
 		fSendButton->SetEnabled(true);
 		fAttachButton->SetEnabled(true);
 		fGifButton->SetEnabled(true);
+		fVoiceButton->SetEnabled(true);
 	}
 
 	// Forward to Mission Control
@@ -7866,4 +7967,416 @@ MainWindow::_UpdateImageMessageView(uint32 sid)
 			break;
 		}
 	}
+}
+
+
+// =============================================================================
+// Voice messages
+// =============================================================================
+
+
+void
+MainWindow::_StartVoiceRecord()
+{
+	if (fRecordingVoice || fAudioEngine == NULL)
+		return;
+
+	status_t err = fAudioEngine->StartRecording();
+	if (err != B_OK) {
+		_LogMessage("VOICE", BString().SetToFormat(
+			"Failed to start recording: %s", strerror(err)));
+		BAlert* alert = new BAlert("Voice",
+			"Could not start recording.\n"
+			"Check that a microphone is connected.",
+			"OK", NULL, NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+		alert->Go(NULL);
+		return;
+	}
+
+	fRecordingVoice = true;
+	fVoiceButton->SetLabel("Stop");
+	_LogMessage("VOICE", "Recording started");
+}
+
+
+void
+MainWindow::_StopVoiceRecord()
+{
+	if (!fRecordingVoice || fAudioEngine == NULL)
+		return;
+
+	int16* pcm = NULL;
+	size_t sampleCount = 0;
+	fAudioEngine->StopRecording(&pcm, &sampleCount);
+	fRecordingVoice = false;
+	fVoiceButton->SetLabel("Mic");
+
+	if (pcm == NULL || sampleCount == 0) {
+		_LogMessage("VOICE", "No audio recorded");
+		delete[] pcm;
+		return;
+	}
+
+	_LogMessage("VOICE", BString().SetToFormat(
+		"Recorded %zu samples (%.1f seconds)",
+		sampleCount, sampleCount / 8000.0f));
+
+	// Encode to Codec2
+	uint8* codec2Data = NULL;
+	size_t codec2Size = 0;
+	status_t err = VoiceCodec::Encode(pcm, sampleCount, VOICE_MODE_1300,
+		&codec2Data, &codec2Size);
+	delete[] pcm;
+
+	if (err != B_OK || codec2Data == NULL) {
+		_LogMessage("VOICE", "Failed to encode audio");
+		return;
+	}
+
+	uint32 durationSec = VoiceCodec::DurationSec(codec2Size,
+		VOICE_MODE_1300);
+	if (durationSec == 0)
+		durationSec = 1;
+
+	// Get self key prefix
+	uint8 selfKey[6];
+	for (int i = 0; i < 6 && fPublicKey[i * 2] != '\0'; i++) {
+		unsigned int byte;
+		if (sscanf(fPublicKey + i * 2, "%2x", &byte) == 1)
+			selfKey[i] = (uint8)byte;
+	}
+
+	// Create outgoing session
+	uint32 sid = fVoiceSessions->CreateOutgoing(codec2Data, codec2Size,
+		VOICE_MODE_1300, durationSec, selfKey);
+	free(codec2Data);
+
+	VoiceSession* session = fVoiceSessions->FindSession(sid);
+	if (session == NULL) {
+		_LogMessage("ERROR", "Failed to create voice session");
+		return;
+	}
+
+	// Format and send VE2 envelope as a text message
+	BString envelope = VoiceSessionManager::FormatEnvelope(sid,
+		VOICE_MODE_1300, session->totalFragments, durationSec,
+		selfKey, session->timestamp);
+
+	// Send envelope as regular text
+	if (fSendingToChannel)
+		_SendChannelMessage(envelope.String());
+	else
+		_SendTextMessage(envelope.String());
+
+	// Save to DB
+	if (fChatView->CurrentContact() != NULL) {
+		char contactKey[13];
+		for (int i = 0; i < 6; i++)
+			snprintf(contactKey + i * 2, 3, "%02x",
+				fChatView->CurrentContact()->publicKey[i]);
+		DatabaseManager::Instance()->InsertVoiceClip(contactKey, sid,
+			durationSec, (uint8)VOICE_MODE_1300,
+			session->codec2Data, session->codec2Size);
+	}
+
+	// Start fragment transmission timer
+	fCurrentVoiceSendSession = sid;
+	fCurrentVoiceSendIndex = 0;
+
+	delete fVoiceFragmentTimer;
+	BMessage timerMsg(MSG_VOICE_SEND_NEXT);
+	fVoiceFragmentTimer = new BMessageRunner(this, &timerMsg, 200000, -1);
+
+	_LogMessage("VOICE", BString().SetToFormat(
+		"Sending %d fragments for voice session %08x",
+		(int)session->totalFragments, sid));
+}
+
+
+void
+MainWindow::_SendNextVoiceFragment()
+{
+	VoiceSession* session = fVoiceSessions->FindSession(
+		fCurrentVoiceSendSession);
+	if (session == NULL
+		|| fCurrentVoiceSendIndex >= session->totalFragments) {
+		// Done sending
+		delete fVoiceFragmentTimer;
+		fVoiceFragmentTimer = NULL;
+		if (session != NULL) {
+			session->state = VOICE_COMPLETE;
+			_LogMessage("VOICE", BString().SetToFormat(
+				"All %d fragments sent for voice session %08x",
+				(int)session->totalFragments, fCurrentVoiceSendSession));
+		}
+		return;
+	}
+
+	// Build fragment packet
+	uint8 packet[kVoiceHeaderSize + kMaxVoiceFragmentPayload];
+	VoiceFragment& frag = session->fragments[fCurrentVoiceSendIndex];
+	size_t pktLen = VoiceSessionManager::BuildFragmentPacket(packet,
+		session->sessionId, session->mode, fCurrentVoiceSendIndex,
+		session->totalFragments, frag.data, frag.length);
+
+	// Send via CMD_SEND_RAW_DATA
+	if (fProtocol != NULL)
+		fProtocol->SendRawData(packet, pktLen);
+
+	fCurrentVoiceSendIndex++;
+}
+
+
+void
+MainWindow::_HandleIncomingVoiceFragment(const uint8* payload, size_t length)
+{
+	if (length < kVoiceHeaderSize)
+		return;
+
+	// Parse header: [magic:1][sid:4][mode:1][idx:1][total:1][data...]
+	uint32 sid = (uint32)payload[1]
+		| ((uint32)payload[2] << 8)
+		| ((uint32)payload[3] << 16)
+		| ((uint32)payload[4] << 24);
+	uint8 idx = payload[6];
+	uint8 total = payload[7];
+
+	const uint8* fragData = payload + kVoiceHeaderSize;
+	uint16 fragLen = (uint16)(length - kVoiceHeaderSize);
+
+	VoiceSession* session = fVoiceSessions->FindSession(sid);
+	if (session == NULL) {
+		_LogMessage("VOICE", BString().SetToFormat(
+			"Fragment %d/%d for unknown voice session %08x",
+			idx + 1, total, sid));
+		return;
+	}
+
+	bool complete = fVoiceSessions->AddFragment(sid, idx, fragData, fragLen);
+
+	_LogMessage("VOICE", BString().SetToFormat(
+		"Voice fragment %d/%d for session %08x (%d/%d received)",
+		idx + 1, total, sid,
+		(int)session->receivedCount, (int)session->totalFragments));
+
+	_UpdateVoiceMessageView(sid);
+
+	if (complete) {
+		session->state = VOICE_COMPLETE;
+		if (session->Reassemble()) {
+			_LogMessage("VOICE", BString().SetToFormat(
+				"Voice session %08x complete, %zu bytes Codec2",
+				sid, session->codec2Size));
+
+			// Save to DB
+			if (fChatView->CurrentContact() != NULL) {
+				char contactKey[13];
+				for (int i = 0; i < 6; i++)
+					snprintf(contactKey + i * 2, 3, "%02x",
+						fChatView->CurrentContact()->publicKey[i]);
+				DatabaseManager::Instance()->InsertVoiceClip(contactKey,
+					sid, session->durationSec, (uint8)session->mode,
+					session->codec2Data, session->codec2Size);
+			}
+		}
+		_UpdateVoiceMessageView(sid);
+	}
+}
+
+
+void
+MainWindow::_HandleIncomingVoiceFetch(const uint8* payload, size_t length)
+{
+	// VR2: [magic:1][sid:4][flags:1][key6:6][ts:4][count:1][indices...]
+	if (length < 17)
+		return;
+
+	uint32 sid = (uint32)payload[1]
+		| ((uint32)payload[2] << 8)
+		| ((uint32)payload[3] << 16)
+		| ((uint32)payload[4] << 24);
+	uint8 count = payload[16];
+
+	VoiceSession* session = fVoiceSessions->FindSession(sid);
+	if (session == NULL || session->state != VOICE_SENDING) {
+		_LogMessage("VOICE", BString().SetToFormat(
+			"Voice fetch for unknown/non-outgoing session %08x", sid));
+		return;
+	}
+
+	_LogMessage("VOICE", BString().SetToFormat(
+		"Voice fetch request: %d fragments for session %08x",
+		(int)count, sid));
+
+	// Resend requested fragments
+	for (uint8 i = 0; i < count && (size_t)(17 + i) < length; i++) {
+		uint8 idx = payload[17 + i];
+		if (idx >= session->totalFragments)
+			continue;
+
+		uint8 packet[kVoiceHeaderSize + kMaxVoiceFragmentPayload];
+		VoiceFragment& frag = session->fragments[idx];
+		size_t pktLen = VoiceSessionManager::BuildFragmentPacket(packet,
+			sid, session->mode, idx, session->totalFragments,
+			frag.data, frag.length);
+
+		if (fProtocol != NULL)
+			fProtocol->SendRawData(packet, pktLen);
+	}
+}
+
+
+void
+MainWindow::_StartVoiceFetch(uint32 sessionId)
+{
+	VoiceSession* session = fVoiceSessions->FindSession(sessionId);
+	if (session == NULL)
+		return;
+
+	// Build list of missing fragments
+	uint8 missing[255];
+	uint8 count = 0;
+	for (uint8 i = 0; i < session->totalFragments && count < 255; i++) {
+		if (!session->fragments[i].received)
+			missing[count++] = i;
+	}
+
+	if (count == 0) {
+		_LogMessage("VOICE", "No missing voice fragments to fetch");
+		return;
+	}
+
+	// Build VR2 fetch request
+	uint8 packet[17 + 255];
+	size_t pktLen = VoiceSessionManager::BuildFetchRequest(packet,
+		sessionId, 1, session->senderKey, session->timestamp,
+		missing, count);
+
+	// Look up sender's full 32-byte pubkey from contact list
+	ContactInfo* sender = _FindContactByPrefix(session->senderKey,
+		kPubKeyPrefixSize);
+	if (sender == NULL || fProtocol == NULL) {
+		_LogMessage("VOICE", "Cannot fetch: sender not in contact list");
+		return;
+	}
+	fProtocol->SendBinaryRequest(sender->publicKey, packet, pktLen);
+
+	session->state = VOICE_LOADING;
+	_UpdateVoiceMessageView(sessionId);
+
+	_LogMessage("VOICE", BString().SetToFormat(
+		"Sent voice fetch request for %d fragments of session %08x",
+		(int)count, sessionId));
+}
+
+
+void
+MainWindow::_UpdateVoiceMessageView(uint32 sid)
+{
+	VoiceSession* session = fVoiceSessions->FindSession(sid);
+	if (session == NULL)
+		return;
+
+	for (int32 i = 0; i < fChatView->CountItems(); i++) {
+		MessageView* mv = dynamic_cast<MessageView*>(
+			fChatView->ItemAt(i));
+		if (mv != NULL && mv->IsVoiceMessage()
+			&& mv->VoiceSessionId() == sid) {
+			mv->SetVoiceState(session->state, session->receivedCount);
+			fChatView->InvalidateItem(i);
+			break;
+		}
+	}
+}
+
+
+void
+MainWindow::_HandleVoicePlayRequest(uint32 sessionId)
+{
+	VoiceSession* session = fVoiceSessions->FindSession(sessionId);
+
+	// If session not found or not complete, try loading from DB
+	if (session == NULL || session->state != VOICE_COMPLETE) {
+		if (session != NULL && session->state == VOICE_PENDING) {
+			// Need to fetch fragments first
+			_StartVoiceFetch(sessionId);
+			return;
+		}
+
+		// Try loading from database
+		uint8* c2Data = NULL;
+		size_t c2Size = 0;
+		uint32 dur = 0;
+		uint8 mode = 0;
+		if (DatabaseManager::Instance()->LoadVoiceClip(sessionId,
+			&c2Data, &c2Size, &dur, &mode)) {
+			// Decode and play directly
+			int16* pcm = NULL;
+			size_t pcmSamples = 0;
+			if (VoiceCodec::Decode(c2Data, c2Size,
+				(VoicePacketMode)mode, &pcm, &pcmSamples) == B_OK) {
+				delete[] fVoicePlayPcm;
+				fVoicePlayPcm = pcm;
+				fVoicePlayPcmSize = pcmSamples;
+
+				// Mark playing in message view
+				for (int32 i = 0; i < fChatView->CountItems(); i++) {
+					MessageView* mv = dynamic_cast<MessageView*>(
+						fChatView->ItemAt(i));
+					if (mv != NULL && mv->IsVoiceMessage()
+						&& mv->VoiceSessionId() == sessionId) {
+						mv->SetVoicePlaying(true);
+						fChatView->InvalidateItem(i);
+						break;
+					}
+				}
+
+				fAudioEngine->Play(fVoicePlayPcm, fVoicePlayPcmSize,
+					this);
+			}
+			free(c2Data);
+			return;
+		}
+
+		_LogMessage("VOICE", "Voice clip not available");
+		return;
+	}
+
+	// Session is complete — decode and play
+	if (session->codec2Data == NULL || session->codec2Size == 0) {
+		if (!session->Reassemble()) {
+			_LogMessage("VOICE", "Failed to reassemble voice data");
+			return;
+		}
+	}
+
+	int16* pcm = NULL;
+	size_t pcmSamples = 0;
+	if (VoiceCodec::Decode(session->codec2Data, session->codec2Size,
+		session->mode, &pcm, &pcmSamples) != B_OK) {
+		_LogMessage("VOICE", "Failed to decode Codec2 data");
+		return;
+	}
+
+	// Store PCM so it stays valid during playback
+	delete[] fVoicePlayPcm;
+	fVoicePlayPcm = pcm;
+	fVoicePlayPcmSize = pcmSamples;
+
+	// Mark playing in message view
+	for (int32 i = 0; i < fChatView->CountItems(); i++) {
+		MessageView* mv = dynamic_cast<MessageView*>(
+			fChatView->ItemAt(i));
+		if (mv != NULL && mv->IsVoiceMessage()
+			&& mv->VoiceSessionId() == sessionId) {
+			mv->SetVoicePlaying(true);
+			fChatView->InvalidateItem(i);
+			break;
+		}
+	}
+
+	fAudioEngine->Play(fVoicePlayPcm, fVoicePlayPcmSize, this);
+	_LogMessage("VOICE", BString().SetToFormat(
+		"Playing voice session %08x (%zu samples)",
+		sessionId, pcmSamples));
 }

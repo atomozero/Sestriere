@@ -18,6 +18,7 @@
 #include "ImageSession.h"
 #include "SarMarker.h"
 #include "Types.h"
+#include "VoiceSession.h"
 
 class MessageView : public BListItem {
 public:
@@ -53,6 +54,18 @@ public:
 								uint8 receivedCount);
 			void			SetImageBitmap(BBitmap* bitmap);
 
+			// Voice message support
+			bool			IsVoiceMessage() const { return fIsVoiceMsg; }
+			uint32			VoiceSessionId() const { return fVoiceSessionId; }
+			uint32			VoiceDuration() const { return fVoiceDuration; }
+			VoiceSessionState VoiceState() const { return fVoiceState; }
+			void			SetVoiceState(VoiceSessionState state,
+								uint8 receivedCount);
+			void			SetVoicePlaying(bool playing);
+			bool			IsVoicePlaying() const
+								{ return fVoicePlaying; }
+			BRect			PlayClickRect() const { return fPlayClickRect; }
+
 			// GIF message support
 			bool			IsGifMessage() const { return fIsGifMsg; }
 			const char*		GifId() const { return fGifId; }
@@ -73,6 +86,7 @@ private:
 								std::vector<BString>& outLines,
 								float emojiSize = 0) const;
 			void			_DrawImageBubble(BView* owner, BRect frame);
+			void			_DrawVoiceBubble(BView* owner, BRect frame);
 			void			_DrawGifBubble(BView* owner, BRect frame);
 
 			BString			fText;
@@ -91,6 +105,16 @@ private:
 
 			bool			fIsSarMarker;
 			SarMarker		fSarMarker;
+
+			// Voice message fields
+			bool			fIsVoiceMsg;
+			uint32			fVoiceSessionId;
+			uint32			fVoiceDuration;     // seconds
+			VoiceSessionState fVoiceState;
+			uint8			fVoiceTotalFragments;
+			uint8			fVoiceReceivedFragments;
+			bool			fVoicePlaying;
+			BRect			fPlayClickRect;
 
 			// Image message fields
 			bool			fIsImageMsg;

@@ -112,6 +112,16 @@ public:
 								BMessage* outEdges);
 			void			PruneOldEdges(uint32 maxAgeDays);
 
+			// Voice clip persistence (BLOB storage for voice messages)
+			bool			InsertVoiceClip(const char* contactKey,
+								uint32 sessionId, uint32 durationSec,
+								uint8 mode, const uint8* codec2Data,
+								size_t dataSize);
+			bool			LoadVoiceClip(uint32 sessionId,
+								uint8** outData, size_t* outSize,
+								uint32* outDuration, uint8* outMode);
+			void			PruneOldVoiceClips(uint32 maxAgeDays);
+
 			// Image persistence (BLOB storage for LoRa image sharing)
 			bool			InsertImage(const char* contactKey,
 								uint32 sessionId, int32 width, int32 height,

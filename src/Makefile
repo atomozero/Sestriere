@@ -43,15 +43,19 @@ SRCS = \
 	ImageSession.cpp \
 	GiphyClient.cpp \
 	GifPickerWindow.cpp \
-	EmojiRenderer.cpp
+	EmojiRenderer.cpp \
+	VoiceSession.cpp \
+	VoiceCodec.cpp \
+	AudioEngine.cpp
 
 RDEFS = Sestriere.rdef
 
-LIBS = be tracker shared columnlistview mosquitto sqlite3 translation curl gif $(STDCPPLIBS)
+LIBS = be tracker shared columnlistview mosquitto sqlite3 translation curl gif codec2 media $(STDCPPLIBS)
 
-LIBPATHS =
+LIBPATHS = /boot/system/non-packaged/lib
 
-SYSTEM_INCLUDE_PATHS = /boot/system/develop/headers/private/interface
+SYSTEM_INCLUDE_PATHS = /boot/system/develop/headers/private/interface \
+	/boot/system/non-packaged/include
 
 LOCAL_INCLUDE_PATHS = .
 

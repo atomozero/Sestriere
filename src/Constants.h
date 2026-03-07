@@ -346,6 +346,13 @@ enum {
 
 	// Emoji rendering
 	MSG_EMOJI_LOADED = 'emld',
+
+	// Voice messages
+	MSG_VOICE_RECORD = 'vrec',     // Start/stop recording
+	MSG_VOICE_SEND_NEXT = 'vsfr',  // Timer: send next voice fragment
+	MSG_VOICE_PLAY_REQ = 'vply',   // User clicked play on voice bubble
+	MSG_VOICE_PLAY_DONE = 'vpdn',  // Playback finished
+	MSG_VOICE_EXPIRE = 'vexp',     // Cleanup expired sessions
 };
 
 // =============================================================================

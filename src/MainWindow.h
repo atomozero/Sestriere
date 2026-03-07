@@ -18,6 +18,9 @@ class BFilePanel;
 #include "MqttClient.h"
 #include "SarMarker.h"
 #include "Types.h"
+#include "VoiceSession.h"
+
+class AudioEngine;
 
 class BButton;
 class BCheckBox;
@@ -218,6 +221,18 @@ private:
 								int32 chatViewIndex);
 	static	int32			_GifDownloadThread(void* data);
 
+			// Voice messages
+			void			_StartVoiceRecord();
+			void			_StopVoiceRecord();
+			void			_HandleIncomingVoiceFragment(const uint8* payload,
+								size_t length);
+			void			_HandleIncomingVoiceFetch(const uint8* payload,
+								size_t length);
+			void			_StartVoiceFetch(uint32 sessionId);
+			void			_SendNextVoiceFragment();
+			void			_UpdateVoiceMessageView(uint32 sessionId);
+			void			_HandleVoicePlayRequest(uint32 sessionId);
+
 			// Image sharing
 			void			_HandleImageSelected(BMessage* message);
 			void			_SendNextImageFragment();
@@ -404,6 +419,19 @@ private:
 
 			// Contact groups
 			OwningObjectList<BString>	fGroupNames;
+
+			// Voice messages
+			VoiceSessionManager*	fVoiceSessions;
+			AudioEngine*	fAudioEngine;
+			BButton*		fVoiceButton;
+			BMessageRunner*	fVoiceFragmentTimer;
+			uint32			fCurrentVoiceSendSession;
+			uint8			fCurrentVoiceSendIndex;
+			bool			fRecordingVoice;
+
+			// Decoded PCM for current playing voice message (owned)
+			int16*			fVoicePlayPcm;
+			size_t			fVoicePlayPcmSize;
 
 			// Image sharing
 			ImageSessionManager*	fImageSessions;

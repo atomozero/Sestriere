@@ -20,6 +20,7 @@
 #include "GiphyClient.h"
 #include "ImageSession.h"
 #include "SarMarker.h"
+#include "VoiceSession.h"
 
 
 // Theme-aware colors derived from Haiku system colors
@@ -78,6 +79,14 @@ MessageView::MessageView(const ChatMessage& message, const char* senderName)
 	fHopsClickRect(),
 	fIsSarMarker(false),
 	fSarMarker(),
+	fIsVoiceMsg(false),
+	fVoiceSessionId(0),
+	fVoiceDuration(0),
+	fVoiceState(VOICE_PENDING),
+	fVoiceTotalFragments(0),
+	fVoiceReceivedFragments(0),
+	fVoicePlaying(false),
+	fPlayClickRect(),
 	fIsImageMsg(false),
 	fImageSessionId(0),
 	fImageWidth(0),
@@ -103,8 +112,24 @@ MessageView::MessageView(const ChatMessage& message, const char* senderName)
 		GiphyClient::ExtractGifId(fText.String(), fGifId, sizeof(fGifId));
 	}
 
+	// Check for VE2 voice envelope
+	if (!fIsGifMsg && VoiceSessionManager::IsVoiceEnvelope(fText.String())) {
+		fIsVoiceMsg = true;
+		uint32 sid = 0;
+		VoicePacketMode voiceMode = VOICE_MODE_1300;
+		uint8 total = 0;
+		uint32 dur = 0, ts = 0;
+		uint8 senderKey[6];
+		if (VoiceSessionManager::ParseEnvelope(fText.String(), &sid,
+			&voiceMode, &total, &dur, senderKey, &ts)) {
+			fVoiceSessionId = sid;
+			fVoiceDuration = dur;
+			fVoiceTotalFragments = total;
+		}
+	}
 	// Check for IE2 image envelope before SAR marker
-	if (!fIsGifMsg && ImageSessionManager::IsImageEnvelope(fText.String())) {
+	else if (!fIsGifMsg
+		&& ImageSessionManager::IsImageEnvelope(fText.String())) {
 		fIsImageMsg = true;
 		uint32 sid = 0;
 		uint8 fmt = 0, total = 0;
@@ -151,6 +176,13 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	// GIF message — separate rendering path
 	if (fIsGifMsg) {
 		_DrawGifBubble(owner, frame);
+		owner->PopState();
+		return;
+	}
+
+	// Voice message — separate rendering path
+	if (fIsVoiceMsg) {
+		_DrawVoiceBubble(owner, frame);
 		owner->PopState();
 		return;
 	}
@@ -527,6 +559,22 @@ MessageView::Update(BView* owner, const BFont* font)
 		return;
 	}
 
+	// Voice messages: fixed compact height
+	if (fIsVoiceMsg) {
+		font_height fontHeight;
+		font->GetHeight(&fontHeight);
+		float lineHeight = fontHeight.ascent + fontHeight.descent
+			+ fontHeight.leading;
+		float headerHeight = (!fOutgoing && fSenderName.Length() > 0)
+			? lineHeight : 0;
+		float metaHeight = lineHeight * 0.8f;
+		float voiceBarHeight = 28.0f;  // play button + progress bar
+		float height = headerHeight + voiceBarHeight + metaHeight
+			+ kBubblePadding * 2 + kBubbleMargin;
+		SetHeight(height);
+		return;
+	}
+
 	// Image messages have fixed height based on content
 	if (fIsImageMsg) {
 		font_height fontHeight;
@@ -818,6 +866,250 @@ MessageView::_DrawImageBubble(BView* owner, BRect frame)
 	}
 
 	// Draw meta text
+	owner->SetFont(&metaFont);
+	owner->SetHighColor(MetaTextColor());
+	float metaX = bubbleRect.right - kBubblePadding - metaWidth;
+	float metaY = bubbleRect.bottom - kBubblePadding / 2;
+	owner->DrawString(displayMeta.String(), BPoint(metaX, metaY));
+}
+
+
+void
+MessageView::SetVoiceState(VoiceSessionState state, uint8 receivedCount)
+{
+	fVoiceState = state;
+	fVoiceReceivedFragments = receivedCount;
+}
+
+
+void
+MessageView::SetVoicePlaying(bool playing)
+{
+	fVoicePlaying = playing;
+}
+
+
+void
+MessageView::_DrawVoiceBubble(BView* owner, BRect frame)
+{
+	owner->SetFont(be_plain_font);
+	font_height fh;
+	owner->GetFontHeight(&fh);
+	float lineHeight = fh.ascent + fh.descent + fh.leading;
+
+	// Meta text
+	char timeStr[16];
+	_FormatTimestamp(timeStr, sizeof(timeStr));
+	BString displayMeta;
+	if (fOutgoing) {
+		switch (fDeliveryStatus) {
+			case DELIVERY_PENDING:
+				displayMeta.SetToFormat("%s \xE2\x8F\xB3", timeStr);
+				break;
+			case DELIVERY_CONFIRMED:
+				displayMeta.SetToFormat("%s \xE2\x9C\x93\xE2\x9C\x93",
+					timeStr);
+				break;
+			default:
+				displayMeta.SetToFormat("%s \xE2\x9C\x93", timeStr);
+				break;
+		}
+	} else {
+		if (fPathLen == 0 || fPathLen == kPathLenDirect)
+			displayMeta.SetToFormat("%s", timeStr);
+		else
+			displayMeta.SetToFormat("%s \xC2\xB7 %d hops", timeStr,
+				fPathLen);
+	}
+
+	BFont metaFont;
+	owner->GetFont(&metaFont);
+	metaFont.SetSize(metaFont.Size() * 0.85f);
+	float metaWidth = metaFont.StringWidth(displayMeta.String());
+	float metaHeight = lineHeight * 0.8f;
+
+	float headerHeight = (!fOutgoing && fSenderName.Length() > 0)
+		? lineHeight : 0;
+	float voiceBarHeight = 28.0f;
+
+	// Duration text
+	char durText[16];
+	uint32 dur = fVoiceDuration;
+	snprintf(durText, sizeof(durText), "%ld:%02ld",
+		(long)(dur / 60), (long)(dur % 60));
+
+	float durWidth = owner->StringWidth(durText);
+	float playBtnSize = 20.0f;
+	float barWidth = 100.0f;
+	float voiceLabel = owner->StringWidth("Voice") + 4;
+
+	float contentWidth = playBtnSize + 8 + barWidth + 8 + durWidth
+		+ 8 + voiceLabel;
+	contentWidth = std::max(contentWidth, metaWidth);
+	float bubbleWidth = contentWidth + kBubblePadding * 2;
+	float bubbleHeight = headerHeight + voiceBarHeight + metaHeight
+		+ kBubblePadding * 2;
+
+	// Position bubble
+	BRect bubbleRect;
+	if (fOutgoing) {
+		bubbleRect.left = frame.right - bubbleWidth - kBubbleMargin;
+		bubbleRect.right = frame.right - kBubbleMargin;
+	} else {
+		bubbleRect.left = frame.left + kBubbleMargin;
+		bubbleRect.right = frame.left + kBubbleMargin + bubbleWidth;
+	}
+	bubbleRect.top = frame.top + kBubbleMargin / 2;
+	bubbleRect.bottom = bubbleRect.top + bubbleHeight;
+
+	// Draw bubble background
+	rgb_color bubbleColor = fOutgoing
+		? OutgoingBubbleColor() : IncomingBubbleColor();
+	rgb_color borderColor = fOutgoing
+		? OutgoingBorderColor() : IncomingBorderColor();
+
+	// Shadow
+	owner->SetHighColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR),
+		B_DARKEN_2_TINT));
+	BRect shadowRect = bubbleRect;
+	shadowRect.OffsetBy(1, 1);
+	owner->FillRoundRect(shadowRect, kBubbleRadius, kBubbleRadius);
+
+	owner->SetHighColor(bubbleColor);
+	owner->FillRoundRect(bubbleRect, kBubbleRadius, kBubbleRadius);
+	owner->SetHighColor(borderColor);
+	owner->StrokeRoundRect(bubbleRect, kBubbleRadius, kBubbleRadius);
+
+	float yPos = bubbleRect.top + kBubblePadding + fh.ascent;
+
+	// Sender name
+	if (!fOutgoing && fSenderName.Length() > 0) {
+		BFont savedFont;
+		owner->GetFont(&savedFont);
+		BFont boldFont(savedFont);
+		boldFont.SetFace(B_BOLD_FACE);
+		owner->SetFont(&boldFont);
+		owner->SetHighColor(SenderNameColor());
+		owner->DrawString(fSenderName.String(),
+			BPoint(bubbleRect.left + kBubblePadding, yPos));
+		owner->SetFont(&savedFont);
+		yPos += lineHeight;
+	}
+
+	float contentLeft = bubbleRect.left + kBubblePadding;
+	float centerY = yPos - fh.ascent + voiceBarHeight / 2;
+
+	// Play/Pause button (triangle or bars)
+	float btnLeft = contentLeft;
+	float btnTop = centerY - playBtnSize / 2;
+	BRect playRect(btnLeft, btnTop,
+		btnLeft + playBtnSize, btnTop + playBtnSize);
+
+	// Save click rect
+	fPlayClickRect = playRect;
+
+	if (fVoiceState == VOICE_COMPLETE || fVoiceState == VOICE_SENDING) {
+		if (fVoicePlaying) {
+			// Pause icon (two bars)
+			owner->SetHighColor(ui_color(B_CONTROL_HIGHLIGHT_COLOR));
+			float bw = 4, gap = 3;
+			float bx = playRect.left + (playBtnSize - bw * 2 - gap) / 2;
+			float by = playRect.top + 4;
+			float bh = playBtnSize - 8;
+			owner->FillRect(BRect(bx, by, bx + bw, by + bh));
+			owner->FillRect(BRect(bx + bw + gap, by,
+				bx + bw * 2 + gap, by + bh));
+		} else {
+			// Play triangle
+			owner->SetHighColor(ui_color(B_CONTROL_HIGHLIGHT_COLOR));
+			BPoint tri[3];
+			tri[0] = BPoint(playRect.left + 4, playRect.top + 3);
+			tri[1] = BPoint(playRect.right - 2,
+				playRect.top + playBtnSize / 2);
+			tri[2] = BPoint(playRect.left + 4, playRect.bottom - 3);
+			owner->FillPolygon(tri, 3);
+		}
+	} else if (fVoiceState == VOICE_LOADING) {
+		// Loading spinner (circular dots pattern)
+		owner->SetHighColor(kColorFair);
+		float cx = playRect.left + playBtnSize / 2;
+		float cy = playRect.top + playBtnSize / 2;
+		float r = 6;
+		for (int i = 0; i < 4; i++) {
+			float angle = i * 1.5708f;  // 90 degrees
+			float dx = cx + r * cosf(angle);
+			float dy = cy + r * sinf(angle);
+			owner->FillEllipse(BPoint(dx, dy), 2, 2);
+		}
+	} else {
+		// Pending/failed — gray triangle
+		owner->SetHighColor(tint_color(ui_color(B_PANEL_TEXT_COLOR),
+			B_LIGHTEN_1_TINT));
+		BPoint tri[3];
+		tri[0] = BPoint(playRect.left + 4, playRect.top + 3);
+		tri[1] = BPoint(playRect.right - 2,
+			playRect.top + playBtnSize / 2);
+		tri[2] = BPoint(playRect.left + 4, playRect.bottom - 3);
+		owner->FillPolygon(tri, 3);
+	}
+
+	// Progress bar
+	float barLeft = contentLeft + playBtnSize + 8;
+	float barTop = centerY - 4;
+	BRect barBg(barLeft, barTop, barLeft + barWidth, barTop + 8);
+
+	rgb_color barBgColor = tint_color(bubbleColor, B_DARKEN_2_TINT);
+	owner->SetHighColor(barBgColor);
+	owner->FillRoundRect(barBg, 3, 3);
+
+	// Fill based on state
+	float progress = 0;
+	if (fVoiceState == VOICE_COMPLETE || fVoiceState == VOICE_SENDING)
+		progress = 1.0f;
+	else if (fVoiceState == VOICE_LOADING && fVoiceTotalFragments > 0)
+		progress = (float)fVoiceReceivedFragments / fVoiceTotalFragments;
+
+	if (progress > 0) {
+		BRect barFill(barBg.left, barBg.top,
+			barBg.left + barWidth * progress, barBg.bottom);
+		rgb_color fillColor = (fVoiceState == VOICE_COMPLETE
+			|| fVoiceState == VOICE_SENDING)
+			? ui_color(B_CONTROL_HIGHLIGHT_COLOR) : kColorFair;
+		owner->SetHighColor(fillColor);
+		owner->FillRoundRect(barFill, 3, 3);
+	}
+
+	// Duration or fragment count
+	float textLeft = barLeft + barWidth + 8;
+	owner->SetHighColor(BubbleTextColor());
+	if (fVoiceState == VOICE_LOADING) {
+		char fragText[16];
+		snprintf(fragText, sizeof(fragText), "%d/%d",
+			(int)fVoiceReceivedFragments, (int)fVoiceTotalFragments);
+		owner->DrawString(fragText, BPoint(textLeft, centerY + fh.ascent / 2));
+	} else {
+		owner->DrawString(durText, BPoint(textLeft, centerY + fh.ascent / 2));
+	}
+
+	// "Voice" label
+	float labelLeft = textLeft + durWidth + 8;
+	BFont smallFont;
+	owner->GetFont(&smallFont);
+	smallFont.SetSize(smallFont.Size() * 0.8f);
+	owner->SetFont(&smallFont);
+
+	if (fVoiceState == VOICE_FAILED) {
+		owner->SetHighColor(kColorBad);
+		owner->DrawString("Failed",
+			BPoint(labelLeft, centerY + fh.ascent / 2));
+	} else {
+		owner->SetHighColor(MetaTextColor());
+		owner->DrawString("Voice",
+			BPoint(labelLeft, centerY + fh.ascent / 2));
+	}
+	owner->SetFont(be_plain_font);
+
+	// Meta text
 	owner->SetFont(&metaFont);
 	owner->SetHighColor(MetaTextColor());
 	float metaX = bubbleRect.right - kBubblePadding - metaWidth;
