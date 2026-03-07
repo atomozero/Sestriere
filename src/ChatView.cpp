@@ -103,6 +103,28 @@ ChatView::MouseDown(BPoint where)
 		return;
 	}
 
+	// Check for double-click on incoming message → quote reply
+	if (buttons & B_PRIMARY_MOUSE_BUTTON) {
+		int32 clicks = 1;
+		if (current != NULL)
+			current->FindInt32("clicks", &clicks);
+
+		if (clicks == 2) {
+			int32 index = IndexOf(where);
+			if (index >= 0) {
+				MessageView* item = dynamic_cast<MessageView*>(
+					ItemAt(index));
+				if (item != NULL && !item->IsOutgoing()
+					&& item->SenderName()[0] != '\0') {
+					BMessage msg(MSG_QUOTE_REPLY);
+					msg.AddString("sender", item->SenderName());
+					Window()->PostMessage(&msg);
+					return;
+				}
+			}
+		}
+	}
+
 	// Check for left-click on "X hops" link or image download
 	if (buttons & B_PRIMARY_MOUSE_BUTTON) {
 		int32 index = IndexOf(where);

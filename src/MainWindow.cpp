@@ -2962,6 +2962,24 @@ MainWindow::MessageReceived(BMessage* message)
 				fImageSessions->PurgeExpired();
 			break;
 
+		// --- Quote reply (double-click on message) ---
+		case MSG_QUOTE_REPLY:
+		{
+			const char* sender;
+			if (message->FindString("sender", &sender) == B_OK
+				&& sender[0] != '\0') {
+				BString mention;
+				mention.SetToFormat("@%s ", sender);
+				fMessageInput->Insert(fMessageInput->TextLength(),
+					mention.String(), mention.Length());
+				fMessageInput->MakeFocus(true);
+				fMessageInput->Select(fMessageInput->TextLength(),
+					fMessageInput->TextLength());
+				_UpdateCharCounter();
+			}
+			break;
+		}
+
 		// --- Voice messages ---
 		case MSG_VOICE_RECORD:
 			if (fRecordingVoice)

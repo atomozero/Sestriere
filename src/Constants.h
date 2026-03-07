@@ -347,6 +347,9 @@ enum {
 	// Emoji rendering
 	MSG_EMOJI_LOADED = 'emld',
 
+	// Quote reply (double-click on message)
+	MSG_QUOTE_REPLY = 'qrep',
+
 	// Voice messages
 	MSG_VOICE_RECORD = 'vrec',     // Start/stop recording
 	MSG_VOICE_SEND_NEXT = 'vsfr',  // Timer: send next voice fragment
