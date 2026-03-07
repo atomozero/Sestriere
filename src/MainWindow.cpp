@@ -338,7 +338,12 @@ MainWindow::MainWindow()
 	fHasDeviceInfo = false;
 	fImageSessions = new ImageSessionManager();
 	fVoiceSessions = new VoiceSessionManager();
-	fAudioEngine = new AudioEngine();
+	if (AudioEngine::IsInputAvailable()) {
+		fAudioEngine = new AudioEngine();
+	} else {
+		fprintf(stderr, "[MainWindow] No audio input available — "
+			"voice recording disabled\n");
+	}
 	fRadioFreq = 0;
 	fRadioBw = 0;
 	fRadioSf = 0;
@@ -3213,7 +3218,7 @@ MainWindow::_SelectContact(int32 index)
 		fSendButton->SetEnabled(fConnected);
 		fAttachButton->SetEnabled(fConnected);
 		fGifButton->SetEnabled(fConnected);
-		fVoiceButton->SetEnabled(fConnected);
+		fVoiceButton->SetEnabled(fConnected && fAudioEngine != NULL);
 
 		// Load channel message history
 		fChatView->ClearMessages();
@@ -3261,7 +3266,7 @@ MainWindow::_SelectContact(int32 index)
 		fSendButton->SetEnabled(fConnected);
 		fAttachButton->SetEnabled(fConnected);
 		fGifButton->SetEnabled(fConnected);
-		fVoiceButton->SetEnabled(fConnected);
+		fVoiceButton->SetEnabled(fConnected && fAudioEngine != NULL);
 
 		// Load private channel message history
 		fChatView->ClearMessages();
@@ -3306,7 +3311,7 @@ MainWindow::_SelectContact(int32 index)
 			fSendButton->SetEnabled(fConnected);
 			fAttachButton->SetEnabled(fConnected);
 			fGifButton->SetEnabled(fConnected);
-			fVoiceButton->SetEnabled(fConnected);
+			fVoiceButton->SetEnabled(fConnected && fAudioEngine != NULL);
 
 			// Clear unread badge for this contact
 			selectedItem->ClearUnread();
@@ -5964,7 +5969,7 @@ MainWindow::_OnConnected(BMessage* message)
 		fSendButton->SetEnabled(true);
 		fAttachButton->SetEnabled(true);
 		fGifButton->SetEnabled(true);
-		fVoiceButton->SetEnabled(true);
+		fVoiceButton->SetEnabled(fAudioEngine != NULL);
 	}
 
 	// Forward to Mission Control

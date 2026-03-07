@@ -10,6 +10,7 @@
 #include <Looper.h>
 #include <MediaRoster.h>
 #include <Message.h>
+#include <TimeSource.h>
 
 #include <cstdio>
 #include <cstring>
@@ -25,6 +26,24 @@ static const uint32 kBufferSize = 2048;  // bytes per BSoundPlayer buffer
 // Max recording: 30 seconds at 8kHz = 240000 samples
 static const size_t kMaxRecordSamples = 30 * kSampleRate;
 static const size_t kInitialRecordCapacity = kSampleRate * 5;  // 5 seconds
+
+
+bool
+AudioEngine::IsInputAvailable()
+{
+	BMediaRoster* roster = BMediaRoster::Roster();
+	if (roster == NULL)
+		return false;
+
+	media_node audioInput;
+	status_t err = roster->GetAudioInput(&audioInput);
+	if (err != B_OK)
+		return false;
+
+	// Release the node — we just wanted to check it exists
+	roster->ReleaseNode(audioInput);
+	return true;
+}
 
 
 AudioEngine::AudioEngine()
@@ -87,8 +106,7 @@ AudioEngine::StartRecording()
 	}
 
 	// Set desired format: 8kHz mono 16-bit signed
-	media_format format;
-	memset(&format, 0, sizeof(format));
+	media_format format = {};
 	format.type = B_MEDIA_RAW_AUDIO;
 	format.u.raw_audio.frame_rate = kSampleRate;
 	format.u.raw_audio.channel_count = 1;

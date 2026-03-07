@@ -90,12 +90,13 @@ DatabaseManager::Open(const char* directory)
 		return false;
 	}
 
-	// Schema migration: add txt_type column if missing (added in 1.7)
-	_Execute("ALTER TABLE messages ADD COLUMN txt_type INTEGER DEFAULT 0");
-
-	// Schema migration: add delivery_status and round_trip_ms (added in 1.8)
-	_Execute("ALTER TABLE messages ADD COLUMN delivery_status INTEGER DEFAULT 1");
-	_Execute("ALTER TABLE messages ADD COLUMN round_trip_ms INTEGER DEFAULT 0");
+	// Schema migrations: add columns if missing (silently ignore if already exist)
+	sqlite3_exec(fDB, "ALTER TABLE messages ADD COLUMN txt_type INTEGER DEFAULT 0",
+		NULL, NULL, NULL);
+	sqlite3_exec(fDB, "ALTER TABLE messages ADD COLUMN delivery_status INTEGER DEFAULT 1",
+		NULL, NULL, NULL);
+	sqlite3_exec(fDB, "ALTER TABLE messages ADD COLUMN round_trip_ms INTEGER DEFAULT 0",
+		NULL, NULL, NULL);
 
 	// Migrate old messages.txt if database is empty
 	if (_IsEmpty())

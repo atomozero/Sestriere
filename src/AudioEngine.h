@@ -23,6 +23,9 @@ public:
 						AudioEngine();
 						~AudioEngine();
 
+	// Check if audio input is available
+	static bool			IsInputAvailable();
+
 	// Recording
 	status_t			StartRecording();
 	status_t			StopRecording(int16** outPcm, size_t* outSamples);
