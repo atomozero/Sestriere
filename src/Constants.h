@@ -356,6 +356,7 @@ enum {
 	MSG_VOICE_PLAY_REQ = 'vply',   // User clicked play on voice bubble
 	MSG_VOICE_PLAY_DONE = 'vpdn',  // Playback finished
 	MSG_VOICE_EXPIRE = 'vexp',     // Cleanup expired sessions
+	MSG_VOICE_RECORD_TIMEOUT = 'vrto', // Max recording duration reached
 };
 
 // =============================================================================

@@ -428,6 +428,7 @@ private:
 			uint32			fCurrentVoiceSendSession;
 			uint8			fCurrentVoiceSendIndex;
 			bool			fRecordingVoice;
+			BMessageRunner*	fVoiceRecordTimer;
 
 			// Decoded PCM for current playing voice message (owned)
 			int16*			fVoicePlayPcm;

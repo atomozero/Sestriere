@@ -306,6 +306,7 @@ MainWindow::MainWindow()
 	fCurrentVoiceSendSession(0),
 	fCurrentVoiceSendIndex(0),
 	fRecordingVoice(false),
+	fVoiceRecordTimer(NULL),
 	fVoicePlayPcm(NULL),
 	fVoicePlayPcmSize(0),
 	fImageSessions(NULL),
@@ -443,6 +444,7 @@ MainWindow::~MainWindow()
 	delete fVoiceSessions;
 	delete fAudioEngine;
 	delete fVoiceFragmentTimer;
+	delete fVoiceRecordTimer;
 	delete[] fVoicePlayPcm;
 
 	// Image sharing cleanup
@@ -3002,6 +3004,10 @@ MainWindow::MessageReceived(BMessage* message)
 
 		case MSG_VOICE_PLAY_DONE:
 		{
+			// Stop BSoundPlayer to free resources
+			if (fAudioEngine != NULL)
+				fAudioEngine->Stop();
+
 			// Reset playing state on all voice messages
 			for (int32 i = 0; i < fChatView->CountItems(); i++) {
 				MessageView* mv = dynamic_cast<MessageView*>(
@@ -3014,6 +3020,13 @@ MainWindow::MessageReceived(BMessage* message)
 			}
 			break;
 		}
+
+		case MSG_VOICE_RECORD_TIMEOUT:
+			if (fRecordingVoice) {
+				_LogMessage("VOICE", "Max recording duration reached (30s)");
+				_StopVoiceRecord();
+			}
+			break;
 
 		case MSG_VOICE_EXPIRE:
 			if (fVoiceSessions != NULL)
@@ -6067,6 +6080,10 @@ MainWindow::_OnDisconnected()
 	delete fHandshakeTimer;
 	fHandshakeTimer = NULL;
 
+	// Stop active voice recording if in progress
+	if (fRecordingVoice)
+		_StopVoiceRecord();
+
 	// Forward to Mission Control
 	if (_LockIfVisible(fMissionControlWindow)) {
 		fMissionControlWindow->SetConnectionState(false, NULL, NULL);
@@ -8023,6 +8040,13 @@ MainWindow::_StartVoiceRecord()
 
 	fRecordingVoice = true;
 	fVoiceButton->SetLabel("Stop");
+
+	// Safety timer: auto-stop after 30 seconds (max recording length)
+	delete fVoiceRecordTimer;
+	BMessage timerMsg(MSG_VOICE_RECORD_TIMEOUT);
+	fVoiceRecordTimer = new BMessageRunner(BMessenger(this),
+		&timerMsg, 30000000, 1);  // 30 seconds, single shot
+
 	_LogMessage("VOICE", "Recording started");
 }
 
@@ -8032,6 +8056,10 @@ MainWindow::_StopVoiceRecord()
 {
 	if (!fRecordingVoice || fAudioEngine == NULL)
 		return;
+
+	// Cancel recording timeout timer
+	delete fVoiceRecordTimer;
+	fVoiceRecordTimer = NULL;
 
 	int16* pcm = NULL;
 	size_t sampleCount = 0;

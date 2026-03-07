@@ -362,8 +362,19 @@ AudioEngine::_PlayBuffer(void* cookie, void* buffer, size_t size,
 	engine->fPlayPosition += toCopy;
 
 	// Check if playback finished
-	if (engine->fPlayPosition >= engine->fPlaySize)
+	if (engine->fPlayPosition >= engine->fPlaySize) {
 		engine->fPlaying = false;
+		// Notify target directly — BSoundPlayer won't fire B_STOPPED
+		// until Stop() is called, so we send the notification here
+		if (engine->fPlayNotify != NULL) {
+			BLooper* looper = engine->fPlayNotify->Looper();
+			if (looper != NULL) {
+				BMessage msg(MSG_VOICE_PLAY_DONE);
+				looper->PostMessage(&msg, engine->fPlayNotify);
+			}
+			engine->fPlayNotify = NULL;  // send once
+		}
+	}
 }
 
 
