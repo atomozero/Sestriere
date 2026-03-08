@@ -46,7 +46,7 @@ ImageSessionManager::CreateOutgoing(const uint8* jpegData, size_t size,
 
 	ImageSession* session = new ImageSession();
 	session->sessionId = sid;
-	session->format = kImageFormatJPEG;
+	session->format = kImageFormatWebP;
 	session->width = width;
 	session->height = height;
 	session->totalBytes = (uint32)size;

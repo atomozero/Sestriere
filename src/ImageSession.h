@@ -27,6 +27,7 @@
 const uint8 kImageMagic = 0x49;       // 'I' — image data packet
 const uint8 kFetchMagic = 0x69;       // 'i' — fetch request
 const uint8 kImageFormatJPEG = 1;
+const uint8 kImageFormatWebP = 2;
 const size_t kMaxFragmentPayload = 152;
 const size_t kImageHeaderSize = 8;    // [magic:1][sid:4][fmt:1][idx:1][total:1]
 const bigtime_t kSessionTTL = 15 * 60 * 1000000LL; // 15 minutes in microseconds
@@ -56,7 +57,7 @@ struct ImageFragment {
 // Image transfer session
 struct ImageSession {
 	uint32              sessionId;
-	uint8               format;         // kImageFormatJPEG
+	uint8               format;         // kImageFormatJPEG or kImageFormatWebP
 	uint8               totalFragments;
 	uint8               receivedCount;
 	int32               width;
@@ -72,7 +73,7 @@ struct ImageSession {
 	size_t              jpegSize;
 
 	ImageSession()
-		: sessionId(0), format(kImageFormatJPEG), totalFragments(0),
+		: sessionId(0), format(kImageFormatWebP), totalFragments(0),
 		  receivedCount(0), width(0), height(0), totalBytes(0),
 		  timestamp(0), state(IMAGE_PENDING), createdTime(0),
 		  jpegData(NULL), jpegSize(0)

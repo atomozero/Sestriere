@@ -7953,7 +7953,7 @@ MainWindow::_HandleImageSelected(BMessage* message)
 	size_t jpegSize = 0;
 	int32 w = 0, h = 0;
 	status_t status = ImageCodec::CompressImageFile(path.Path(),
-		&jpegData, &jpegSize, &w, &h, 128, 65);
+		&jpegData, &jpegSize, &w, &h);
 	if (status != B_OK) {
 		_LogMessage("ERROR", BString().SetToFormat(
 			"Failed to compress image: %s", strerror(status)));
@@ -7961,7 +7961,7 @@ MainWindow::_HandleImageSelected(BMessage* message)
 	}
 
 	_LogMessage("IMG", BString().SetToFormat(
-		"Compressed %s → %zd bytes (%ldx%ld grayscale JPEG)",
+		"Compressed %s → %zd bytes (%ldx%ld color WebP)",
 		path.Leaf(), jpegSize, (long)w, (long)h));
 
 	// Get self key prefix for envelope

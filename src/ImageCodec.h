@@ -14,16 +14,16 @@
 
 class ImageCodec {
 public:
-	// Compress an image file to grayscale JPEG suitable for LoRa transmission.
+	// Compress an image file to color WebP suitable for LoRa transmission.
 	// Loads any format supported by Translation Kit, resizes to maxDim,
-	// converts to grayscale, and compresses as JPEG.
+	// and compresses as WebP.
 	// Caller must free(*outData) when done.
 	static	status_t		CompressImageFile(const char* path,
 								uint8** outData, size_t* outSize,
 								int32* outWidth, int32* outHeight,
-								int32 maxDim = 128, int32 quality = 65);
+								int32 maxDim = 192, int32 quality = 50);
 
-	// Decompress JPEG data into a BBitmap.
+	// Decompress image data (JPEG, WebP, etc.) into a BBitmap.
 	// Caller owns the returned bitmap.
 	static	BBitmap*		DecompressImageData(const uint8* jpegData,
 								size_t size);

@@ -49,12 +49,12 @@ ImageCodec::CompressImageFile(const char* path, uint8** outData,
 		if (dstW < 1) dstW = 1;
 	}
 
-	// Create grayscale bitmap in B_RGB32 (R=G=B=Y for each pixel)
-	BBitmap* grayscale = new BBitmap(BRect(0, 0, dstW - 1, dstH - 1),
+	// Create scaled color bitmap in B_RGB32
+	BBitmap* scaled = new BBitmap(BRect(0, 0, dstW - 1, dstH - 1),
 		B_RGB32);
-	if (grayscale->InitCheck() != B_OK) {
+	if (scaled->InitCheck() != B_OK) {
 		delete source;
-		delete grayscale;
+		delete scaled;
 		return B_NO_MEMORY;
 	}
 
@@ -63,7 +63,7 @@ ImageCodec::CompressImageFile(const char* path, uint8** outData,
 		BBitmap* converted = new BBitmap(srcBounds, B_RGB32);
 		if (converted->InitCheck() != B_OK) {
 			delete source;
-			delete grayscale;
+			delete scaled;
 			delete converted;
 			return B_NO_MEMORY;
 		}
@@ -72,11 +72,11 @@ ImageCodec::CompressImageFile(const char* path, uint8** outData,
 		source = converted;
 	}
 
-	// Scale and convert to grayscale using nearest-neighbor sampling
+	// Scale using nearest-neighbor sampling (preserving color)
 	uint8* srcBits = (uint8*)source->Bits();
-	uint8* dstBits = (uint8*)grayscale->Bits();
+	uint8* dstBits = (uint8*)scaled->Bits();
 	int32 srcBPR = source->BytesPerRow();
-	int32 dstBPR = grayscale->BytesPerRow();
+	int32 dstBPR = scaled->BytesPerRow();
 
 	for (int32 y = 0; y < dstH; y++) {
 		int32 srcY = y * srcH / dstH;
@@ -89,31 +89,26 @@ ImageCodec::CompressImageFile(const char* path, uint8** outData,
 			if (srcX >= srcW) srcX = srcW - 1;
 
 			uint8* sp = srcRow + srcX * 4;  // B_RGB32: B,G,R,A
-			uint8 b = sp[0], g = sp[1], r = sp[2];
-
-			// ITU-R BT.601 luma
-			uint8 luma = (uint8)(0.299f * r + 0.587f * g + 0.114f * b);
-
 			uint8* dp = dstRow + x * 4;
-			dp[0] = luma;  // B
-			dp[1] = luma;  // G
-			dp[2] = luma;  // R
-			dp[3] = 255;   // A
+			dp[0] = sp[0];  // B
+			dp[1] = sp[1];  // G
+			dp[2] = sp[2];  // R
+			dp[3] = 255;    // A
 		}
 	}
 
 	delete source;
 
-	// Compress to JPEG using Translation Kit
-	BBitmapStream stream(grayscale);  // stream takes ownership of grayscale
+	// Compress to WebP using Translation Kit
+	BBitmapStream stream(scaled);  // stream takes ownership of scaled
 
-	// Find JPEG translator
+	// Find WebP translator
 	BTranslatorRoster* roster = BTranslatorRoster::Default();
 	translator_id* translators = NULL;
 	int32 numTranslators = 0;
 	roster->GetAllTranslators(&translators, &numTranslators);
 
-	translator_id jpegTranslator = 0;
+	translator_id webpTranslator = 0;
 	bool found = false;
 	for (int32 i = 0; i < numTranslators; i++) {
 		const translation_format* formats = NULL;
@@ -121,8 +116,8 @@ ImageCodec::CompressImageFile(const char* path, uint8** outData,
 		if (roster->GetOutputFormats(translators[i], &formats, &numFormats)
 			== B_OK) {
 			for (int32 j = 0; j < numFormats; j++) {
-				if (formats[j].type == B_JPEG_FORMAT) {
-					jpegTranslator = translators[i];
+				if (formats[j].type == B_WEBP_FORMAT) {
+					webpTranslator = translators[i];
 					found = true;
 					break;
 				}
@@ -133,31 +128,31 @@ ImageCodec::CompressImageFile(const char* path, uint8** outData,
 	delete[] translators;
 
 	if (!found) {
-		// stream destructor deletes grayscale
+		// stream destructor deletes scaled
 		return B_ERROR;
 	}
 
-	// Set JPEG quality via translator settings
+	// Set WebP quality via translator settings
 	BMessage settings;
 	settings.AddInt32("quality", quality);
-	roster->MakeConfigurationView(jpegTranslator, &settings, NULL, NULL);
+	roster->MakeConfigurationView(webpTranslator, &settings, NULL, NULL);
 
 	BMallocIO output;
-	status_t status = roster->Translate(jpegTranslator, &stream, NULL,
-		&output, B_JPEG_FORMAT);
+	status_t status = roster->Translate(webpTranslator, &stream, NULL,
+		&output, B_WEBP_FORMAT);
 	if (status != B_OK)
 		return status;
 
 	// Copy output data
-	size_t jpegSize = output.BufferLength();
-	uint8* jpegData = (uint8*)malloc(jpegSize);
-	if (jpegData == NULL)
+	size_t webpSize = output.BufferLength();
+	uint8* webpData = (uint8*)malloc(webpSize);
+	if (webpData == NULL)
 		return B_NO_MEMORY;
 
-	memcpy(jpegData, output.Buffer(), jpegSize);
+	memcpy(webpData, output.Buffer(), webpSize);
 
-	*outData = jpegData;
-	*outSize = jpegSize;
+	*outData = webpData;
+	*outSize = webpSize;
 	if (outWidth != NULL) *outWidth = dstW;
 	if (outHeight != NULL) *outHeight = dstH;
 
