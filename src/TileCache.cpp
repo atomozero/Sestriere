@@ -26,6 +26,7 @@
 #include <OS.h>
 
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -40,10 +41,15 @@ TileCache::TileCache(const char* cacheDir)
 	fEnabled(false),
 	fTiles(20),
 	fLock("tile_cache_lock"),
-	fMaxMemoryTiles(kMaxMemoryTiles)
+	fMaxMemoryTiles(kMaxMemoryTiles),
+	fDiskCacheSize(0),
+	fDiskTileCount(0)
 {
 	// Ensure cache directory exists
 	create_directory(fCacheDir.String(), 0755);
+
+	// Scan disk cache to know current size
+	_ScanDiskCache();
 }
 
 
@@ -142,6 +148,13 @@ TileCache::MessageReceived(BMessage* msg)
 					}
 
 					if (downloaded) {
+						// Track new tile's disk size
+						struct stat st;
+						if (stat(path.String(), &st) == 0) {
+							fDiskCacheSize += st.st_size;
+							fDiskTileCount++;
+						}
+
 						bitmap = _LoadFromDisk(z, tx, ty);
 						if (bitmap != NULL) {
 							BAutolock lock(fLock);
@@ -160,6 +173,8 @@ TileCache::MessageReceived(BMessage* msg)
 
 			if (anyFetched) {
 				_PruneMemoryCache();
+				if (fDiskCacheSize > kMaxDiskCacheBytes)
+					_PruneDiskCache();
 				BMessage ready(MSG_TILES_READY);
 				target.SendMessage(&ready);
 			}
@@ -268,4 +283,123 @@ TileCache::_FindEntry(int z, int x, int y) const
 			return entry;
 	}
 	return NULL;
+}
+
+
+void
+TileCache::_ScanDiskCache()
+{
+	fDiskCacheSize = 0;
+	fDiskTileCount = 0;
+
+	// Walk {cacheDir}/{z}/{x}/{y}.png
+	BDirectory cacheDir(fCacheDir.String());
+	if (cacheDir.InitCheck() != B_OK)
+		return;
+
+	BEntry zEntry;
+	while (cacheDir.GetNextEntry(&zEntry) == B_OK) {
+		if (!zEntry.IsDirectory())
+			continue;
+
+		BDirectory zDir(&zEntry);
+		BEntry xEntry;
+		while (zDir.GetNextEntry(&xEntry) == B_OK) {
+			if (!xEntry.IsDirectory())
+				continue;
+
+			BDirectory xDir(&xEntry);
+			BEntry yEntry;
+			while (xDir.GetNextEntry(&yEntry) == B_OK) {
+				struct stat st;
+				if (yEntry.GetStat(&st) == 0 && S_ISREG(st.st_mode)) {
+					fDiskCacheSize += st.st_size;
+					fDiskTileCount++;
+				}
+			}
+		}
+	}
+}
+
+
+// Helper struct for disk pruning — collects file path + mtime
+struct DiskTileInfo {
+	BString		path;
+	time_t		mtime;
+	off_t		size;
+};
+
+
+static int
+_CompareDiskTileByMtime(const DiskTileInfo* a, const DiskTileInfo* b)
+{
+	if (a->mtime < b->mtime)
+		return -1;
+	if (a->mtime > b->mtime)
+		return 1;
+	return 0;
+}
+
+
+void
+TileCache::_PruneDiskCache()
+{
+	// Collect all tile files with metadata
+	BObjectList<DiskTileInfo> files(256);
+
+	BDirectory cacheDir(fCacheDir.String());
+	if (cacheDir.InitCheck() != B_OK)
+		return;
+
+	BEntry zEntry;
+	while (cacheDir.GetNextEntry(&zEntry) == B_OK) {
+		if (!zEntry.IsDirectory())
+			continue;
+
+		BDirectory zDir(&zEntry);
+		BEntry xEntry;
+		while (zDir.GetNextEntry(&xEntry) == B_OK) {
+			if (!xEntry.IsDirectory())
+				continue;
+
+			BDirectory xDir(&xEntry);
+			BEntry yEntry;
+			while (xDir.GetNextEntry(&yEntry) == B_OK) {
+				struct stat st;
+				if (yEntry.GetStat(&st) != 0 || !S_ISREG(st.st_mode))
+					continue;
+
+				BPath filePath;
+				if (yEntry.GetPath(&filePath) != B_OK)
+					continue;
+
+				DiskTileInfo* info = new DiskTileInfo();
+				info->path = filePath.Path();
+				info->mtime = st.st_mtime;
+				info->size = st.st_size;
+				files.AddItem(info);
+			}
+		}
+	}
+
+	// Sort by modification time ascending (oldest first)
+	files.SortItems(_CompareDiskTileByMtime);
+
+	// Delete oldest tiles until under 90% of limit (hysteresis)
+	off_t target = (off_t)(kMaxDiskCacheBytes * 0.9);
+
+	for (int32 i = 0; i < files.CountItems() && fDiskCacheSize > target; i++) {
+		DiskTileInfo* info = files.ItemAt(i);
+
+		// Remove from memory cache if loaded
+		// (file path encodes z/x/y but we just remove the file)
+		if (remove(info->path.String()) == 0) {
+			fDiskCacheSize -= info->size;
+			fDiskTileCount--;
+		}
+	}
+
+	// Cleanup DiskTileInfo objects
+	for (int32 i = 0; i < files.CountItems(); i++)
+		delete files.ItemAt(i);
 }

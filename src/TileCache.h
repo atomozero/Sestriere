@@ -16,12 +16,16 @@
 
 #include <ObjectList.h>
 
+#include <sys/types.h>
+
 
 // Messages
 enum {
 	MSG_FETCH_TILES		= 'ftch',
 	MSG_TILES_READY		= 'tlrd',
 };
+
+static const off_t kMaxDiskCacheBytes = 50 * 1024 * 1024;	// 50 MB
 
 
 struct TileEntry {
@@ -60,12 +64,18 @@ public:
 	void					SetEnabled(bool enabled);
 	bool					IsEnabled() const { return fEnabled; }
 
+	// Disk cache stats
+	off_t					DiskCacheSize() const { return fDiskCacheSize; }
+	int32					DiskTileCount() const { return fDiskTileCount; }
+
 private:
 	void					_FetchTile(int z, int x, int y,
 								BHandler* target);
 	BString					_DiskPath(int z, int x, int y) const;
 	BBitmap*				_LoadFromDisk(int z, int x, int y);
 	void					_PruneMemoryCache();
+	void					_ScanDiskCache();
+	void					_PruneDiskCache();
 	TileEntry*				_FindEntry(int z, int x, int y) const;
 
 	BString					fCacheDir;
@@ -73,6 +83,8 @@ private:
 	BObjectList<TileEntry>	fTiles;		// in-memory cache
 	mutable BLocker			fLock;
 	int						fMaxMemoryTiles;
+	off_t					fDiskCacheSize;
+	int32					fDiskTileCount;
 };
 
 
