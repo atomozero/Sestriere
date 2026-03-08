@@ -1047,6 +1047,17 @@ If the sidebar appears empty but you are connected:
 3. Clear the search field if it contains text
 4. Filter settings persist across restarts — unchecked filters remain unchecked
 
+### Testing without hardware
+
+A radio simulator is included for testing without a physical LoRa device:
+
+```bash
+g++ -o fake_radio fake_radio.cpp -Wall -O2
+./fake_radio
+```
+
+The simulator creates a virtual serial port (PTY) and prints the device path. Connect Sestriere to this path. The simulator handles the full V3 protocol handshake, creates a test contact with GPS coordinates, and sends a simulated message every 10 seconds with varying SNR values. Outgoing messages are acknowledged with delivery confirmation.
+
 ---
 
 *Sestriere is open-source software created by Andrea Bernardi, distributed under the MIT license.*

@@ -121,6 +121,15 @@ cd src
 make OBJ_DIR=release OPTIMIZE=FULL
 ```
 
+### Radio Simulator (for testing without hardware)
+
+```bash
+g++ -o fake_radio fake_radio.cpp -Wall -O2
+./fake_radio
+```
+
+Creates a virtual serial port (PTY). Connect Sestriere to the printed device path (e.g., `/dev/tt/p5`). The simulator handles the full V3 handshake, creates a test contact, and sends a message every 10 seconds with varying SNR.
+
 ## Usage
 
 1. Connect your MeshCore device via USB
@@ -174,6 +183,7 @@ V3 adds SNR fields to incoming messages. V2 responses (0x07, 0x08) are also supp
 Sestriere/
 ├── README.md                       # This file
 ├── HAIKU_USB_SERIAL_FIX.md         # USB driver patch docs
+├── fake_radio.cpp                  # MeshCore radio simulator (PTY-based)
 ├── img/                            # Screenshots
 ├── src/                            # Source code
 │   ├── Makefile                    # Build system
