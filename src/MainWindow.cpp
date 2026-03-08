@@ -3295,6 +3295,10 @@ MainWindow::MessageReceived(BMessage* message)
 				mv->Update(fChatView, &font);
 				fChatView->InvalidateItem(itemIndex);
 
+				// Scroll to show full content if near bottom
+				if (itemIndex >= fChatView->CountItems() - 3)
+					fChatView->ScrollToBottom();
+
 				if (frameCount > 1)
 					fChatView->StartGifAnimation();
 			} else {
@@ -8014,6 +8018,7 @@ MainWindow::_HandleImageSelected(BMessage* message)
 				fChatView->GetFont(&font);
 				mv->Update(fChatView, &font);
 				fChatView->InvalidateItem(i);
+				fChatView->ScrollToBottom();
 				break;
 			}
 		}
@@ -8169,6 +8174,9 @@ MainWindow::_HandleIncomingImageFragment(const uint8* payload, size_t length)
 						fChatView->GetFont(&font);
 						mv->Update(fChatView, &font);
 						fChatView->InvalidateItem(i);
+						// Scroll to show full image if near bottom
+						if (i >= fChatView->CountItems() - 3)
+							fChatView->ScrollToBottom();
 						break;
 					}
 				}

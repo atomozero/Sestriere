@@ -367,7 +367,7 @@ ChatView::AddMessage(const ChatMessage& message, const char* senderName)
 	if (!item->IsGifMessage() && !item->IsImageMessage())
 		EmojiRenderer::RequestEmoji(message.text, this);
 
-	_ScrollToBottom();
+	ScrollToBottom();
 }
 
 
@@ -508,7 +508,7 @@ ChatView::SetCurrentContact(ContactInfo* contact)
 					EmojiRenderer::RequestEmoji(msg->text, this);
 			}
 		}
-		_ScrollToBottom();
+		ScrollToBottom();
 
 		// Start GIF animation if any loaded GIFs have multiple frames
 		for (int32 i = 0; i < CountItems(); i++) {
@@ -543,7 +543,7 @@ ChatView::StartGifAnimation()
 
 
 void
-ChatView::_ScrollToBottom()
+ChatView::ScrollToBottom()
 {
 	if (CountItems() == 0)
 		return;

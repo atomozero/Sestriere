@@ -46,8 +46,9 @@ public:
 			// GIF animation
 			void			StartGifAnimation();
 
+			void			ScrollToBottom();
+
 private:
-			void			_ScrollToBottom();
 
 			ContactInfo*	fCurrentContact;
 			BString			fCurrentContactName;

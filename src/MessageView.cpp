@@ -73,7 +73,24 @@ static const float kBubblePadding = 8.0f;
 static const float kBubbleRadius = 4.0f;       // Haiku uses smaller radii
 static const float kBubbleMaxWidthRatio = 0.75f;
 static const float kBubbleMargin = 6.0f;
+static const float kMaxMediaWidth = 250.0f;    // max width for images and GIFs
+static const float kMaxMediaHeight = 300.0f;   // max height for images and GIFs
 static const float kBorderWidth = 1.0f;
+
+
+// Scale dimensions to fit within max bounds, preserving aspect ratio
+static void
+_FitMediaSize(float& w, float& h)
+{
+	if (w > kMaxMediaWidth) {
+		h = h * kMaxMediaWidth / w;
+		w = kMaxMediaWidth;
+	}
+	if (h > kMaxMediaHeight) {
+		w = w * kMaxMediaHeight / h;
+		h = kMaxMediaHeight;
+	}
+}
 static const float kSarBorderWidth = 3.0f;
 
 
@@ -563,15 +580,12 @@ MessageView::Update(BView* owner, const BFont* font)
 		float headerHeight = (!fOutgoing && fSenderName.Length() > 0)
 			? lineHeight : 0;
 		float metaHeight = lineHeight * 0.8f;
-		float imgH = 100.0f;
+		float imgW = 128.0f, imgH = 100.0f;
 		if (fGifFrames != NULL && fGifFrames[0] != NULL) {
-			float imgW = fGifFrames[0]->Bounds().Width() + 1;
+			imgW = fGifFrames[0]->Bounds().Width() + 1;
 			imgH = fGifFrames[0]->Bounds().Height() + 1;
-			// Scale to max 200px width
-			if (imgW > 200.0f) {
-				imgH = imgH * 200.0f / imgW;
-			}
 		}
+		_FitMediaSize(imgW, imgH);
 		float height = headerHeight + imgH + metaHeight
 			+ kBubblePadding * 2 + kBubbleMargin;
 		SetHeight(height);
@@ -603,9 +617,12 @@ MessageView::Update(BView* owner, const BFont* font)
 		float headerHeight = (!fOutgoing && fSenderName.Length() > 0)
 			? lineHeight : 0;
 		float metaHeight = lineHeight * 0.8f;
-		float imgH = 100.0f;  // placeholder height
-		if (fImageBitmap != NULL)
+		float imgW = 128.0f, imgH = 100.0f;
+		if (fImageBitmap != NULL) {
+			imgW = fImageBitmap->Bounds().Width() + 1;
 			imgH = fImageBitmap->Bounds().Height() + 1;
+		}
+		_FitMediaSize(imgW, imgH);
 		float height = headerHeight + imgH + metaHeight
 			+ kBubblePadding * 2 + kBubbleMargin;
 		SetHeight(height);
@@ -744,7 +761,7 @@ MessageView::_DrawImageBubble(BView* owner, BRect frame)
 	float metaWidth = metaFont.StringWidth(displayMeta.String());
 	float metaHeight = lineHeight * 0.8f;
 
-	// Image area dimensions
+	// Image area dimensions (capped to max media size)
 	float imgW, imgH;
 	if (fImageBitmap != NULL) {
 		imgW = fImageBitmap->Bounds().Width() + 1;
@@ -753,6 +770,7 @@ MessageView::_DrawImageBubble(BView* owner, BRect frame)
 		imgW = 128;
 		imgH = 100;
 	}
+	_FitMediaSize(imgW, imgH);
 
 	float headerHeight = (!fOutgoing && fSenderName.Length() > 0)
 		? lineHeight : 0;
@@ -1249,20 +1267,15 @@ MessageView::_DrawGifBubble(BView* owner, BRect frame)
 	float metaWidth = metaFont.StringWidth(displayMeta.String());
 	float metaHeight = lineHeight * 0.8f;
 
-	// Image dimensions
+	// Image dimensions (capped to max media size)
 	float imgW = 128, imgH = 100;
-	float displayW = imgW, displayH = imgH;
 
 	if (fGifFrames != NULL && fGifFrames[0] != NULL) {
 		imgW = fGifFrames[0]->Bounds().Width() + 1;
 		imgH = fGifFrames[0]->Bounds().Height() + 1;
-		displayW = imgW;
-		displayH = imgH;
-		if (displayW > 200.0f) {
-			displayH = displayH * 200.0f / displayW;
-			displayW = 200.0f;
-		}
 	}
+	_FitMediaSize(imgW, imgH);
+	float displayW = imgW, displayH = imgH;
 
 	float headerHeight = (!fOutgoing && fSenderName.Length() > 0)
 		? lineHeight : 0;
