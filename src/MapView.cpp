@@ -24,11 +24,31 @@
 #include "TileCache.h"
 
 
-static const float kMinZoom = 5.0f;
-static const float kMaxZoom = 50000.0f;
-static const float kDefaultZoom = 5000.0f;
-static const float kMinFitSpan = 0.01f;		// ~1.1 km minimum visible area
-static const float kZoomStep = 1.5f;
+// Zoom levels match Google Maps / OSM standard: fZoom = 256 * 2^z / 360
+// Each step doubles/halves the scale (one tile zoom level)
+static const int kMinZoomLevel = 2;		// world view
+static const int kMaxZoomLevel = 18;	// street level
+static const int kDefaultZoomLevel = 13;
+static const float kMinFitSpan = 0.01f;	// ~1.1 km minimum visible area
+
+
+static float
+_ZoomForLevel(int level)
+{
+	// pixels per degree of longitude at this zoom level
+	return 256.0f * powf(2.0f, level) / 360.0f;
+}
+
+
+static int
+_LevelForZoom(float zoom)
+{
+	// inverse: z = log2(zoom * 360 / 256)
+	int z = (int)roundf(log2f(zoom * 360.0f / 256.0f));
+	if (z < kMinZoomLevel) z = kMinZoomLevel;
+	if (z > kMaxZoomLevel) z = kMaxZoomLevel;
+	return z;
+}
 static const float kNodeRadius = 8.0f;
 static const float kSelfRadius = 10.0f;
 
@@ -54,7 +74,7 @@ MapView::MapView(const char* name)
 	fHasSelfPosition(false),
 	fCenterLat(45.0f),
 	fCenterLon(7.0f),
-	fZoom(kDefaultZoom),
+	fZoom(_ZoomForLevel(kDefaultZoomLevel)),
 	fDragging(false),
 	fDragStartLat(0),
 	fDragStartLon(0),
@@ -132,13 +152,18 @@ MapView::Draw(BRect /*updateRect*/)
 	_DrawScaleBar();
 	_DrawCompass();
 
-	// 9. Tile cache stats (bottom-right, small)
-	if (fShowTiles && fTileCache != NULL) {
-		float mb = (float)fTileCache->DiskCacheSize() / (1024 * 1024);
-		int32 count = fTileCache->DiskTileCount();
+	// 9. Tile cache stats + zoom level (bottom-right, small)
+	{
+		int zLevel = _LevelForZoom(fZoom);
 		char info[64];
-		snprintf(info, sizeof(info), "%ld tiles  %.1f/50 MB",
-			(long)count, mb);
+		if (fShowTiles && fTileCache != NULL) {
+			float mb = (float)fTileCache->DiskCacheSize() / (1024 * 1024);
+			int32 count = fTileCache->DiskTileCount();
+			snprintf(info, sizeof(info), "Z%d  %ld tiles  %.1f/50 MB",
+				zLevel, (long)count, mb);
+		} else {
+			snprintf(info, sizeof(info), "Z%d", zLevel);
+		}
 
 		BFont small;
 		GetFont(&small);
@@ -417,18 +442,22 @@ MapView::_DrawSarPins()
 void
 MapView::ZoomIn()
 {
-	fZoom *= kZoomStep;
-	if (fZoom > kMaxZoom) fZoom = kMaxZoom;
-	Invalidate();
+	int level = _LevelForZoom(fZoom);
+	if (level < kMaxZoomLevel) {
+		fZoom = _ZoomForLevel(level + 1);
+		Invalidate();
+	}
 }
 
 
 void
 MapView::ZoomOut()
 {
-	fZoom /= kZoomStep;
-	if (fZoom < kMinZoom) fZoom = kMinZoom;
-	Invalidate();
+	int level = _LevelForZoom(fZoom);
+	if (level > kMinZoomLevel) {
+		fZoom = _ZoomForLevel(level - 1);
+		Invalidate();
+	}
 }
 
 
@@ -471,9 +500,9 @@ MapView::ZoomToFit()
 	float zoomLon = (bounds.Width() * 0.7f) / lonSpan;
 	float zoomLat = (bounds.Height() * 0.7f) / mercSpan;
 
-	fZoom = std::min(zoomLat, zoomLon);
-	if (fZoom < kMinZoom) fZoom = kMinZoom;
-	if (fZoom > kMaxZoom) fZoom = kMaxZoom;
+	float rawZoom = std::min(zoomLat, zoomLon);
+	int level = _LevelForZoom(rawZoom);
+	fZoom = _ZoomForLevel(level);
 
 	Invalidate();
 }
@@ -553,13 +582,9 @@ MapView::_ScreenToLatLon(BPoint screen, float& lat, float& lon) const
 int
 MapView::_ZoomToTileZoom() const
 {
-	// Convert fZoom (pixels/degree lon) to OSM tile zoom level
-	// At OSM zoom z, each tile covers 360/2^z degrees, and is 256px wide
-	// So pixels/degree = 256 * 2^z / 360
-	// z = log2(fZoom * 360 / 256)
-	float z = log2(fZoom * 360.0f / 256.0f);
-	int tileZ = (int)round(z);
-	if (tileZ < 2) tileZ = 2;
+	// fZoom is snapped to discrete levels, so this is a direct conversion.
+	// Clamp to OSM tile range (tiles available up to z=17).
+	int tileZ = _LevelForZoom(fZoom);
 	if (tileZ > 17) tileZ = 17;
 	return tileZ;
 }
