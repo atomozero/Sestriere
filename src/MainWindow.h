@@ -440,6 +440,8 @@ private:
 			// Image sharing
 			ImageSessionManager*	fImageSessions;
 			BFilePanel*		fImageOpenPanel;
+			BFilePanel*		fImageSavePanel;
+			const BBitmap*	fSaveBitmap;  // Bitmap to save (non-owning)
 			BButton*		fAttachButton;
 			BButton*		fGifButton;
 			BMessageRunner*	fImageFragmentTimer;

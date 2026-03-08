@@ -9,6 +9,8 @@
 
 #include <Alert.h>
 #include <Application.h>
+#include <Bitmap.h>
+#include <BitmapStream.h>
 #include <Button.h>
 #include <CardView.h>
 #include <CheckBox.h>
@@ -38,6 +40,7 @@
 #include <StringItem.h>
 #include <StringView.h>
 #include <TextControl.h>
+#include <TranslatorRoster.h>
 
 #include <cstdio>
 #include <cstring>
@@ -93,7 +96,7 @@ public:
 		SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 		SetToolTip("Record voice message");
 		float em = be_plain_font->Size();
-		SetExplicitSize(BSize(em * 2.0, em * 2.0));
+		SetExplicitSize(BSize(em * 3.0, em * 3.0));
 	}
 
 	~MicIconView() { delete fClickMsg; }
@@ -106,7 +109,7 @@ public:
 			: "\xF0\x9F\x8E\x99"; // 🎙 microphone
 
 		BFont font(be_plain_font);
-		font.SetSize(be_plain_font->Size() * 1.3);
+		font.SetSize(be_plain_font->Size() * 2.0);
 		SetFont(&font);
 
 		if (fEnabled) {
@@ -386,6 +389,8 @@ MainWindow::MainWindow()
 	fVoicePlayPcmSize(0),
 	fImageSessions(NULL),
 	fImageOpenPanel(NULL),
+	fImageSavePanel(NULL),
+	fSaveBitmap(NULL),
 	fAttachButton(NULL),
 	fGifButton(NULL),
 	fImageFragmentTimer(NULL),
@@ -528,6 +533,7 @@ MainWindow::~MainWindow()
 	// Image sharing cleanup
 	delete fImageSessions;
 	delete fImageOpenPanel;
+	delete fImageSavePanel;
 	delete fImageFragmentTimer;
 	delete fImageExpireTimer;
 
@@ -3089,6 +3095,55 @@ MainWindow::MessageReceived(BMessage* message)
 			if (fImageSessions != NULL)
 				fImageSessions->PurgeExpired();
 			break;
+
+		case MSG_IMAGE_SAVE_REQ:
+		{
+			const BBitmap* bitmap = NULL;
+			if (message->FindPointer("bitmap", (void**)&bitmap) != B_OK
+				|| bitmap == NULL)
+				break;
+			fSaveBitmap = bitmap;
+			if (fImageSavePanel == NULL) {
+				BMessage saveMsg(MSG_IMAGE_SAVE_DONE);
+				fImageSavePanel = new BFilePanel(B_SAVE_PANEL,
+					new BMessenger(this), NULL, 0, false, &saveMsg);
+			}
+			fImageSavePanel->SetSaveText("image.png");
+			fImageSavePanel->Show();
+			break;
+		}
+
+		case MSG_IMAGE_SAVE_DONE:
+		{
+			if (fSaveBitmap == NULL) break;
+			entry_ref dirRef;
+			BString name;
+			if (message->FindRef("directory", &dirRef) != B_OK
+				|| message->FindString("name", &name) != B_OK)
+				break;
+			BPath path(&dirRef);
+			path.Append(name.String());
+
+			// Copy bitmap (BBitmapStream takes ownership)
+			BBitmap* copy = new BBitmap(fSaveBitmap);
+			fSaveBitmap = NULL;
+			BBitmapStream stream(copy);
+			BFile file(path.Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+			if (file.InitCheck() == B_OK) {
+				BTranslatorRoster* roster = BTranslatorRoster::Default();
+				if (roster->Translate(&stream, NULL, NULL, &file,
+					B_PNG_FORMAT) == B_OK) {
+					BNodeInfo info(&file);
+					info.SetType("image/png");
+				} else {
+					BAlert* alert = new BAlert("Error",
+						"Failed to save image.", "OK",
+						NULL, NULL, B_WIDTH_AS_USUAL, B_STOP_ALERT);
+					alert->Go();
+				}
+			}
+			break;
+		}
 
 		// --- Quote reply (double-click on message) ---
 		case MSG_QUOTE_REPLY:
