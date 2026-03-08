@@ -26,6 +26,7 @@ class BButton;
 class BCheckBox;
 class ProtocolHandler;
 class BListView;
+class BMenu;
 class BMenuBar;
 class BMenuItem;
 class BMessageRunner;
@@ -39,6 +40,7 @@ class ChatView;
 class ContactInfoPanel;
 class GifPickerWindow;
 class ContactItem;
+class MicIconView;
 class MqttClient;
 class MqttLogWindow;
 class ContactExportWindow;
@@ -90,6 +92,7 @@ private:
 			void			_BuildUI();
 			void			_BuildMenuBar();
 			void			_RefreshPorts();
+			void			_RefreshPortMenu();
 			void			_Connect();
 			void			_Disconnect();
 			void			_UpdateConnectionUI();
@@ -249,7 +252,7 @@ private:
 			// Menu bar and status bar
 			BMenuBar*		fMenuBar;
 			TopBarView*		fTopBar;
-			BMenuItem*		fConnectItem;
+			BMenu*			fConnectMenu;
 			BMenuItem*		fDisconnectItem;
 
 			// UI elements - Sidebar
@@ -423,7 +426,7 @@ private:
 			// Voice messages
 			VoiceSessionManager*	fVoiceSessions;
 			AudioEngine*	fAudioEngine;
-			BButton*		fVoiceButton;
+			MicIconView*	fVoiceButton;
 			BMessageRunner*	fVoiceFragmentTimer;
 			uint32			fCurrentVoiceSendSession;
 			uint8			fCurrentVoiceSendIndex;
@@ -443,6 +446,8 @@ private:
 			BMessageRunner*	fImageExpireTimer;
 			uint32			fCurrentSendSession;
 			uint8			fCurrentSendIndex;
+			bool			fImageEnvelopeWaiting;  // Wait for delivery before fragments
+			bool			fVoiceEnvelopeWaiting;
 };
 
 

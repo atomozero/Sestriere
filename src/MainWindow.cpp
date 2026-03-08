@@ -83,6 +83,81 @@
 #include "VoiceSession.h"
 
 
+// Clickable microphone icon (no button chrome)
+class MicIconView : public BView {
+public:
+	MicIconView(BMessage* clickMsg)
+		: BView("mic_icon", B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE),
+		  fClickMsg(clickMsg), fEnabled(false), fRecording(false)
+	{
+		SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+		SetToolTip("Record voice message");
+		float em = be_plain_font->Size();
+		SetExplicitSize(BSize(em * 2.0, em * 2.0));
+	}
+
+	~MicIconView() { delete fClickMsg; }
+
+	void Draw(BRect updateRect)
+	{
+		BRect r = Bounds();
+		const char* icon = fRecording
+			? "\xE2\x97\xBC"     // ◼ stop
+			: "\xF0\x9F\x8E\x99"; // 🎙 microphone
+
+		BFont font(be_plain_font);
+		font.SetSize(be_plain_font->Size() * 1.3);
+		SetFont(&font);
+
+		if (fEnabled) {
+			if (fRecording)
+				SetHighColor(200, 40, 40);  // red when recording
+			else
+				SetHighUIColor(B_PANEL_TEXT_COLOR);
+		} else {
+			SetHighColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR),
+				B_DARKEN_1_TINT));
+		}
+
+		font_height fh;
+		font.GetHeight(&fh);
+		float tw = font.StringWidth(icon);
+		float x = (r.Width() - tw) / 2.0;
+		float y = (r.Height() + fh.ascent - fh.descent) / 2.0;
+		DrawString(icon, BPoint(x, y));
+	}
+
+	void MouseDown(BPoint where)
+	{
+		if (fEnabled && fClickMsg != NULL && Window() != NULL)
+			Window()->PostMessage(fClickMsg);
+	}
+
+	void SetEnabled(bool enabled)
+	{
+		if (fEnabled != enabled) {
+			fEnabled = enabled;
+			Invalidate();
+		}
+	}
+
+	void SetRecording(bool recording)
+	{
+		if (fRecording != recording) {
+			fRecording = recording;
+			Invalidate();
+		}
+	}
+
+	bool IsEnabled() const { return fEnabled; }
+
+private:
+	BMessage*	fClickMsg;
+	bool		fEnabled;
+	bool		fRecording;
+};
+
+
 // MainWindow-private message codes
 enum {
 	MSG_SHOW_TRACE_PATH = 'shtp',
@@ -212,7 +287,7 @@ MainWindow::MainWindow()
 	fSerialHandler(NULL),
 	fMenuBar(NULL),
 	fTopBar(NULL),
-	fConnectItem(NULL),
+	fConnectMenu(NULL),
 	fDisconnectItem(NULL),
 	fSearchField(NULL),
 	fShowChats(NULL),
@@ -316,7 +391,9 @@ MainWindow::MainWindow()
 	fImageFragmentTimer(NULL),
 	fImageExpireTimer(NULL),
 	fCurrentSendSession(0),
-	fCurrentSendIndex(0)
+	fCurrentSendIndex(0),
+	fImageEnvelopeWaiting(false),
+	fVoiceEnvelopeWaiting(false)
 {
 	// Initialize device info
 	memset(fDeviceName, 0, sizeof(fDeviceName));
@@ -463,9 +540,8 @@ MainWindow::_BuildMenuBar()
 {
 	// === Connection menu ===
 	BMenu* connectionMenu = new BMenu("Connection");
-	fConnectItem = new BMenuItem("Connect" B_UTF8_ELLIPSIS,
-		new BMessage(MSG_SERIAL_CONNECT), 'O');
-	connectionMenu->AddItem(fConnectItem);
+	fConnectMenu = new BMenu("Connect to");
+	connectionMenu->AddItem(fConnectMenu);
 	fDisconnectItem = new BMenuItem("Disconnect",
 		new BMessage(MSG_SERIAL_DISCONNECT), 'D');
 	fDisconnectItem->SetEnabled(false);
@@ -475,6 +551,7 @@ MainWindow::_BuildMenuBar()
 		new BMessage(B_QUIT_REQUESTED), 'Q'));
 	connectionMenu->SetTargetForItems(this);
 	fMenuBar->AddItem(connectionMenu);
+	_RefreshPortMenu();
 
 	// === Device menu ===
 	BMenu* deviceMenu = new BMenu("Device");
@@ -670,24 +747,31 @@ MainWindow::_BuildUI()
 	fAttachButton = new BButton("attach", "Img",
 		new BMessage(MSG_SELECT_IMAGE));
 	fAttachButton->SetEnabled(false);
+	fAttachButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 20));
 
 	// GIF button
 	fGifButton = new BButton("gif", "GIF",
 		new BMessage(MSG_SELECT_GIF));
 	fGifButton->SetEnabled(false);
+	fGifButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 20));
 
-	// Voice record button
-	fVoiceButton = new BButton("voice", "Mic",
-		new BMessage(MSG_VOICE_RECORD));
-	fVoiceButton->SetEnabled(false);
+	// Img/GIF stacked vertically
+	BView* mediaButtons = new BView("media_btns", 0);
+	mediaButtons->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	BLayoutBuilder::Group<>(mediaButtons, B_VERTICAL, 0)
+		.Add(fAttachButton)
+		.Add(fGifButton)
+	.End();
 
-	// Input bar: [attach] [gif] [mic] [input] [counter] [send]
+	// Voice record — clickable microphone icon (no button chrome)
+	fVoiceButton = new MicIconView(new BMessage(MSG_VOICE_RECORD));
+
+	// Input bar: [img/gif] [mic] [input] [counter] [send]
 	BView* inputBar = new BView("input_bar", 0);
 	inputBar->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	BLayoutBuilder::Group<>(inputBar, B_HORIZONTAL, B_USE_SMALL_SPACING)
 		.SetInsets(B_USE_SMALL_SPACING)
-		.Add(fAttachButton)
-		.Add(fGifButton)
+		.Add(mediaButtons)
 		.Add(fVoiceButton)
 		.Add(inputScroll, 1.0)
 		.Add(fCharCounter)
@@ -836,9 +920,45 @@ MainWindow::_RefreshPorts()
 
 
 void
+MainWindow::_RefreshPortMenu()
+{
+	// Remove old items
+	while (fConnectMenu->CountItems() > 0)
+		delete fConnectMenu->RemoveItem((int32)0);
+
+	BMessage ports;
+	if (SerialHandler::ListPorts(&ports) != B_OK)
+		return;
+
+	const char* port;
+	for (int32 i = 0;
+		ports.FindString(kFieldPort, i, &port) == B_OK; i++) {
+		BMessage* msg = new BMessage(MSG_PORT_SELECTED);
+		msg->AddString(kFieldPort, port);
+		BMenuItem* item = new BMenuItem(port, msg);
+		fConnectMenu->AddItem(item);
+		item->SetTarget(this);
+	}
+
+	if (fConnectMenu->CountItems() == 0) {
+		BMenuItem* none = new BMenuItem("(no ports found)", NULL);
+		none->SetEnabled(false);
+		fConnectMenu->AddItem(none);
+	}
+
+	// Add separator + refresh item
+	fConnectMenu->AddSeparatorItem();
+	BMessage* refreshMsg = new BMessage(MSG_SERIAL_CONNECT);
+	BMenuItem* refreshItem = new BMenuItem("Refresh ports", refreshMsg);
+	refreshItem->SetTarget(this);
+	fConnectMenu->AddItem(refreshItem);
+}
+
+
+void
 MainWindow::_UpdateConnectionUI()
 {
-	fConnectItem->SetEnabled(!fConnected);
+	fConnectMenu->SetEnabled(!fConnected);
 	fDisconnectItem->SetEnabled(fConnected);
 
 	if (fConnected) {
@@ -872,13 +992,18 @@ MainWindow::MessageReceived(BMessage* message)
 
 		case MSG_SERIAL_CONNECT:
 		{
-			// Auto-select first port if none selected
-			if (fSelectedPort.IsEmpty())
-				_RefreshPorts();
-			if (!fSelectedPort.IsEmpty())
+			// Refresh port menu (used by "Refresh ports" menu item)
+			_RefreshPortMenu();
+			break;
+		}
+
+		case MSG_PORT_SELECTED:
+		{
+			const char* port;
+			if (message->FindString(kFieldPort, &port) == B_OK) {
+				fSelectedPort = port;
 				_Connect();
-			else
-				_LogMessage("ERROR", "No serial port available");
+			}
 			break;
 		}
 
@@ -3920,6 +4045,31 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 				if (fPendingMessages.CountItems() == 0)
 					_StopDeliveryTimer();
 			}
+
+			// Start image fragment transmission if envelope was just confirmed
+			if (fImageEnvelopeWaiting) {
+				fImageEnvelopeWaiting = false;
+				delete fImageFragmentTimer;
+				BMessage fragMsg(MSG_IMAGE_SEND_NEXT);
+				// 4s interval to match LoRa airtime
+				fImageFragmentTimer = new BMessageRunner(this, &fragMsg,
+					4000000, -1);
+				_LogMessage("IMG", BString().SetToFormat(
+					"Envelope delivered — starting fragment transmission "
+					"for session %08x", fCurrentSendSession));
+			}
+			// Same for voice
+			if (fVoiceEnvelopeWaiting) {
+				fVoiceEnvelopeWaiting = false;
+				delete fVoiceFragmentTimer;
+				BMessage fragMsg(MSG_VOICE_SEND_NEXT);
+				fVoiceFragmentTimer = new BMessageRunner(this, &fragMsg,
+					4000000, -1);
+				_LogMessage("VOICE", BString().SetToFormat(
+					"Envelope delivered — starting voice fragment "
+					"transmission for session %08x",
+					fCurrentVoiceSendSession));
+			}
 			break;
 		}
 		case PUSH_PATH_UPDATED:
@@ -4683,6 +4833,28 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 	if (textLen > 255) textLen = 255;
 	if (textLen > 0) memcpy(text, data + textOffset, textLen);
 	text[textLen] = '\0';
+
+	// Skip self-echo: radio sometimes echoes our own sent messages back
+	// as incoming DMs. Ignore to prevent duplicate display and
+	// self-fetching of IE2/VE2 media envelopes.
+	if (fPublicKey[0] != '\0') {
+		uint8 selfPrefix[kPubKeyPrefixSize];
+		bool valid = true;
+		for (size_t i = 0; i < kPubKeyPrefixSize; i++) {
+			unsigned int byte;
+			if (sscanf(fPublicKey + i * 2, "%2x", &byte) == 1)
+				selfPrefix[i] = (uint8)byte;
+			else {
+				valid = false;
+				break;
+			}
+		}
+		if (valid && memcmp(senderPrefix, selfPrefix, kPubKeyPrefixSize) == 0) {
+			_LogMessage("INFO", BString().SetToFormat(
+				"Ignoring self-echo: %s", text));
+			return;
+		}
+	}
 
 	ContactInfo* sender = _FindContactByPrefix(senderPrefix, 6);
 	BString senderName;
@@ -7737,6 +7909,11 @@ MainWindow::_HandleImageSelected(BMessage* message)
 		return;
 	}
 
+	// Store recipient pubkey for routed fragment delivery
+	if (!fSendingToChannel && fChatView->CurrentContact() != NULL)
+		memcpy(session->recipientKey,
+			fChatView->CurrentContact()->publicKey, 32);
+
 	// Format and send IE2 envelope as a text message
 	BString envelope = ImageSessionManager::FormatEnvelope(sid,
 		session->format, session->totalFragments, w, h,
@@ -7778,16 +7955,21 @@ MainWindow::_HandleImageSelected(BMessage* message)
 			w, h, session->jpegData, session->jpegSize);
 	}
 
-	// Start fragment transmission timer
+	// Wait for delivery confirmation before sending fragments.
+	// The receiver needs to process the IE2 envelope text and create
+	// a session BEFORE fragments arrive, otherwise they get dropped.
 	fCurrentSendSession = sid;
 	fCurrentSendIndex = 0;
+	fImageEnvelopeWaiting = true;
 
+	// Fallback: start fragments after 10s even if PUSH_SEND_CONFIRMED
+	// never arrives (e.g. delivery failed, radio unresponsive)
 	delete fImageFragmentTimer;
 	BMessage timerMsg(MSG_IMAGE_SEND_NEXT);
-	fImageFragmentTimer = new BMessageRunner(this, &timerMsg, 200000, -1);
+	fImageFragmentTimer = new BMessageRunner(this, &timerMsg, 10000000, 1);
 
 	_LogMessage("IMG", BString().SetToFormat(
-		"Sending %d fragments for session %08x",
+		"Waiting for envelope delivery before sending %d fragments (session %08x)",
 		(int)session->totalFragments, sid));
 }
 
@@ -7816,11 +7998,26 @@ MainWindow::_SendNextImageFragment()
 		session->sessionId, session->format, fCurrentSendIndex,
 		session->totalFragments, frag.data, frag.length);
 
-	// Send via CMD_SEND_RAW_DATA
+	// Send via CMD_SEND_RAW_DATA (broadcast).
+	// CMD_SEND_BINARY_REQ (routed) does NOT deliver PUSH_BINARY_RESPONSE
+	// on current firmware — data arrives as encrypted PUSH_RAW_RADIO_PACKET
+	// (0x88) which the receiver can't decrypt. SendRawData delivers as
+	// PUSH_RAW_DATA (0x84) which _HandlePushRawData() already handles.
 	if (fProtocol != NULL)
 		fProtocol->SendRawData(packet, pktLen);
 
 	fCurrentSendIndex++;
+
+	// If called from fallback timer (one-shot), switch to repeating
+	if (fImageEnvelopeWaiting) {
+		fImageEnvelopeWaiting = false;
+		_LogMessage("IMG", "Fallback: starting fragments without delivery "
+			"confirmation");
+		delete fImageFragmentTimer;
+		BMessage fragMsg(MSG_IMAGE_SEND_NEXT);
+		fImageFragmentTimer = new BMessageRunner(this, &fragMsg,
+			4000000, -1);
+	}
 }
 
 
@@ -7977,16 +8174,15 @@ MainWindow::_StartImageFetch(uint32 sessionId)
 	size_t pktLen = ImageSessionManager::BuildFetchRequest(packet,
 		sessionId, missing, count);
 
-	// Look up sender's full 32-byte pubkey from contact list
-	// (session->senderKey is only 6 bytes — passing it to SendBinaryRequest
-	// would cause a buffer overread)
-	ContactInfo* sender = _FindContactByPrefix(session->senderKey,
-		kPubKeyPrefixSize);
-	if (sender == NULL || fProtocol == NULL) {
-		_LogMessage("IMG", "Cannot fetch: sender not in contact list");
+	// Send fetch request via CMD_SEND_RAW_DATA (broadcast).
+	// CMD_SEND_BINARY_REQ does NOT deliver decrypted data on current
+	// firmware — arrives as PUSH_RAW_RADIO_PACKET (0x88) which the
+	// sender can't process. SendRawData delivers as PUSH_RAW_DATA (0x84).
+	if (fProtocol == NULL) {
+		_LogMessage("IMG", "Cannot fetch: not connected");
 		return;
 	}
-	fProtocol->SendBinaryRequest(sender->publicKey, packet, pktLen);
+	fProtocol->SendRawData(packet, pktLen);
 
 	session->state = IMAGE_LOADING;
 	_UpdateImageMessageView(sessionId);
@@ -8040,7 +8236,7 @@ MainWindow::_StartVoiceRecord()
 	}
 
 	fRecordingVoice = true;
-	fVoiceButton->SetLabel("Stop");
+	fVoiceButton->SetRecording(true);
 
 	// Safety timer: auto-stop after 30 seconds (max recording length)
 	delete fVoiceRecordTimer;
@@ -8066,7 +8262,7 @@ MainWindow::_StopVoiceRecord()
 	size_t sampleCount = 0;
 	fAudioEngine->StopRecording(&pcm, &sampleCount);
 	fRecordingVoice = false;
-	fVoiceButton->SetLabel("Mic");
+	fVoiceButton->SetRecording(false);
 
 	if (pcm == NULL || sampleCount == 0) {
 		_LogMessage("VOICE", "No audio recorded");
@@ -8114,6 +8310,11 @@ MainWindow::_StopVoiceRecord()
 		return;
 	}
 
+	// Store recipient pubkey for routed fragment delivery
+	if (!fSendingToChannel && fChatView->CurrentContact() != NULL)
+		memcpy(session->recipientKey,
+			fChatView->CurrentContact()->publicKey, 32);
+
 	// Format and send VE2 envelope as a text message
 	BString envelope = VoiceSessionManager::FormatEnvelope(sid,
 		VOICE_MODE_1300, session->totalFragments, durationSec,
@@ -8136,17 +8337,19 @@ MainWindow::_StopVoiceRecord()
 			session->codec2Data, session->codec2Size);
 	}
 
-	// Start fragment transmission timer
+	// Wait for delivery confirmation before sending fragments
 	fCurrentVoiceSendSession = sid;
 	fCurrentVoiceSendIndex = 0;
+	fVoiceEnvelopeWaiting = true;
 
+	// Fallback: start fragments after 10s even without confirmation
 	delete fVoiceFragmentTimer;
 	BMessage timerMsg(MSG_VOICE_SEND_NEXT);
-	fVoiceFragmentTimer = new BMessageRunner(this, &timerMsg, 200000, -1);
+	fVoiceFragmentTimer = new BMessageRunner(this, &timerMsg, 10000000, 1);
 
 	_LogMessage("VOICE", BString().SetToFormat(
-		"Sending %d fragments for voice session %08x",
-		(int)session->totalFragments, sid));
+		"Waiting for envelope delivery before sending %d voice fragments "
+		"(session %08x)", (int)session->totalFragments, sid));
 }
 
 
@@ -8176,11 +8379,22 @@ MainWindow::_SendNextVoiceFragment()
 		session->sessionId, session->mode, fCurrentVoiceSendIndex,
 		session->totalFragments, frag.data, frag.length);
 
-	// Send via CMD_SEND_RAW_DATA
+	// Send via CMD_SEND_RAW_DATA (broadcast) — see _SendNextImageFragment
 	if (fProtocol != NULL)
 		fProtocol->SendRawData(packet, pktLen);
 
 	fCurrentVoiceSendIndex++;
+
+	// If called from fallback timer (one-shot), switch to repeating
+	if (fVoiceEnvelopeWaiting) {
+		fVoiceEnvelopeWaiting = false;
+		_LogMessage("VOICE", "Fallback: starting fragments without delivery "
+			"confirmation");
+		delete fVoiceFragmentTimer;
+		BMessage fragMsg(MSG_VOICE_SEND_NEXT);
+		fVoiceFragmentTimer = new BMessageRunner(this, &fragMsg,
+			4000000, -1);
+	}
 }
 
 
@@ -8309,14 +8523,12 @@ MainWindow::_StartVoiceFetch(uint32 sessionId)
 		sessionId, 1, session->senderKey, session->timestamp,
 		missing, count);
 
-	// Look up sender's full 32-byte pubkey from contact list
-	ContactInfo* sender = _FindContactByPrefix(session->senderKey,
-		kPubKeyPrefixSize);
-	if (sender == NULL || fProtocol == NULL) {
-		_LogMessage("VOICE", "Cannot fetch: sender not in contact list");
+	// Send via CMD_SEND_RAW_DATA (broadcast) — see _StartImageFetch
+	if (fProtocol == NULL) {
+		_LogMessage("VOICE", "Cannot fetch: not connected");
 		return;
 	}
-	fProtocol->SendBinaryRequest(sender->publicKey, packet, pktLen);
+	fProtocol->SendRawData(packet, pktLen);
 
 	session->state = VOICE_LOADING;
 	_UpdateVoiceMessageView(sessionId);
