@@ -332,6 +332,20 @@ SerialHandler::ListPorts(BMessage* outPorts)
 		}
 	}
 
+	// Scan /dev/tt/ for PTY devices (used by fake_radio_gui simulator)
+	BDirectory ptyDir("/dev/tt");
+	if (ptyDir.InitCheck() == B_OK) {
+		while (ptyDir.GetNextEntry(&entry) == B_OK) {
+			BPath path;
+			if (entry.GetPath(&path) == B_OK) {
+				const char* name = path.Leaf();
+				// Only include p* PTYs (posix_openpt slave side)
+				if (name[0] == 'p')
+					outPorts->AddString(kFieldPort, path.Path());
+			}
+		}
+	}
+
 	return B_OK;
 }
 
