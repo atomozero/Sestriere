@@ -553,6 +553,8 @@ MainWindow::_BuildMenuBar()
 	fDisconnectItem->SetEnabled(false);
 	connectionMenu->AddItem(fDisconnectItem);
 	connectionMenu->AddSeparatorItem();
+	connectionMenu->AddItem(new BMenuItem("About Sestriere" B_UTF8_ELLIPSIS,
+		new BMessage(B_ABOUT_REQUESTED)));
 	connectionMenu->AddItem(new BMenuItem("Quit",
 		new BMessage(B_QUIT_REQUESTED), 'Q'));
 	connectionMenu->SetTargetForItems(this);
@@ -993,6 +995,23 @@ MainWindow::MessageReceived(BMessage* message)
 				break;
 			}
 			BWindow::MessageReceived(message);
+			break;
+		}
+
+		case B_ABOUT_REQUESTED:
+		{
+			BString text;
+			text.SetToFormat(
+				"%s %s\n\n"
+				"A native MeshCore LoRa mesh client for Haiku OS.\n\n"
+				"The name recalls the Venetian 'sestieri' — "
+				"interconnected districts like nodes in a mesh network.\n\n"
+				"Copyright 2025-2026 Sestriere Authors\n"
+				"Distributed under the MIT license.",
+				APP_NAME, APP_VERSION);
+			BAlert* alert = new BAlert("About", text.String(), "OK");
+			alert->SetShortcut(0, B_ESCAPE);
+			alert->Go();
 			break;
 		}
 

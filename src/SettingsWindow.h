@@ -41,7 +41,6 @@ private:
 			void			_BuildDeviceTab(BView* parent);
 			void			_BuildRadioTab(BView* parent);
 			void			_BuildMqttTab(BView* parent);
-			void			_BuildAboutTab(BView* parent);
 
 			void			_OnApply();
 			void			_OnPresetSelected(int32 preset);

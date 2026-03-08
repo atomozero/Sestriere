@@ -89,13 +89,6 @@ SettingsWindow::SettingsWindow(BWindow* parent)
 	tabView->AddTab(mqttTab, new BTab());
 	tabView->TabAt(2)->SetLabel("MQTT");
 
-	// About tab
-	BView* aboutTab = new BView("about_tab", 0);
-	aboutTab->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-	_BuildAboutTab(aboutTab);
-	tabView->AddTab(aboutTab, new BTab());
-	tabView->TabAt(3)->SetLabel("About");
-
 	// Buttons
 	fApplyButton = new BButton("apply_button", "Apply",
 		new BMessage(kMsgApplySettings));
@@ -457,43 +450,6 @@ SettingsWindow::_BuildMqttTab(BView* parent)
 
 	// Initial state: disabled
 	_OnMqttEnableChanged();
-}
-
-
-void
-SettingsWindow::_BuildAboutTab(BView* parent)
-{
-	BStringView* nameLabel = new BStringView("app_name", APP_NAME);
-	nameLabel->SetFont(be_bold_font);
-
-	BString versionStr("Version ");
-	versionStr << APP_VERSION;
-	BStringView* versionLabel = new BStringView("version", versionStr.String());
-
-	BStringView* descLabel = new BStringView("description",
-		"A native MeshCore LoRa mesh client for Haiku OS.\n\n"
-		"The name recalls the Venetian 'sestieri' -\n"
-		"interconnected districts like nodes in a mesh network.");
-
-	BStringView* copyrightLabel = new BStringView("copyright",
-		"Copyright 2025-2026 Sestriere Authors");
-
-	BStringView* licenseLabel = new BStringView("license",
-		"Distributed under the MIT license.");
-
-	BLayoutBuilder::Group<>(parent, B_VERTICAL)
-		.SetInsets(B_USE_DEFAULT_SPACING)
-		.AddGroup(B_VERTICAL, 0)
-			.Add(nameLabel)
-			.Add(versionLabel)
-		.End()
-		.AddStrut(B_USE_BIG_SPACING)
-		.Add(descLabel)
-		.AddStrut(B_USE_DEFAULT_SPACING)
-		.Add(copyrightLabel)
-		.Add(licenseLabel)
-		.AddGlue()
-	.End();
 }
 
 
