@@ -687,13 +687,16 @@ ProtocolHandler::SendRawData(const uint8* rawPayload, size_t rawLength)
 	if (!IsConnected())
 		return B_NOT_INITIALIZED;
 
-	if (rawLength > kMaxFramePayload - 1)
+	if (rawLength > kMaxFramePayload - 2)
 		return B_BAD_VALUE;
 
+	// CMD_SEND_RAW_DATA frame: [code][path_len][path...][payload]
+	// path_len=0 for direct/broadcast delivery
 	uint8 payload[kMaxFramePayload];
 	payload[0] = CMD_SEND_RAW_DATA;
-	memcpy(payload + 1, rawPayload, rawLength);
-	return fSerial->SendFrame(payload, 1 + rawLength);
+	payload[1] = 0;  // path_len = 0 (direct)
+	memcpy(payload + 2, rawPayload, rawLength);
+	return fSerial->SendFrame(payload, 2 + rawLength);
 }
 
 
