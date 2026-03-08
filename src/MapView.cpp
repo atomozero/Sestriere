@@ -128,9 +128,32 @@ MapView::Draw(BRect /*updateRect*/)
 	// 7. SAR pins (on top of nodes)
 	_DrawSarPins();
 
-	// 8. Scale bar + compass
+	// 8. Scale bar + compass + cache info
 	_DrawScaleBar();
 	_DrawCompass();
+
+	// 9. Tile cache stats (bottom-right, small)
+	if (fShowTiles && fTileCache != NULL) {
+		float mb = (float)fTileCache->DiskCacheSize() / (1024 * 1024);
+		int32 count = fTileCache->DiskTileCount();
+		char info[64];
+		snprintf(info, sizeof(info), "%ld tiles  %.1f/50 MB",
+			(long)count, mb);
+
+		BFont small;
+		GetFont(&small);
+		small.SetSize(10);
+		SetFont(&small);
+
+		float sw = small.StringWidth(info);
+		float ix = bounds.Width() - sw - 10;
+		float iy = bounds.Height() - 10;
+
+		SetHighColor(0, 0, 0, 140);
+		FillRoundRect(BRect(ix - 4, iy - 11, ix + sw + 4, iy + 3), 3, 3);
+		SetHighColor(200, 200, 200);
+		DrawString(info, BPoint(ix, iy));
+	}
 }
 
 
