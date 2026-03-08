@@ -7,12 +7,18 @@
 
 #include "ChatView.h"
 
+#include <Bitmap.h>
+#include <BitmapStream.h>
 #include <Clipboard.h>
+#include <Directory.h>
 #include <Entry.h>
 #include <File.h>
+#include <FindDirectory.h>
 #include <MenuItem.h>
 #include <NodeInfo.h>
 #include <MessageRunner.h>
+#include <Path.h>
+#include <TranslatorRoster.h>
 #include <PopUpMenu.h>
 #include <ScrollView.h>
 #include <Window.h>
@@ -173,6 +179,69 @@ ChatView::MouseDown(BPoint where)
 	}
 
 	BListView::MouseDown(where);
+}
+
+
+bool
+ChatView::InitiateDrag(BPoint point, int32 index, bool wasSelected)
+{
+	MessageView* item = dynamic_cast<MessageView*>(ItemAt(index));
+	if (item == NULL || !item->IsImageMessage()
+		|| item->ImageState() != IMAGE_COMPLETE
+		|| item->ImageBitmap() == NULL)
+		return false;
+
+	// Write bitmap to a temp PNG file
+	BPath tempPath;
+	find_directory(B_SYSTEM_TEMP_DIRECTORY, &tempPath);
+	tempPath.Append("sestriere_drag.png");
+
+	BBitmap* copy = new BBitmap(item->ImageBitmap());
+	BBitmapStream stream(copy);
+	BFile file(tempPath.Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+	if (file.InitCheck() != B_OK)
+		return false;
+
+	BTranslatorRoster* roster = BTranslatorRoster::Default();
+	if (roster->Translate(&stream, NULL, NULL, &file, B_PNG_FORMAT) != B_OK)
+		return false;
+
+	file.Unset();
+
+	// Set MIME type
+	BNode node(tempPath.Path());
+	BNodeInfo info(&node);
+	info.SetType("image/png");
+
+	// Create drag message with file ref
+	entry_ref ref;
+	BEntry entry(tempPath.Path());
+	entry.GetRef(&ref);
+
+	BMessage dragMsg(B_SIMPLE_DATA);
+	dragMsg.AddRef("refs", &ref);
+
+	// Create a small drag bitmap (32x32 thumbnail)
+	const BBitmap* src = item->ImageBitmap();
+	float srcW = src->Bounds().Width() + 1;
+	float srcH = src->Bounds().Height() + 1;
+	float thumbSize = 48;
+	float scale = std::min(thumbSize / srcW, thumbSize / srcH);
+	float dstW = srcW * scale;
+	float dstH = srcH * scale;
+	BBitmap* thumb = new BBitmap(BRect(0, 0, dstW - 1, dstH - 1),
+		B_RGBA32, true);
+	BView* drawView = new BView(thumb->Bounds(), "draw", 0, 0);
+	thumb->AddChild(drawView);
+	thumb->Lock();
+	drawView->DrawBitmap(src, src->Bounds(), drawView->Bounds());
+	drawView->Sync();
+	thumb->Unlock();
+	thumb->RemoveChild(drawView);
+	delete drawView;
+
+	DragMessage(&dragMsg, thumb, B_OP_ALPHA, BPoint(dstW / 2, dstH / 2));
+	return true;
 }
 
 

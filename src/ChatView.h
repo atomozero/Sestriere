@@ -25,6 +25,8 @@ public:
 	virtual void			AttachedToWindow();
 	virtual void			FrameResized(float newWidth, float newHeight);
 	virtual void			MouseDown(BPoint where);
+	virtual bool			InitiateDrag(BPoint point, int32 index,
+								bool wasSelected);
 	virtual void			MessageReceived(BMessage* message);
 
 			void			AddMessage(const ChatMessage& message,
