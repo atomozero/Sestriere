@@ -466,7 +466,9 @@ SettingsWindow::_BuildAboutTab(BView* parent)
 	BStringView* nameLabel = new BStringView("app_name", APP_NAME);
 	nameLabel->SetFont(be_bold_font);
 
-	BStringView* versionLabel = new BStringView("version", "Version 1.1.0");
+	BString versionStr("Version ");
+	versionStr << APP_VERSION;
+	BStringView* versionLabel = new BStringView("version", versionStr.String());
 
 	BStringView* descLabel = new BStringView("description",
 		"A native MeshCore LoRa mesh client for Haiku OS.\n\n"
@@ -474,7 +476,7 @@ SettingsWindow::_BuildAboutTab(BView* parent)
 		"interconnected districts like nodes in a mesh network.");
 
 	BStringView* copyrightLabel = new BStringView("copyright",
-		"Copyright 2025 Sestriere Authors");
+		"Copyright 2025-2026 Sestriere Authors");
 
 	BStringView* licenseLabel = new BStringView("license",
 		"Distributed under the MIT license.");
