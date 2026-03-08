@@ -11,6 +11,7 @@
 #include <Entry.h>
 #include <File.h>
 #include <MenuItem.h>
+#include <NodeInfo.h>
 #include <MessageRunner.h>
 #include <PopUpMenu.h>
 #include <ScrollView.h>
@@ -242,6 +243,26 @@ ChatView::MessageReceived(BMessage* message)
 				clip->AddData("text/plain", B_MIME_TYPE, text, strlen(text));
 				be_clipboard->Commit();
 				be_clipboard->Unlock();
+			}
+			break;
+		}
+
+		case B_SIMPLE_DATA:
+		{
+			// Drag-and-drop: check for image files and forward to MainWindow
+			entry_ref ref;
+			if (message->FindRef("refs", &ref) != B_OK)
+				break;
+			BNode node(&ref);
+			if (node.InitCheck() != B_OK)
+				break;
+			BNodeInfo info(&node);
+			char mimeType[B_MIME_TYPE_LENGTH];
+			if (info.GetType(mimeType) == B_OK
+				&& strncmp(mimeType, "image/", 6) == 0) {
+				BMessage fwd(MSG_IMAGE_SELECTED);
+				fwd.AddRef("refs", &ref);
+				Window()->PostMessage(&fwd);
 			}
 			break;
 		}
