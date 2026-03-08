@@ -63,6 +63,7 @@ struct ImageSession {
 	int32               height;
 	uint32              totalBytes;     // Total JPEG size
 	uint8               senderKey[6];   // Sender pubkey prefix
+	uint8               recipientKey[32]; // Recipient full pubkey (for routing)
 	uint32              timestamp;      // Creation timestamp
 	ImageSessionState   state;
 	bigtime_t           createdTime;    // system_time() at creation
@@ -77,6 +78,7 @@ struct ImageSession {
 		  jpegData(NULL), jpegSize(0)
 	{
 		memset(senderKey, 0, sizeof(senderKey));
+		memset(recipientKey, 0, sizeof(recipientKey));
 	}
 
 	~ImageSession() {

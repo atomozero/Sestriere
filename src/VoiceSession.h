@@ -75,6 +75,7 @@ struct VoiceSession {
 	uint32              durationSec;    // Audio duration in seconds
 	uint32              totalBytes;     // Total Codec2 data size
 	uint8               senderKey[6];   // Sender pubkey prefix
+	uint8               recipientKey[32]; // Recipient full pubkey (for routing)
 	uint32              timestamp;      // Creation timestamp
 	VoiceSessionState   state;
 	bigtime_t           createdTime;    // system_time() at creation
@@ -89,6 +90,7 @@ struct VoiceSession {
 		  codec2Data(NULL), codec2Size(0)
 	{
 		memset(senderKey, 0, sizeof(senderKey));
+		memset(recipientKey, 0, sizeof(recipientKey));
 	}
 
 	~VoiceSession() {
