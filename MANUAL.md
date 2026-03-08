@@ -451,11 +451,14 @@ The bottom-left corner shows a link quality legend with colored line samples:
 
 **View > Geographic Map** (Cmd+G)
 
-Displays contacts at their GPS coordinates on a coordinate grid.
+Displays contacts at their GPS coordinates on a real map with OSM tiles.
 
-- **Zoom** with buttons or scroll wheel
+- **Zoom levels Z2-Z18** matching Google Maps / OSM standard (each step doubles the scale)
 - **Pan** by dragging
 - **Click** a node for info popup
+- **OSM tile overlay** with checkbox toggle (offline coastline fallback when disabled)
+- **Tile cache**: 50 MB disk limit with automatic LRU eviction (oldest tiles deleted first)
+- **Cache stats overlay**: bottom-right corner shows current zoom level, tile count, and disk usage
 - Scale bar and compass for orientation
 - Self position shown when latitude/longitude configured
 
@@ -759,16 +762,22 @@ Downloaded GIFs are cached in `~/config/settings/Sestriere/gif_cache/`. Files ar
 
 Sestriere supports LoRa image transfer using chunked encoding, compatible with meshcore image sharing.
 
+### How It Works
+
+Images are compressed to **color WebP** format at 192px max dimension (quality 50), producing compact files (~1.5-3 KB) that are split into LoRa-sized fragments. WebP provides ~30% smaller files than JPEG at equivalent quality, enabling color images with fewer fragments than the old grayscale format.
+
+Images and GIFs in the chat are automatically scaled to fit within 250x300 pixels, preserving aspect ratio.
+
 ### Sending an Image
 
-1. Click the **Img** button next to the message input
+1. Click the **Img** button next to the message input (or drag-and-drop an image onto the chat)
 2. Select an image file via the file dialog
-3. The image is compressed and sent in chunks over LoRa
+3. The image is compressed to color WebP and sent in chunks over LoRa
 4. Progress is shown in the chat bubble
 
 ### Receiving an Image
 
-Incoming image messages are automatically detected, fetched chunk by chunk, reassembled, and displayed inline in the chat as a scaled bitmap.
+Incoming image messages are automatically detected, fetched chunk by chunk, reassembled, and displayed inline in the chat as a scaled bitmap. Both WebP and legacy JPEG images are supported (auto-detected).
 
 ---
 
@@ -982,7 +991,7 @@ UI settings: `~/config/settings/Sestriere/ui.settings` (contact filter state)
 
 GIF cache: `~/config/settings/Sestriere/gif_cache/`
 
-Map tile cache: `~/config/settings/Sestriere/tiles/`
+Map tile cache: `~/config/settings/Sestriere/tiles/` (50 MB max, LRU eviction)
 
 ---
 

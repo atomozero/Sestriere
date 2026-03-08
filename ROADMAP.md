@@ -42,12 +42,13 @@ GIF animate condivise tramite GIPHY, compatibili con meshcore-open.
 ## 3. Image Sharing via LoRa ✓ COMPLETATO
 
 Condivisione immagini tramite trasferimento chunked su LoRa.
-- Compressione e invio a blocchi con ImageCodec
+- Compressione **color WebP** a 192px, quality 50 (~30% più piccolo del vecchio JPEG grayscale)
 - Auto-fetch dei chunk mancanti
-- Visualizzazione inline nella chat con ridimensionamento
-- Integrazione con ImageSession per gestione sessioni
+- Visualizzazione inline con cap 250x300px e aspect ratio preservato
+- Scroll automatico dopo caricamento immagine/GIF
+- Retrocompatibilità: immagini JPEG vecchie nel DB si caricano ancora (auto-detect)
 
-**File**: ImageCodec.cpp/h, ImageSession.cpp/h, MainWindow.cpp/h
+**File**: ImageCodec.cpp/h, ImageSession.cpp/h, MainWindow.cpp/h, MessageView.cpp/h, ChatView.cpp/h
 
 ---
 
@@ -75,10 +76,15 @@ Rendering emoji Unicode tramite sprite PNG con alpha compositing.
 
 ## 6. OSM Map Tiles ✓ COMPLETATO
 
-Overlay tile OpenStreetMap sulla mappa geografica con cache offline.
+Overlay tile OpenStreetMap sulla mappa geografica con cache gestita.
 - Download tile da server OSM con TileCache
-- Cache locale in `~/config/settings/Sestriere/tiles/`
-- Rendering coastline con dati poligonali
+- Cache locale in `~/config/settings/Sestriere/tiles/` con **limite 50 MB** e eviction LRU
+- Scan disco al boot per conteggio tiles e dimensione totale
+- Pruning automatico con isteresi al 90% (elimina tiles più vecchie per mtime)
+- **Zoom levels Z2-Z18** standard Google Maps/OSM (step 2x, snap a livelli discreti)
+- Tiles renderizzate pixel-perfect (nessun scaling artifact)
+- Overlay stats in basso a destra: livello zoom, conteggio tiles, MB usati
+- Rendering coastline con dati poligonali come fallback offline
 
 **File**: TileCache.cpp/h, CoastlineData.cpp/h, MapView.cpp/h
 
@@ -214,7 +220,7 @@ Feature unica e differenziante. Nessun altro client desktop la offre. Valore eno
 | 7 | UI Settings Persistence | Bassa | COMPLETATO |
 | 8 | SMAZ Compression | Media | Da fare |
 | 9 | Message Retry | Media-Alta | Da fare |
-| 10 | Offline Map Tiles (bulk download) | Media | Da fare |
+| 10 | Offline Map Tiles (bulk download) | Media | Parziale (cache 50MB + eviction LRU fatto; bulk download area da fare) |
 | 11 | Line-of-Sight Analysis | Alta | Da fare |
 
 ---

@@ -55,13 +55,13 @@ Unified dashboard with device status, radio health, network health score arc, SN
 - **Ping with Feedback** -- Round-trip time measurement with results shown directly in chat
 - **GIF Sharing** -- GIPHY-powered animated GIF picker, compatible with meshcore-open (`g:ID` format)
 - **Emoji Rendering** -- Unicode emoji displayed as PNG sprites with transparent alpha compositing
-- **Image Sharing** -- LoRa image transfer with chunked encoding, auto-fetch, and chat integration
+- **Image Sharing** -- LoRa color WebP image transfer with chunked encoding, auto-fetch, and chat integration
 - **Voice Messages** -- Push-to-talk Codec2 voice messages, compatible with meshcore-sar
 - **SAR Markers** -- Search and rescue marker parsing, display in chat and geographic map
 
 ### Visualization
 - **Network Map** -- Force-directed topology with SNR-colored links, animated flow dots, trace route visualization, auto-trace, full mesh discovery, and edge persistence
-- **Geographic Map** -- Lat/lon map with zoom, pan, grid, compass, scale bar, hop-count colored connections, and OSM tile overlay with offline cache
+- **Geographic Map** -- Lat/lon map with Google Maps-style zoom levels (Z2-Z18), pan, grid, compass, scale bar, hop-count colored connections, and OSM tile overlay with 50 MB LRU disk cache
 - **Telemetry Dashboard** -- Battery, storage, radio stats graphs with time ranges up to 7 days, CSV export
 - **Mission Control** -- Unified dashboard: health score arc, SNR/RSSI trend, packet rate histogram, mini topology, session timeline, activity feed, and alert banners
 
@@ -223,13 +223,13 @@ Sestriere/
 │   ├── GiphyClient.cpp/h           # GIPHY API client (search, trending, download)
 │   ├── GifPickerWindow.cpp/h       # Animated GIF picker grid window
 │   ├── EmojiRenderer.cpp/h         # Unicode emoji PNG sprite rendering
-│   ├── ImageCodec.cpp/h            # Image compression/decompression + GIF frame decode
+│   ├── ImageCodec.cpp/h            # Image compression (color WebP) / decompression + GIF frame decode
 │   ├── ImageSession.cpp/h          # LoRa chunked image transfer session
 │   ├── VoiceSession.cpp/h          # Voice message session management
 │   ├── VoiceCodec.cpp/h            # Codec2 encode/decode wrapper
 │   ├── AudioEngine.cpp/h           # Audio recording and playback (BSoundPlayer)
 │   ├── SarMarker.cpp/h             # SAR marker parsing (meshcore-sar protocol)
-│   ├── TileCache.cpp/h             # OSM map tile download and cache
+│   ├── TileCache.cpp/h             # OSM map tile download and cache (50 MB LRU disk limit)
 │   ├── CoastlineData.cpp/h         # Coastline polygon data for geographic map
 │   ├── Types.h                     # Protocol structures & radio presets
 │   ├── Constants.h                 # Application constants & thresholds
