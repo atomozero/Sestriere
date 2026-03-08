@@ -7955,6 +7955,11 @@ MainWindow::_HandleImageSelected(BMessage* message)
 			w, h, session->jpegData, session->jpegSize);
 	}
 
+	// Set session to LOADING so sender bubble shows progress immediately
+	session->state = IMAGE_LOADING;
+	session->receivedCount = 0;
+	_UpdateImageMessageView(sid);
+
 	// Wait for delivery confirmation before sending fragments.
 	// The receiver needs to process the IE2 envelope text and create
 	// a session BEFORE fragments arrive, otherwise they get dropped.
@@ -7979,7 +7984,7 @@ MainWindow::_SendNextImageFragment()
 {
 	ImageSession* session = fImageSessions->FindSession(fCurrentSendSession);
 	if (session == NULL || fCurrentSendIndex >= session->totalFragments) {
-		// Done sending
+		// Done sending — update bubble to show complete image with ✓✓
 		delete fImageFragmentTimer;
 		fImageFragmentTimer = NULL;
 		if (session != NULL) {
@@ -7987,6 +7992,7 @@ MainWindow::_SendNextImageFragment()
 			_LogMessage("IMG", BString().SetToFormat(
 				"All %d fragments sent for session %08x",
 				(int)session->totalFragments, fCurrentSendSession));
+			_UpdateImageMessageView(fCurrentSendSession);
 		}
 		return;
 	}
@@ -7999,14 +8005,15 @@ MainWindow::_SendNextImageFragment()
 		session->totalFragments, frag.data, frag.length);
 
 	// Send via CMD_SEND_RAW_DATA (broadcast).
-	// CMD_SEND_BINARY_REQ (routed) does NOT deliver PUSH_BINARY_RESPONSE
-	// on current firmware — data arrives as encrypted PUSH_RAW_RADIO_PACKET
-	// (0x88) which the receiver can't decrypt. SendRawData delivers as
-	// PUSH_RAW_DATA (0x84) which _HandlePushRawData() already handles.
 	if (fProtocol != NULL)
 		fProtocol->SendRawData(packet, pktLen);
 
 	fCurrentSendIndex++;
+
+	// Update sender bubble with fragment progress
+	session->receivedCount = fCurrentSendIndex;
+	session->state = IMAGE_LOADING;
+	_UpdateImageMessageView(fCurrentSendSession);
 
 	// If called from fallback timer (one-shot), switch to repeating
 	if (fImageEnvelopeWaiting) {

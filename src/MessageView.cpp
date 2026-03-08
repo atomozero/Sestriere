@@ -718,12 +718,17 @@ MessageView::_DrawImageBubble(BView* owner, BRect frame)
 	_FormatTimestamp(timeStr, sizeof(timeStr));
 	BString displayMeta;
 	if (fOutgoing) {
+		// For image messages: ✓✓ only after ALL fragments sent
+		bool allFragsSent = (fImageState == IMAGE_COMPLETE);
 		switch (fDeliveryStatus) {
 			case DELIVERY_PENDING:
 				displayMeta.SetToFormat("%s \xE2\x8F\xB3", timeStr);
 				break;
 			case DELIVERY_CONFIRMED:
-				displayMeta.SetToFormat("%s \xE2\x9C\x93\xE2\x9C\x93", timeStr);
+				if (allFragsSent)
+					displayMeta.SetToFormat("%s \xE2\x9C\x93\xE2\x9C\x93", timeStr);
+				else
+					displayMeta.SetToFormat("%s \xE2\x9C\x93", timeStr);
 				break;
 			default:
 				displayMeta.SetToFormat("%s \xE2\x9C\x93", timeStr);
@@ -811,23 +816,37 @@ MessageView::_DrawImageBubble(BView* owner, BRect frame)
 			contentLeft + imgW - 1, imageTop + imgH - 1);
 		owner->DrawBitmap(fImageBitmap, srcRect, destRect);
 	} else if (fImageState == IMAGE_LOADING) {
-		// Gray placeholder with progress bar
-		rgb_color placeholderBg = tint_color(ui_color(B_PANEL_BACKGROUND_COLOR),
-			B_DARKEN_2_TINT);
+		// Draw preview bitmap if available (sender has it), else gray box
 		BRect imgRect(contentLeft, imageTop,
 			contentLeft + imgW - 1, imageTop + imgH - 1);
-		owner->SetHighColor(placeholderBg);
-		owner->FillRect(imgRect);
+		if (fImageBitmap != NULL) {
+			BRect srcRect = fImageBitmap->Bounds();
+			owner->DrawBitmap(fImageBitmap, srcRect, imgRect);
+		} else {
+			rgb_color placeholderBg = tint_color(
+				ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_2_TINT);
+			owner->SetHighColor(placeholderBg);
+			owner->FillRect(imgRect);
+		}
+
+		// Semi-transparent overlay for progress area
+		rgb_color overlayColor = {0, 0, 0, 120};
+		owner->SetHighColor(overlayColor);
+		owner->SetDrawingMode(B_OP_ALPHA);
+		BRect overlayRect(contentLeft, imageTop + imgH - 32,
+			contentLeft + imgW - 1, imageTop + imgH - 1);
+		owner->FillRect(overlayRect);
+		owner->SetDrawingMode(B_OP_COPY);
 
 		// Progress bar
 		float progress = 0;
 		if (fImageTotalFragments > 0)
 			progress = (float)fImageReceivedFragments / fImageTotalFragments;
-		float barY = imageTop + imgH * 0.5f - 4;
+		float barY = imageTop + imgH - 26;
 		float barW = imgW - 20;
 		BRect barBg(contentLeft + 10, barY,
-			contentLeft + 10 + barW, barY + 8);
-		owner->SetHighColor(tint_color(placeholderBg, B_DARKEN_1_TINT));
+			contentLeft + 10 + barW, barY + 6);
+		owner->SetHighColor(80, 80, 80);
 		owner->FillRoundRect(barBg, 3, 3);
 		if (progress > 0) {
 			BRect barFill(barBg.left, barBg.top,
@@ -838,12 +857,16 @@ MessageView::_DrawImageBubble(BView* owner, BRect frame)
 
 		// Fragment count text
 		BString fragText;
-		fragText.SetToFormat("%d/%d fragments",
-			(int)fImageReceivedFragments, (int)fImageTotalFragments);
+		if (fOutgoing)
+			fragText.SetToFormat("Sending %d/%d",
+				(int)fImageReceivedFragments, (int)fImageTotalFragments);
+		else
+			fragText.SetToFormat("%d/%d fragments",
+				(int)fImageReceivedFragments, (int)fImageTotalFragments);
+		owner->SetHighColor(255, 255, 255);
 		float tw = owner->StringWidth(fragText.String());
-		owner->SetHighColor(BubbleTextColor());
 		owner->DrawString(fragText.String(),
-			BPoint(contentLeft + (imgW - tw) / 2, barY + 24));
+			BPoint(contentLeft + (imgW - tw) / 2, barY + 18));
 	} else if (fImageState == IMAGE_FAILED) {
 		// Failed state
 		BRect imgRect(contentLeft, imageTop,
