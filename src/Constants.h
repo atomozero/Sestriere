@@ -340,6 +340,8 @@ enum {
 	MSG_IMAGE_SEND_NEXT = 'imfr',
 	MSG_IMAGE_FETCH_REQ = 'imft',
 	MSG_IMAGE_EXPIRE = 'imex',
+	MSG_IMAGE_SAVE_REQ = 'imsv',
+	MSG_IMAGE_SAVE_DONE = 'imsd',
 
 	// GIF sharing (GIPHY)
 	MSG_SELECT_GIF = 'gfpk',

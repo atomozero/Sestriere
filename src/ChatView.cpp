@@ -96,6 +96,16 @@ ChatView::MouseDown(BPoint where)
 		copyMsg->AddInt32("index", index);
 		menu->AddItem(new BMenuItem("Copy", copyMsg));
 
+		// "Save Image" for completed image messages
+		if (item->IsImageMessage()
+			&& item->ImageState() == IMAGE_COMPLETE
+			&& item->ImageBitmap() != NULL) {
+			BMessage* saveMsg = new BMessage(MSG_IMAGE_SAVE_REQ);
+			saveMsg->AddInt32("index", index);
+			menu->AddItem(new BMenuItem("Save Image" B_UTF8_ELLIPSIS,
+				saveMsg));
+		}
+
 		menu->SetTargetForItems(this);
 
 		ConvertToScreen(&where);
@@ -194,6 +204,21 @@ ChatView::MessageReceived(BMessage* message)
 		{
 			// An emoji bitmap was downloaded — repaint all items
 			Invalidate();
+			break;
+		}
+
+		case MSG_IMAGE_SAVE_REQ:
+		{
+			// Forward to MainWindow with the bitmap pointer
+			int32 index;
+			if (message->FindInt32("index", &index) != B_OK)
+				break;
+			MessageView* item = dynamic_cast<MessageView*>(ItemAt(index));
+			if (item == NULL || item->ImageBitmap() == NULL)
+				break;
+			BMessage fwd(MSG_IMAGE_SAVE_REQ);
+			fwd.AddPointer("bitmap", item->ImageBitmap());
+			Window()->PostMessage(&fwd);
 			break;
 		}
 

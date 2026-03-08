@@ -56,6 +56,7 @@ public:
 			void			SetImageState(ImageSessionState state,
 								uint8 receivedCount);
 			void			SetImageBitmap(BBitmap* bitmap);
+			const BBitmap*	ImageBitmap() const { return fImageBitmap; }
 
 			// Voice message support
 			bool			IsVoiceMessage() const { return fIsVoiceMsg; }
