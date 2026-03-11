@@ -46,7 +46,9 @@ SRCS = \
 	EmojiRenderer.cpp \
 	VoiceSession.cpp \
 	VoiceCodec.cpp \
-	AudioEngine.cpp
+	AudioEngine.cpp \
+	ElevationService.cpp \
+	LoSWindow.cpp
 
 RDEFS = Sestriere.rdef
 

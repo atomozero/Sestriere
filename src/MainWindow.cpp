@@ -53,6 +53,7 @@
 #include "ContactInfoPanel.h"
 #include "GifPickerWindow.h"
 #include "GiphyClient.h"
+#include "LoSWindow.h"
 #include "DatabaseManager.h"
 #include "GrowingTextView.h"
 #include "ImageCodec.h"
@@ -356,6 +357,7 @@ MainWindow::MainWindow()
 	fProfileWindow(NULL),
 	fSerialMonitorWindow(NULL),
 	fGifPickerWindow(NULL),
+	fLoSWindow(NULL),
 	fMqttClient(NULL),
 	fRawPacketCount(0),
 	fLastRawPacketTime(0),
@@ -1895,6 +1897,17 @@ MainWindow::MessageReceived(BMessage* message)
 					ctxItem->GetContact().publicKey, kPubKeySize);
 				menu->AddItem(new BMenuItem("Share Contact", shareMsg));
 
+				// Line of Sight (only if both endpoints have GPS)
+				if ((fMqttSettings.latitude != 0
+					|| fMqttSettings.longitude != 0)
+					&& ctxItem->GetContact().HasGPS()) {
+					BMessage* losMsg = new BMessage(MSG_SHOW_LOS);
+					losMsg->AddData("pubkey", B_RAW_TYPE,
+						ctxItem->GetContact().publicKey, kPubKeySize);
+					menu->AddItem(
+						new BMenuItem("Line of Sight", losMsg));
+				}
+
 				menu->AddSeparatorItem();
 				BMessage* removeMsg = new BMessage(MSG_CONTACT_REMOVE);
 				removeMsg->AddData("pubkey", B_RAW_TYPE,
@@ -2522,6 +2535,40 @@ MainWindow::MessageReceived(BMessage* message)
 				fPacketAnalyzerWindow->Show();
 			} else {
 				_ShowWindow(fPacketAnalyzerWindow);
+			}
+			break;
+		}
+
+		case MSG_SHOW_LOS:
+		{
+			const void* keyData;
+			ssize_t keySize;
+			if (message->FindData("pubkey", B_RAW_TYPE, &keyData,
+				&keySize) != B_OK || keySize < (ssize_t)kPubKeyPrefixSize)
+				break;
+
+			ContactInfo* contact = _FindContactByPrefix(
+				(const uint8*)keyData, kPubKeyPrefixSize);
+			if (contact == NULL || !contact->HasGPS())
+				break;
+
+			if (fLoSWindow == NULL) {
+				fLoSWindow = new LoSWindow(this);
+				fLoSWindow->Show();
+			} else {
+				_ShowWindow(fLoSWindow);
+			}
+
+			if (fLoSWindow->LockLooper()) {
+				fLoSWindow->SetEndpoints(
+					fMqttSettings.latitude, fMqttSettings.longitude,
+					"Self",
+					contact->latitude / 1e6, contact->longitude / 1e6,
+					contact->name);
+				fLoSWindow->SetFrequency(
+					fRadioFreq > 0 ? (double)fRadioFreq : 868000000.0);
+				fLoSWindow->StartAnalysis();
+				fLoSWindow->UnlockLooper();
 			}
 			break;
 		}
@@ -3434,6 +3481,11 @@ MainWindow::QuitRequested()
 		fGifPickerWindow->Lock();
 		fGifPickerWindow->Quit();
 		fGifPickerWindow = NULL;
+	}
+	if (fLoSWindow != NULL) {
+		fLoSWindow->Lock();
+		fLoSWindow->Quit();
+		fLoSWindow = NULL;
 	}
 	// Destroy singletons
 	DebugLogWindow::Destroy();

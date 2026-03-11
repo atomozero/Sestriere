@@ -125,13 +125,13 @@ Spostato in `fake_radio/` con Makefile e icona HVIF.
 - **Difficoltà**: media
 - **File**: MapView.cpp/h, TileCache.cpp/h
 
-### F5. Line-of-Sight Analysis
+### F5. Line-of-Sight Analysis ✓ COMPLETATO
 - **Cosa**: profilo elevazione terreno tra due punti per verifica linea di vista
 - **API**: Open-Meteo Elevation per campioni terreno
 - **Calcoli**: curvatura terrestre (k-factor 4/3), zona di Fresnel
 - **UI**: grafico profilo con terreno, LoS, zona Fresnel (verde=sgombro, rosso=ostruito)
 - **Difficoltà**: alta
-- **File**: nuovo LoSWindow.cpp/h, ElevationService.cpp/h
+- **File**: LoSAnalysis.h, ElevationService.cpp/h, LoSWindow.cpp/h
 
 ---
 
@@ -217,7 +217,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 | **Bassa** | U1 | Persistere zoom mappa | Bassa |
 | **Bassa** | U2 | Persistere larghezza sidebar | Bassa |
 | **Bassa** | F4 | Download bulk tile | Media |
-| **Bassa** | F5 | Line-of-Sight Analysis | Alta |
+| **Bassa** | F5 | Line-of-Sight Analysis ✓ | Alta |
 
 ---
 

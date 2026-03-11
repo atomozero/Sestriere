@@ -359,6 +359,9 @@ enum {
 	MSG_VOICE_PLAY_DONE = 'vpdn',  // Playback finished
 	MSG_VOICE_EXPIRE = 'vexp',     // Cleanup expired sessions
 	MSG_VOICE_RECORD_TIMEOUT = 'vrto', // Max recording duration reached
+
+	// Line-of-Sight analysis
+	MSG_SHOW_LOS = 'slos',
 };
 
 // =============================================================================

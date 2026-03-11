@@ -56,6 +56,7 @@ class StatsWindow;
 class TelemetryWindow;
 class TopBarView;
 class TracePathWindow;
+class LoSWindow;
 
 // Pending outgoing message tracked for delivery status
 struct PendingMessage {
@@ -342,6 +343,7 @@ private:
 			ProfileWindow*	fProfileWindow;
 			SerialMonitorWindow* fSerialMonitorWindow;
 			GifPickerWindow* fGifPickerWindow;
+			LoSWindow*		fLoSWindow;
 
 			// MQTT client
 			MqttClient*		fMqttClient;
