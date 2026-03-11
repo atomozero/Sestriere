@@ -36,7 +36,6 @@ SRCS = \
 	ProtocolHandler.cpp \
 	MissionControlWindow.cpp \
 	SerialMonitorWindow.cpp \
-	RepeaterMonitorView.cpp \
 	TileCache.cpp \
 	CoastlineData.cpp \
 	SarMarker.cpp \

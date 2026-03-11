@@ -24,7 +24,7 @@ Version 1.8.0 | March 2026
 15. [MQTT Integration](#15-mqtt-integration)
 16. [Device Administration](#16-device-administration)
 17. [Serial Monitor](#17-serial-monitor)
-18. [Repeater Monitor](#18-repeater-monitor)
+18. [Companion Apps](#18-companion-apps)
 19. [Profile Export and Import](#19-profile-export-and-import)
 20. [GIF Sharing](#20-gif-sharing)
 21. [Image Sharing](#21-image-sharing)
@@ -658,28 +658,65 @@ When connecting to a device, Sestriere performs a handshake to detect whether th
 
 ---
 
-## 18. Repeater Monitor
+## 18. Companion Apps
 
-**View > Repeater Monitor**
+Sestriere is distributed with two standalone companion applications. They are built and run independently.
 
-The Repeater Monitor provides structured analysis of repeater log output, automatically parsing packet entries into a sortable table.
+### Fake Radio
 
-### Auto-Detection
+A MeshCore V3 radio simulator for testing Sestriere without physical hardware.
 
-When connected via Serial Monitor to a device that outputs MeshCore repeater log lines, the Repeater Monitor activates automatically and begins parsing the log.
+**Building and running:**
 
-### Features
+```bash
+cd fake_radio
+make
+./objects.x86_64-cc13-debug/FakeRadio
+```
+
+The simulator creates a PTY (pseudo-terminal) pair and displays the device path in its window. Connect Sestriere to this path (e.g., `/dev/tt/p5`).
+
+**Features:**
+
+- Full V3 companion protocol handshake
+- Simulated contact with GPS coordinates
+- Periodic test messages with varying SNR
+- Delivery confirmations for outgoing messages
+- Clipboard copy of PTY path
+
+### Repeater Monitor
+
+A standalone repeater log analyzer with serial terminal for monitoring MeshCore repeaters.
+
+**Building and running:**
+
+```bash
+cd repeater_monitor
+make
+./objects.x86_64-cc13-debug/RepeaterMonitor
+```
+
+**Connecting to a repeater:**
+
+1. Launch Repeater Monitor
+2. Go to **Connection > Connect** and select the serial port
+3. The app automatically sends `ver` and `log` commands to the repeater
+4. Log output is parsed into structured tables
+
+**Loading a saved log:**
+
+1. Go to **Connection > Load Log File...** (Cmd+O)
+2. Select a text file containing repeater log output
+3. The file is parsed line by line
+
+**Features:**
 
 - **Packet table** — Sortable columns: Time, Direction (TX/RX), Source, Destination, Route, SNR, RSSI, Summary
 - **Per-node statistics** — Separate table showing per-node metrics: packet count, average SNR/RSSI, TX/RX breakdown
 - **Auto role detection** — Nodes classified as direct or forwarded based on route field
 - **SNR/RSSI graph** — Visual signal quality over time
 - **Text search** — Filter packets by node name or content
-- **Network Map integration** — Topology data (nodes and links) extracted from log and visualized on the Network Map
-
-### Topology Extraction
-
-The Repeater Monitor tracks directional links between nodes (who talks to whom) and feeds this data to the Network Map for visualization. Each observed packet creates or updates a link with SNR information.
+- **Serial Monitor** — Terminal-style CLI (View > Serial Monitor, Cmd+Shift+S)
 
 ---
 
@@ -1058,14 +1095,15 @@ If the sidebar appears empty but you are connected:
 
 ### Testing without hardware
 
-A radio simulator is included for testing without a physical LoRa device:
+The Fake Radio companion app simulates a MeshCore device for testing:
 
 ```bash
-g++ -o fake_radio fake_radio.cpp -Wall -O2
-./fake_radio
+cd fake_radio
+make
+./objects.x86_64-cc13-debug/FakeRadio
 ```
 
-The simulator creates a virtual serial port (PTY) and prints the device path. Connect Sestriere to this path. The simulator handles the full V3 protocol handshake, creates a test contact with GPS coordinates, and sends a simulated message every 10 seconds with varying SNR values. Outgoing messages are acknowledged with delivery confirmation.
+The simulator creates a virtual serial port (PTY) and displays the device path. Connect Sestriere to this path. See [Section 18: Companion Apps](#18-companion-apps) for details.
 
 ---
 

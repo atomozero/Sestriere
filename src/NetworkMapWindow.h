@@ -14,9 +14,6 @@
 
 #include "Types.h"
 
-struct RepeaterNodeInfo;
-struct RepeaterLink;
-
 class BButton;
 class BCheckBox;
 class BMessageRunner;
@@ -100,7 +97,7 @@ struct TraceRoute {
 	}
 };
 
-// Animated packet flow along a link (from RepeaterMonitor)
+// Animated packet flow along a link
 struct PacketFlowAnim {
 	uint8		fromPrefix[kPubKeyPrefixSize];
 	uint8		toPrefix[kPubKeyPrefixSize];
@@ -147,9 +144,6 @@ public:
 
 			void			SetNodes(const OwningObjectList<ContactInfo>* contacts);
 			void			SetSelfInfo(const char* name, int8 rssi, int8 snr);
-			void			SetRepeaterTopology(const char* selfName,
-								const RepeaterNodeInfo* nodes, int32 nodeCount,
-								const RepeaterLink* links, int32 linkCount);
 			void			SetShowLabels(bool show);
 			void			SetShowSignalStrength(bool show);
 			void			SetHideInactive(bool hide);
@@ -251,9 +245,6 @@ public:
 			void			BuildEdgesFromOutPaths(
 								const OwningObjectList<ContactInfo>* contacts);
 			void			SetSelfInfo(const char* name);
-			void			SetRepeaterTopology(const char* selfName,
-								const RepeaterNodeInfo* nodes, int32 nodeCount,
-								const RepeaterLink* links, int32 linkCount);
 			void			TriggerNodePulse(const uint8* pubKeyPrefix);
 			void			UpdateLinkQuality(const uint8* pubKeyPrefix,
 								int8 snr, int8 rssi);

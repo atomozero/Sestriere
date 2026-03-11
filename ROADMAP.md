@@ -1,231 +1,228 @@
-# Sestriere — Roadmap Feature
+# Sestriere — Roadmap
 
-Feature ispirate dall'analisi di meshcore-open, adattate per Haiku OS nativo.
+Analisi dello stato attuale e piano di sviluppo futuro.
+Ultimo aggiornamento: marzo 2026 (v1.8.0-beta)
 
 ---
 
-## 1. Contact Groups + Channel Muting ✓ COMPLETATO
+## Feature completate
 
-### Contact Groups ✓
+### 1. Contact Groups + Channel Muting
 Contatti organizzati in gruppi nominati via SQLite (`contact_groups` + `contact_group_members`).
-- Right-click contatto → menu "Group" → seleziona/crea/rimuovi gruppo
-- Sidebar mostra separatori per gruppo, contatti non raggruppati sotto "Ungrouped"
-- Un contatto può appartenere a un solo gruppo alla volta
-- Filtro testo si applica sia a nomi contatto che nomi gruppo
+Flag mute persistente per contatti e canali. Right-click context menu.
 
-### Channel/Contact Muting ✓
-Flag mute persistente in SQLite (`mute_settings`) per contatti e canali.
-- Right-click → "Mute"/"Unmute" su qualsiasi contatto o canale
-- Mute sopprime notifiche desktop e badge unread
-- Nome visualizzato in colore attenuato quando muted
-- Chiave mute: `aabbccddeeff` per contatti, `ch_public`/`ch_N` per canali
+### 2. GIF Animate via GIPHY
+Invio/ricezione GIF animate tramite protocollo `g:{gifId}`, compatibile meshcore-open.
+GIF Picker con griglia animata, cache locale, zero byte extra su LoRa.
 
-**File modificati**: Constants.h, ContactItem.cpp/h, MainWindow.cpp/h, DatabaseManager.cpp/h
-**Test**: test_mute_logic (6 test), test_contact_groups (8 test)
+### 3. Image Sharing via LoRa
+Compressione color WebP a 192px, quality 50. Trasferimento chunked con auto-fetch.
+Visualizzazione inline 250x300px. Retrocompatibile con vecchio formato JPEG.
 
----
+### 4. SAR Markers
+Parsing e visualizzazione marker SAR compatibili meshcore-sar, in chat e mappa.
 
-## 2. GIF Animate via GIPHY ✓ COMPLETATO
-
-GIF animate condivise tramite GIPHY, compatibili con meshcore-open.
-- Invio: ricerca su GIPHY, selezione GIF, invio `g:{gifId}` come testo
-- Ricezione: rilevamento prefisso `g:`, download da CDN GIPHY, animazione in chat
-- GIF Picker con griglia animata (3 colonne, thumbnails animate)
-- Cache locale in `~/config/settings/Sestriere/gif_cache/`
-- Zero byte extra su LoRa — solo ID testuale trasmesso
-
-**File**: GiphyClient.cpp/h, GifPickerWindow.cpp/h, ImageCodec.cpp/h (DecompressGifFrames), MessageView.cpp/h, ChatView.cpp/h, MainWindow.cpp/h, Constants.h
-**Dipendenze**: curl_devel, giflib_devel
-
----
-
-## 3. Image Sharing via LoRa ✓ COMPLETATO
-
-Condivisione immagini tramite trasferimento chunked su LoRa.
-- Compressione **color WebP** a 192px, quality 50 (~30% più piccolo del vecchio JPEG grayscale)
-- Auto-fetch dei chunk mancanti
-- Visualizzazione inline con cap 250x300px e aspect ratio preservato
-- Scroll automatico dopo caricamento immagine/GIF
-- Retrocompatibilità: immagini JPEG vecchie nel DB si caricano ancora (auto-detect)
-
-**File**: ImageCodec.cpp/h, ImageSession.cpp/h, MainWindow.cpp/h, MessageView.cpp/h, ChatView.cpp/h
-
----
-
-## 4. SAR Markers ✓ COMPLETATO
-
-Parsing e visualizzazione marker SAR (Search and Rescue) compatibili con meshcore-sar.
-- Marker visualizzati nella chat con tipo, coordinate e descrizione
-- Marker con GPS mostrati sulla mappa geografica
-- Parser integrato nel flusso messaggi
-
-**File**: SarMarker.cpp/h, MainWindow.cpp/h, MapView.cpp/h
-
----
-
-## 5. Emoji Rendering ✓ COMPLETATO
-
+### 5. Emoji Rendering
 Rendering emoji Unicode tramite sprite PNG con alpha compositing.
-- Emoji riconosciute e sostituite con bitmap PNG
-- Compositing trasparente su sfondo bolle chat
-- Rendering corretto in light/dark theme
 
-**File**: EmojiRenderer.cpp/h, MessageView.cpp/h
+### 6. OSM Map Tiles
+Zoom Z2-Z18, cache disco 50 MB con eviction LRU, overlay stats, coastline fallback.
 
----
+### 7. UI Settings Persistence
+Filtri Chat/Repeater/Room salvati in `ui.settings`.
 
-## 6. OSM Map Tiles ✓ COMPLETATO
+### 8. Voice Messages
+Push-to-talk Codec2, envelope VE2, compatibile meshcore-sar.
 
-Overlay tile OpenStreetMap sulla mappa geografica con cache gestita.
-- Download tile da server OSM con TileCache
-- Cache locale in `~/config/settings/Sestriere/tiles/` con **limite 50 MB** e eviction LRU
-- Scan disco al boot per conteggio tiles e dimensione totale
-- Pruning automatico con isteresi al 90% (elimina tiles più vecchie per mtime)
-- **Zoom levels Z2-Z18** standard Google Maps/OSM (step 2x, snap a livelli discreti)
-- Tiles renderizzate pixel-perfect (nessun scaling artifact)
-- Overlay stats in basso a destra: livello zoom, conteggio tiles, MB usati
-- Rendering coastline con dati poligonali come fallback offline
+### 9. Repeater Monitor → App standalone
+Estratto da Sestriere come app indipendente in `repeater_monitor/`.
 
-**File**: TileCache.cpp/h, CoastlineData.cpp/h, MapView.cpp/h
+### 10. Fake Radio → App standalone
+Spostato in `fake_radio/` con Makefile e icona HVIF.
 
 ---
 
-## 7. UI Settings Persistence ✓ COMPLETATO
+## Bug fix / Robustezza (alta priorità)
 
-Salvataggio e ripristino impostazioni UI (filtri contatti, etc.).
-- Filtri Chat/Repeater/Room salvati in `ui.settings`
-- Ripristinati automaticamente all'avvio
+### B1. Errori silenziosi su invio voice/immagini — COMPLETATO
+- **Dove**: MainWindow.cpp — chiamate a `fProtocol->SendRawData()` e `SendDM()`
+- **Problema**: il return status non viene controllato. L'utente vede "inviato" ma il messaggio potrebbe non partire
+- **Fix**: controllato `status_t` di ritorno su SendDM (3 call site), SendChannelMsg (1), SendRawData (6 image + voice), SendRemoveContact, SendResetPath, SendSetChannel (2), SendRemoveChannel, SendAddUpdateContact. Image/voice transfer abortiti con stato FAILED e cleanup timer.
+- **Stato**: completato v1.8.0-beta
 
-**File**: MainWindow.cpp/h
+### B2. Timeout connessione seriale
+- **Dove**: SerialHandler::_ReadLoop()
+- **Problema**: se il device si spegne, il read loop resta bloccato per sempre
+- **Fix**: usare `select()` con timeout sul fd seriale, notificare disconnessione
+- **Stato**: da fare
 
----
+### B3. PUSH_CONTROL_DATA (0x8E) non gestito
+- **Dove**: MainWindow::_ParseFrame() — manca il case per 0x8E
+- **Problema**: unico push V3 ignorato. Messaggi di controllo dal device droppati silenziosamente
+- **Fix**: aggiungere handler, loggare nel debug log, gestire sottotipi noti
+- **Stato**: da fare
 
-## 8. SMAZ Message Compression
-
-Compressione dizionario per messaggi brevi, ottimizzata per chat.
-- Dizionario di 254 pattern comuni ("the ", " of ", "ing", "tion", ecc.)
-- Compressione tipica: 30-50% su messaggi inglesi
-- Messaggio compresso prefissato con marker `s:` (compatibile meshcore-open)
-- Funzione `encodeIfSmaller()`: applica solo se riduce effettivamente la dimensione
-- Implementazione self-contained: ~150 righe C++ encode/decode + tabella dizionario
-
-### Motivazione
-LoRa ha budget dati strettissimo (max ~255 byte). Su EU 868 MHz c'e duty cycle 1% imposto per legge. Ogni byte risparmiato = piu testo utile o meno airtime.
-
-### Compatibilita cross-client
-Il marker `s:` deve coincidere con quello di meshcore-open. Verificare il formato esatto prima dell'implementazione.
-
-**Difficolta**: Media
-**File coinvolti**: nuovo Smaz.h/cpp, ProtocolHandler.cpp (integrazione invio), MainWindow.cpp (integrazione ricezione)
+### B4. Strip rimuove le risorse ELF
+- **Dove**: processo di build release
+- **Problema**: `strip` rimuove sezioni `.rsrc`, icone TopBar mancanti nei pacchetti distribuiti
+- **Fix**: ri-applicare `xres -o binary binary.rsrc` dopo `strip`
+- **Stato**: risolto in 1.8.0-beta
 
 ---
 
-## 9. Message Retry con Exponential Backoff
+## Feature mancanti dal protocollo (media priorità)
 
-Retry automatico dei messaggi quando PUSH_SEND_CONFIRMED non arriva.
+### P1. Share Contact (CMD_SHARE_CONTACT)
+- **Dove**: `SendShareContact()` esiste ma nessuna UI lo chiama
+- **Cosa fare**: voce "Condividi contatto" nel context menu sidebar
+- **Sforzo**: basso
 
-### Meccanismo
-1. Dopo invio, timer di 1 secondo
-2. Se ACK non arriva, rimanda il messaggio
-3. Backoff esponenziale: 1s, 2s, 4s, 8s, 16s
-4. Dopo 5 tentativi: messaggio marcato "failed"
-5. Opzionale: `SendResetPath()` dopo fallimento per forzare ricalcolo rotta
+### P2. Custom Variables UI (GET/SET_CUSTOM_VARS)
+- **Dove**: protocollo implementato, risposta loggata, nessuna interfaccia
+- **Cosa fare**: tab "Custom Variables" in SettingsWindow con lista chiave/valore
+- **Sforzo**: medio
 
-### Deduplicazione
-- ACK hash: SHA256(timestamp + attempt + text + sender_pubkey) troncato
-- History circolare delle ultime 100 entry
-- Ricevente ignora messaggi con hash gia visto
+### P3. Tuning Parameters UI (GET/SET_TUNING_PARAMS)
+- **Dove**: comandi definiti, metodi in ProtocolHandler, mai esposti
+- **Cosa fare**: sezione in Settings per RX delay base e airtime factor
+- **Sforzo**: basso
 
-### Motivazione
-Attualmente se l'ACK non arriva il messaggio resta in stato "sent" per sempre. L'utente deve accorgersi e rimandare manualmente. Il retry automatico e la differenza tra "i messaggi arrivano" e "i messaggi a volte si perdono".
-
-**Difficolta**: Media-Alta
-**File coinvolti**: nuovo MessageRetryService.h/cpp (o integrato in MainWindow), Types.h (delivery status), MainWindow.cpp (timer management)
-
----
-
-## 10. Offline Map Tiles
-
-Pre-download dei tile mappa OSM per uso senza connessione internet.
-
-### Flusso utente
-1. Seleziona area sulla mappa (rettangolo)
-2. Sceglie livelli di zoom (es. 10-15)
-3. App calcola e scarica i tile PNG
-4. Storage: `~/config/settings/Sestriere/tiles/z/x/y.png`
-5. Mappa offline carica tile dalla cache locale
-
-### Calcolo tile
-Per ogni zoom level: `(x_max - x_min + 1) * (y_max - y_min + 1)` tile.
-Area 50x50 km a zoom 10-15 = circa 20-50 MB.
-
-### Decisione architetturale
-- Opzione A: aggiungere tile rendering al MapView.cpp esistente (meno lavoro)
-- Opzione B: creare mappa tile-based separata (piu pulita)
-
-### Motivazione
-Sestriere ha gia mappa geografica (MapView.cpp) con GPS dei contatti, ma richiede internet per i tile. In scenari off-grid (dove LoRa mesh ha piu senso) non c'e internet.
-
-**Difficolta**: Media
-**File coinvolti**: MapView.cpp/h (o nuovo TileMapView.cpp/h), nuovo MapTileCache.cpp/h, UI per selezione area e progress download
-
-### Note tecniche Haiku
-- Download HTTP: `BUrlRequest` dal Network Kit
-- Rendering tile PNG: `TranslatorRoster` + `BBitmap`
-- File I/O: standard POSIX o Haiku `BFile`/`BDirectory`
+### P4. Device PIN (SET_DEVICE_PIN)
+- **Dove**: comando implementato, nessuna UI
+- **Cosa fare**: campo PIN in SettingsWindow → tab Device
+- **Sforzo**: basso
 
 ---
 
-## 11. Line-of-Sight Analysis
+## Feature nuove (media priorità)
 
-Calcolo profilo elevazione terreno tra due punti per verificare se esiste linea di vista diretta per il segnale radio LoRa.
+### F1. Compressione SMAZ per messaggi
+- **Cosa**: compressione dizionario per testo chat (30-50% risparmio)
+- **Formato**: prefisso `s:` per compatibilità meshcore-open
+- **Perché**: critico su LoRa EU 868MHz con duty cycle 1%
+- **Dipendenze**: libreria SMAZ (~150 righe C++, MIT license)
+- **Difficoltà**: media
+- **File**: nuovo Smaz.h/cpp, ProtocolHandler.cpp, MainWindow.cpp
 
-### Come funziona
-1. Campionare 21-81 punti lungo la linea A-B
-2. Interrogare API Open-Meteo Elevation: `https://api.open-meteo.com/v1/elevation?latitude=X&longitude=Y`
-3. Calcolare curvatura terrestre: `earthBulge = distance^2 / (2 * R * k)` con k-factor 4/3 (rifrazione atmosferica)
-4. Calcolare zona di Fresnel: `fresnelRadius = sqrt(n * lambda * d1 * d2 / (d1 + d2))` con lambda dalla frequenza LoRa
-5. Disegnare profilo: terreno, linea di vista, zona di Fresnel. Verde = sgombro, rosso = ostruito
+### F2. Retry messaggi con backoff esponenziale
+- **Cosa**: auto-retry quando `PUSH_SEND_CONFIRMED` non arriva entro timeout
+- **Logica**: 3 tentativi con backoff (5s → 15s → 30s), poi fallimento
+- **UI**: indicatore "tentativo 2/3" nel bubble del messaggio
+- **Deduplicazione**: hash troncato per evitare duplicati lato ricevente
+- **Difficoltà**: media-alta
+- **File**: MainWindow.cpp (timer management), Types.h (delivery status)
 
-### UI
-- Selezione punti: click su mappa o scelta da contatti con GPS
-- Parametri configurabili: altezza antenna (0-122 m), k-factor
-- Grafico: BView custom con DrawLine/FillRect/DrawString
-- Risultato: distanza, azimut, clearance %, raccomandazione (OK/ostruito)
+### F3. Coda messaggi offline
+- **Cosa**: accodare messaggi quando disconnessi, inviarli alla riconnessione
+- **Dove**: DatabaseManager — tabella `outbox` con stato pending/sent/failed
+- **UI**: badge "in coda" sui messaggi non ancora inviati
+- **Difficoltà**: media
 
-### Motivazione
-Feature unica e differenziante. Nessun altro client desktop la offre. Valore enorme per chi piazza repeater in montagna: verificare il link dal divano prima di salire con l'attrezzatura.
+### F4. Download bulk tile mappa
+- **Cosa**: pre-cache aree geografiche per uso offline
+- **UI**: rettangolo di selezione sulla mappa + pulsante "Scarica area"
+- **Limite**: rispettare cap 50 MB cache (o renderlo configurabile)
+- **Difficoltà**: media
+- **File**: MapView.cpp/h, TileCache.cpp/h
 
-**Difficolta**: Alta
-**File coinvolti**: nuovo LoSWindow.cpp/h, nuovo ElevationService.cpp/h, integrazione con MapView per selezione punti
-
-### Note tecniche Haiku
-- HTTP API: `BUrlRequest` (Network Kit) o socket POSIX con TLS
-- JSON parse: riutilizzare parser minimale (stile ProfileWindow)
-- Rendering grafico: `BView::Draw()` custom
-- Calcoli geodetici: formula di Haversine per distanze, bearing
+### F5. Line-of-Sight Analysis
+- **Cosa**: profilo elevazione terreno tra due punti per verifica linea di vista
+- **API**: Open-Meteo Elevation per campioni terreno
+- **Calcoli**: curvatura terrestre (k-factor 4/3), zona di Fresnel
+- **UI**: grafico profilo con terreno, LoS, zona Fresnel (verde=sgombro, rosso=ostruito)
+- **Difficoltà**: alta
+- **File**: nuovo LoSWindow.cpp/h, ElevationService.cpp/h
 
 ---
 
-## Priorita suggerita
+## UX / Persistenza (bassa priorità)
 
-| # | Feature | Difficolta | Stato |
-|---|---------|-----------|-------|
-| 1 | Contact Groups + Channel Muting | Bassa | COMPLETATO |
-| 2 | GIF Animate via GIPHY | Media | COMPLETATO |
-| 3 | Image Sharing via LoRa | Media | COMPLETATO |
-| 4 | SAR Markers | Bassa | COMPLETATO |
-| 5 | Emoji Rendering | Bassa | COMPLETATO |
-| 6 | OSM Map Tiles | Media | COMPLETATO |
-| 7 | UI Settings Persistence | Bassa | COMPLETATO |
-| 8 | SMAZ Compression | Media | Da fare |
-| 9 | Message Retry | Media-Alta | Da fare |
-| 10 | Offline Map Tiles (bulk download) | Media | Parziale (cache 50MB + eviction LRU fatto; bulk download area da fare) |
-| 11 | Line-of-Sight Analysis | Alta | Da fare |
+### U1. Persistere zoom/pan della mappa
+- **Dove**: MapView.cpp — zoom level e centro in RAM
+- **Fix**: salvare in `ui.settings` su zoom change, ricaricare all'apertura
+
+### U2. Persistere larghezza sidebar e info panel
+- **Dove**: MainWindow.cpp — BSplitView pesi
+- **Fix**: salvare proporzioni in `ui.settings`, applicare dopo _BuildUI
+
+### U3. VACUUM periodico del database
+- **Dove**: DatabaseManager — non chiama mai VACUUM
+- **Fix**: PRAGMA auto_vacuum = FULL alla creazione, oppure VACUUM al boot se > 10MB
+
+### U4. Validazione tile cache corrotte
+- **Dove**: TileCache::_LoadFromDisk()
+- **Fix**: verificare magic bytes PNG (89 50 4E 47), eliminare e ri-scaricare se invalidi
+
+### U5. Admin multi-repeater simultaneo
+- **Dove**: MainWindow — `fLoggedInKey` è globale
+- **Fix**: HashMap<pubkey, AdminSession> per sessioni parallele
+
+---
+
+## Testing
+
+### T1. Test voice/image codec
+Nessun test per VoiceCodec (encode/decode Codec2) e ImageCodec (WebP compress/decompress).
+Test con payload noti, verifica round-trip.
+
+### T2. Test SerialHandler read/write
+Nessun test dedicato per assemblaggio frame e invio.
+Test con PTY pair simulato (come fake_radio).
+
+### T3. Test health score MissionControl
+Calcolo health score non verificato.
+Test con valori noti di SNR, RSSI, battery, uptime.
+
+---
+
+## Copertura protocollo V3
+
+| Categoria | Implementati | Totale | Note |
+|-----------|-------------|--------|------|
+| CMD_* (inbound) | 38 | 39 | CMD_SHARE_CONTACT ha metodo ma nessuna UI |
+| RSP_* (outbound) | 17 | 17 | Tutti gestiti |
+| PUSH_* (notifiche) | 14 | 15 | PUSH_CONTROL_DATA (0x8E) mancante |
+
+---
+
+## Valori hardcoded da rendere configurabili
+
+| Parametro | Valore | Dove |
+|-----------|--------|------|
+| Tile cache max | 50 MB | TileCache.h: kMaxDiskCacheBytes |
+| Retention messaggi DB | 30 giorni | DatabaseManager.cpp |
+| Durata max voice | 30 secondi | VoiceSession.h: kMaxVoiceRecordSeconds |
+| Finestra SNR chart | 24 ore | SNRChartView.cpp |
+| WebP quality | 50 | ImageCodec.h |
+| Immagine max dim | 192 px | ImageCodec.h |
+| Media display max | 250×300 px | ChatView |
+| MQTT publish interval | ~10 secondi | MqttClient.cpp |
+| Memory tile cache | 32 tiles | TileCache.h |
+| Pruning SNR history | 30 giorni | DatabaseManager.cpp |
+
+---
+
+## Priorità suggerita
+
+| Priorità | ID | Feature | Difficoltà |
+|----------|----|---------|-----------|
+| **Alta** | B1 | Fix errori silenziosi voice/image | Bassa |
+| **Alta** | B2 | Timeout connessione seriale | Bassa |
+| **Alta** | B3 | Handler PUSH_CONTROL_DATA | Bassa |
+| **Media** | P1 | Share Contact UI | Bassa |
+| **Media** | F1 | Compressione SMAZ | Media |
+| **Media** | F2 | Retry messaggi | Media-Alta |
+| **Media** | P2 | Custom Variables UI | Media |
+| **Media** | F3 | Coda messaggi offline | Media |
+| **Bassa** | U1 | Persistere zoom mappa | Bassa |
+| **Bassa** | U2 | Persistere larghezza sidebar | Bassa |
+| **Bassa** | F4 | Download bulk tile | Media |
+| **Bassa** | F5 | Line-of-Sight Analysis | Alta |
 
 ---
 
 ## Riferimenti
+
 - meshcore-open: https://github.com/zjs81/meshcore-open
 - SMAZ algorithm: https://github.com/antirez/smaz
 - Open-Meteo Elevation API: https://open-meteo.com/en/docs/elevation-api

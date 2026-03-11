@@ -14,7 +14,7 @@
 // Application info
 #define APP_SIGNATURE "application/x-vnd.Sestriere"
 #define APP_NAME "Sestriere"
-#define APP_VERSION "1.8.0-alpha3"
+#define APP_VERSION "1.8.0-beta"
 #define APP_VERSION_MAJOR 1
 #define APP_VERSION_MIDDLE 8
 #define APP_VERSION_MINOR 0
@@ -314,17 +314,8 @@ enum {
 	MSG_GROUP_CREATE = 'gcrt',
 	MSG_GROUP_DELETE = 'gdel',
 
-	// Repeater Monitor
-	MSG_SHOW_REPEATER_MONITOR = 'rmon',
-
 	// Battery type changed
 	MSG_BATTERY_TYPE_CHANGED = 'btyp',
-
-	// Repeater map update timer
-	MSG_REPEATER_MAP_TICK = 'rmtk',
-
-	// Repeater packet flow animation
-	MSG_REPEATER_PACKET_FLOW = 'rpfl',
 
 	// Network Map
 	MSG_TOGGLE_HIDE_INACTIVE = 'nmhi',

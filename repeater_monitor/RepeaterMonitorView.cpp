@@ -22,7 +22,7 @@
 #include <cstring>
 #include <cstdlib>
 
-#include "Constants.h"
+#include "RepMonConstants.h"
 
 
 // Private message codes

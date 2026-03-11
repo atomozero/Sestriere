@@ -75,7 +75,6 @@ Unified dashboard with device status, radio health, network health score arc, SN
 - **Repeater Admin** -- Remote administration of repeaters/rooms after login with contextual toolbar in chat area (stats, contacts, reboot, factory reset)
 - **Battery & Storage Monitoring** -- Real-time voltage and storage status with LiPo/LiFePO4/NMC chemistry curves
 - **Serial Monitor** -- Terminal-style CLI interaction for repeater/standalone devices
-- **Repeater Monitor** -- Structured repeater log analysis with per-node stats and topology extraction
 
 ### MQTT Integration
 - **MQTT Bridge** -- Relay messages to MQTT broker (meshcoreitalia.it)
@@ -121,14 +120,25 @@ cd src
 make OBJ_DIR=release OPTIMIZE=FULL
 ```
 
-### Radio Simulator (for testing without hardware)
+### Companion Apps
 
+Sestriere is distributed with two companion apps:
+
+**Fake Radio** — MeshCore radio simulator for testing without hardware:
 ```bash
-g++ -o fake_radio fake_radio.cpp -Wall -O2
-./fake_radio
+cd fake_radio
+make
+./objects.x86_64-cc13-debug/FakeRadio
 ```
-
 Creates a virtual serial port (PTY). Connect Sestriere to the printed device path (e.g., `/dev/tt/p5`). The simulator handles the full V3 handshake, creates a test contact, and sends a message every 10 seconds with varying SNR.
+
+**Repeater Monitor** — Standalone repeater log analyzer with serial terminal:
+```bash
+cd repeater_monitor
+make
+./objects.x86_64-cc13-debug/RepeaterMonitor
+```
+Connects directly to repeaters via USB serial (raw text mode) or loads saved log files. Provides structured log analysis with sortable packet table, per-node statistics, and signal quality graphs.
 
 ## Usage
 
@@ -183,9 +193,21 @@ V3 adds SNR fields to incoming messages. V2 responses (0x07, 0x08) are also supp
 Sestriere/
 ├── README.md                       # This file
 ├── HAIKU_USB_SERIAL_FIX.md         # USB driver patch docs
-├── fake_radio.cpp                  # MeshCore radio simulator (PTY-based)
+├── fake_radio/                     # Fake Radio — radio simulator (standalone app)
+│   ├── FakeRadio.cpp               # BApplication + GUI + V3 protocol simulator
+│   ├── FakeRadio.rdef              # App resources and icon
+│   └── Makefile
+├── repeater_monitor/               # Repeater Monitor — log analyzer (standalone app)
+│   ├── RepMonApp.cpp               # BApplication entry point
+│   ├── RepMonWindow.cpp/h          # Main window (serial connect, log loading)
+│   ├── RepMonConstants.h           # Minimal constants
+│   ├── RepeaterMonitorView.cpp/h   # Structured repeater log viewer
+│   ├── SerialHandler.cpp/h         # POSIX serial I/O
+│   ├── SerialMonitorWindow.cpp/h   # Terminal-style serial CLI
+│   ├── RepMon.rdef                 # App resources and icon
+│   └── Makefile
 ├── img/                            # Screenshots
-├── src/                            # Source code
+├── src/                            # Sestriere source code
 │   ├── Makefile                    # Build system
 │   ├── Sestriere.cpp               # BApplication entry point
 │   ├── MainWindow.cpp/h            # Main window (UI + event routing)
@@ -213,8 +235,6 @@ Sestriere/
 │   ├── ContactExportWindow.cpp/h   # Contact import/export via clipboard
 │   ├── ProfileWindow.cpp/h         # Profile export/import (JSON)
 │   ├── SerialMonitorWindow.cpp/h   # Terminal-style serial CLI monitor
-│   ├── RepeaterMonitorView.cpp/h   # Structured repeater log viewer (BView)
-│   ├── RepeaterMonitorWindow.cpp/h # Repeater monitor window
 │   ├── DebugLogWindow.cpp/h        # Raw protocol debug log
 │   ├── MqttClient.cpp/h            # MQTT bridge integration
 │   ├── MqttLogWindow.cpp/h         # MQTT event log
@@ -271,7 +291,6 @@ Sestriere/
         ├─ MqttClient (bridge)
         ├─ MqttLogWindow
         ├─ SerialMonitorWindow
-        ├─ RepeaterMonitorWindow
         └─ ProfileWindow
 ```
 

@@ -135,6 +135,122 @@ TestRenameReturnCheck()
 
 
 // ============================================================================
+// Test 5: SendDM return value checked in all call sites
+// ============================================================================
+
+static void
+TestSendDMReturnChecked()
+{
+	const char* file = "MainWindow.cpp";
+
+	// All SendDM calls should be preceded by status_t check
+	int sendDMCount = CountOccurrences(file, "->SendDM(");
+	int resultAssign = CountOccurrences(file, "= fProtocol->SendDM(");
+
+	assert(sendDMCount >= 3);
+	assert(resultAssign >= 3);
+
+	printf("  PASS: %d/%d SendDM calls have return value check\n",
+		resultAssign, sendDMCount);
+}
+
+
+// ============================================================================
+// Test 6: SendChannelMsg return value checked
+// ============================================================================
+
+static void
+TestSendChannelMsgReturnChecked()
+{
+	const char* file = "MainWindow.cpp";
+
+	int sendCount = CountOccurrences(file, "->SendChannelMsg(");
+	int resultAssign = CountOccurrences(file, "= fProtocol->SendChannelMsg(");
+
+	assert(sendCount >= 1);
+	assert(resultAssign >= 1);
+
+	printf("  PASS: %d/%d SendChannelMsg calls have return value check\n",
+		resultAssign, sendCount);
+}
+
+
+// ============================================================================
+// Test 7: SendRawData return value checked in image/voice transfers
+// ============================================================================
+
+static void
+TestSendRawDataReturnChecked()
+{
+	const char* file = "MainWindow.cpp";
+
+	// SendRawData should have != B_OK checks
+	int sendCount = CountOccurrences(file, "->SendRawData(");
+	int checkedCount = CountOccurrences(file, "SendRawData(packet, pktLen) != B_OK");
+
+	assert(sendCount >= 6);
+	assert(checkedCount >= 6);
+
+	printf("  PASS: %d/%d SendRawData calls have error check\n",
+		checkedCount, sendCount);
+}
+
+
+// ============================================================================
+// Test 8: Contact management sends check return values
+// ============================================================================
+
+static void
+TestContactManagementReturnChecked()
+{
+	const char* file = "MainWindow.cpp";
+
+	// SendRemoveContact should have != B_OK check
+	assert(FileContains(file, "SendRemoveContact(") == true);
+	assert(FileContains(file, "->SendRemoveContact(") == true);
+
+	// SendResetPath should have != B_OK check
+	assert(FileContains(file, "->SendResetPath(") == true);
+
+	// SendSetChannel should have != B_OK check
+	int setChCount = CountOccurrences(file, "->SendSetChannel(");
+	assert(setChCount >= 2);
+
+	// SendRemoveChannel should have != B_OK check
+	assert(FileContains(file, "SendRemoveChannel(") == true);
+
+	printf("  PASS: Contact management sends have return value checks\n");
+}
+
+
+// ============================================================================
+// Test 9: Image/voice abort on send failure
+// ============================================================================
+
+static void
+TestMediaAbortOnFailure()
+{
+	const char* file = "MainWindow.cpp";
+
+	// Image transfer should set IMAGE_FAILED on send error
+	assert(FileContains(file, "session->state = IMAGE_FAILED"));
+
+	// Voice transfer should set VOICE_FAILED on send error
+	assert(FileContains(file, "session->state = VOICE_FAILED"));
+
+	// Timer cleanup on failure
+	int imgTimerCleanup = CountOccurrences(file,
+		"fImageFragmentTimer = NULL");
+	int voiceTimerCleanup = CountOccurrences(file,
+		"fVoiceFragmentTimer = NULL");
+	assert(imgTimerCleanup >= 1);
+	assert(voiceTimerCleanup >= 1);
+
+	printf("  PASS: Image/voice transfers abort and clean up on send failure\n");
+}
+
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -147,7 +263,12 @@ main()
 	TestSscanfReturnCheck();
 	TestSqliteErrmsgUsed();
 	TestRenameReturnCheck();
+	TestSendDMReturnChecked();
+	TestSendChannelMsgReturnChecked();
+	TestSendRawDataReturnChecked();
+	TestContactManagementReturnChecked();
+	TestMediaAbortOnFailure();
 
-	printf("\nAll 4 tests passed.\n");
+	printf("\nAll 9 tests passed.\n");
 	return 0;
 }

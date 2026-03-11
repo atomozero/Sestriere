@@ -11,7 +11,6 @@
 #include <Window.h>
 #include "Compat.h"
 
-class BCardView;
 class BFilePanel;
 
 #include "ImageSession.h"
@@ -50,7 +49,6 @@ class MissionControlWindow;
 class NetworkMapWindow;
 class ProfileWindow;
 class PacketAnalyzerWindow;
-class RepeaterMonitorView;
 class SerialHandler;
 class SerialMonitorWindow;
 class SettingsWindow;
@@ -205,11 +203,6 @@ private:
 			void			_RetryMessage(PendingMessage* pending);
 			void			_FailMessage(PendingMessage* pending);
 
-			// Repeater mode switching
-			void			_SwitchToRepeaterMode();
-			void			_SwitchToChatMode();
-			void			_UpdateRepeaterMap();
-
 			// Admin toolbar (in chat area, above input bar)
 			void			_ShowAdminToolbar(bool show);
 
@@ -297,8 +290,6 @@ private:
 
 			// UI elements - Layout
 			BSplitView*		fMainSplit;
-			BCardView*		fCardView;
-			RepeaterMonitorView*	fRepeaterMonitorView;
 			uint8			fDeviceAdvType;
 
 			// State
@@ -365,7 +356,6 @@ private:
 			BMessageRunner*	fAdminRefreshTimer;
 			BMessageRunner*	fTelemetryPollTimer;
 			BMessageRunner*	fHandshakeTimer;
-			BMessageRunner*	fRepeaterMapTimer;
 
 			// Cached stats for status bar
 			uint8			fBatteryType;	// BatteryChemistry enum

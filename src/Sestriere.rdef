@@ -11,8 +11,8 @@ resource app_version {
 	major = 1,
 	middle = 8,
 	minor = 0,
-	variety = B_APPV_ALPHA,
-	internal = 2,
+	variety = B_APPV_BETA,
+	internal = 0,
 	short_info = "Sestriere",
 	long_info = "MeshCore LoRa mesh client for Haiku OS"
 };

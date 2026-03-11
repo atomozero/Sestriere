@@ -12,7 +12,6 @@
 #include <Bitmap.h>
 #include <BitmapStream.h>
 #include <Button.h>
-#include <CardView.h>
 #include <CheckBox.h>
 #include <Clipboard.h>
 #include <Deskbar.h>
@@ -69,7 +68,6 @@
 #include "NetworkMapWindow.h"
 #include "PacketAnalyzerWindow.h"
 #include "ProfileWindow.h"
-#include "RepeaterMonitorView.h"
 #include "SerialMonitorWindow.h"
 #include "NotificationManager.h"
 #include "ProtocolHandler.h"
@@ -323,8 +321,6 @@ MainWindow::MainWindow()
 	fAdminPwdField(NULL),
 	fInfoPanel(NULL),
 	fMainSplit(NULL),
-	fCardView(NULL),
-	fRepeaterMonitorView(NULL),
 	fDeviceAdvType(0),
 	fSelectedPreset(PRESET_EU_UK_NARROW),
 	fSelectedPort(""),
@@ -368,7 +364,6 @@ MainWindow::MainWindow()
 	fAdminRefreshTimer(NULL),
 	fTelemetryPollTimer(NULL),
 	fHandshakeTimer(NULL),
-	fRepeaterMapTimer(NULL),
 	fBatteryType(BATTERY_LIPO),
 	fBatteryMv(0),
 	fLastRssi(0),
@@ -496,7 +491,6 @@ MainWindow::~MainWindow()
 	delete fStatsRefreshTimer;
 	delete fAutoSyncRunner;
 	delete fHandshakeTimer;
-	delete fRepeaterMapTimer;
 	delete fPingTimeoutRunner;
 	delete fDeliveryCheckTimer;
 
@@ -629,8 +623,6 @@ MainWindow::_BuildMenuBar()
 		new BMessage(MSG_SHOW_MISSION_CONTROL), 'D', B_SHIFT_KEY));
 	viewMenu->AddItem(new BMenuItem("Serial Monitor",
 		new BMessage(MSG_SHOW_SERIAL_MONITOR), 'S', B_SHIFT_KEY));
-	viewMenu->AddItem(new BMenuItem("Repeater Monitor",
-		new BMessage(MSG_SHOW_REPEATER_MONITOR), 'R', B_SHIFT_KEY));
 	viewMenu->AddSeparatorItem();
 	viewMenu->AddItem(new BMenuItem("MQTT Log",
 		new BMessage(MSG_SHOW_MQTT_LOG), 'M', B_SHIFT_KEY));
@@ -881,15 +873,6 @@ MainWindow::_BuildUI()
 	fMainSplit->SetCollapsible(1, false);
 	fMainSplit->SetCollapsible(2, true);
 
-	// === REPEATER MONITOR VIEW ===
-	fRepeaterMonitorView = new RepeaterMonitorView(this);
-
-	// === CARD VIEW (chat mode / repeater mode) ===
-	fCardView = new BCardView("mode_card");
-	fCardView->AddChild(fMainSplit);           // Card 0: chat
-	fCardView->AddChild(fRepeaterMonitorView); // Card 1: repeater
-	fCardView->CardLayout()->SetVisibleItem((int32)0);
-
 	// === MENU BAR + STATUS BAR ===
 	fMenuBar = new BMenuBar("menubar");
 	_BuildMenuBar();
@@ -899,7 +882,7 @@ MainWindow::_BuildUI()
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(fMenuBar)
 		.Add(fTopBar)
-		.Add(fCardView, 1.0)
+		.Add(fMainSplit, 1.0)
 	.End();
 
 	// Set admin toolbar button targets to this window
@@ -1067,9 +1050,6 @@ MainWindow::MessageReceived(BMessage* message)
 					fSerialMonitorWindow->AppendOutput(line);
 					fSerialMonitorWindow->UnlockLooper();
 				}
-				// Forward to Repeater Monitor view (embedded, same looper)
-				if (fRepeaterMonitorView != NULL)
-					fRepeaterMonitorView->ProcessLine(line);
 			}
 			break;
 		}
@@ -1286,16 +1266,9 @@ MainWindow::MessageReceived(BMessage* message)
 			} else {
 				_ShowWindow(fNetworkMapWindow);
 			}
-			// In repeater mode, use repeater topology instead of
-			// companion contacts
-			if (fCardView != NULL
-				&& fCardView->CardLayout()->VisibleIndex() == 1) {
-				_UpdateRepeaterMap();
-			} else {
-				if (fNetworkMapWindow->LockLooper()) {
-					fNetworkMapWindow->UpdateFromContacts(&fContacts);
-					fNetworkMapWindow->UnlockLooper();
-				}
+			if (fNetworkMapWindow->LockLooper()) {
+				fNetworkMapWindow->UpdateFromContacts(&fContacts);
+				fNetworkMapWindow->UnlockLooper();
 			}
 			break;
 		}
@@ -1304,14 +1277,9 @@ MainWindow::MessageReceived(BMessage* message)
 		{
 			// Update map data without showing/activating the window
 			if (fNetworkMapWindow != NULL) {
-				if (fCardView != NULL
-					&& fCardView->CardLayout()->VisibleIndex() == 1) {
-					_UpdateRepeaterMap();
-				} else {
-					if (fNetworkMapWindow->LockLooper()) {
-						fNetworkMapWindow->UpdateFromContacts(&fContacts);
-						fNetworkMapWindow->UnlockLooper();
-					}
+				if (fNetworkMapWindow->LockLooper()) {
+					fNetworkMapWindow->UpdateFromContacts(&fContacts);
+					fNetworkMapWindow->UnlockLooper();
 				}
 			}
 			break;
@@ -1779,35 +1747,6 @@ MainWindow::MessageReceived(BMessage* message)
 
 				// Switch to raw mode so '>' in CLI prompts isn't parsed as frame marker
 				fSerialHandler->SetRawMode(true);
-
-				// Auto-switch to Repeater Monitor for non-companion devices
-				_SwitchToRepeaterMode();
-			}
-			break;
-		}
-
-		case MSG_REPEATER_MAP_TICK:
-		{
-			_UpdateRepeaterMap();
-			break;
-		}
-
-		case MSG_REPEATER_PACKET_FLOW:
-		{
-			const char* src = NULL;
-			const char* dst = NULL;
-			int8 snr = 0;
-			int32 type = 0;
-			if (message->FindString("src", &src) == B_OK
-				&& message->FindString("dst", &dst) == B_OK) {
-				message->FindInt8("snr", &snr);
-				message->FindInt32("type", &type);
-				bool isMessage = (type == 2);
-				if (_LockIfVisible(fNetworkMapWindow)) {
-					fNetworkMapWindow->TriggerPacketFlow(
-						src, dst, snr, isMessage);
-					fNetworkMapWindow->UnlockLooper();
-				}
 			}
 			break;
 		}
@@ -2178,7 +2117,8 @@ MainWindow::MessageReceived(BMessage* message)
 			ssize_t keySize;
 			if (message->FindData("pubkey", B_RAW_TYPE, &keyData, &keySize) == B_OK
 				&& keySize >= (ssize_t)kPubKeySize) {
-				fProtocol->SendResetPath((const uint8*)keyData);
+				if (fProtocol->SendResetPath((const uint8*)keyData) != B_OK)
+					_LogMessage("ERROR", "Failed to send reset path");
 			}
 			break;
 		}
@@ -2208,7 +2148,11 @@ MainWindow::MessageReceived(BMessage* message)
 				"Cancel", "Remove", NULL,
 				B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 			if (confirm->Go() == 1) {
-				fProtocol->SendRemoveContact((const uint8*)keyData);
+				if (fProtocol->SendRemoveContact(
+						(const uint8*)keyData) != B_OK) {
+					_LogMessage("ERROR", "Failed to remove contact");
+					break;
+				}
 				// Schedule auto-sync after 3s
 				delete fAutoSyncRunner;
 				fAutoSyncRunner = NULL;
@@ -2247,7 +2191,10 @@ MainWindow::MessageReceived(BMessage* message)
 				"Cancel", "Remove", NULL,
 				B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 			if (confirm->Go() == 1) {
-				fProtocol->SendRemoveChannel((uint8)chIdx);
+				if (fProtocol->SendRemoveChannel((uint8)chIdx) != B_OK) {
+					_LogMessage("ERROR", "Failed to remove channel");
+					break;
+				}
 				// Remove from local list and update UI
 				for (int32 i = 0; i < fChannels.CountItems(); i++) {
 					if (fChannels.ItemAt(i)->index == (uint8)chIdx) {
@@ -2322,7 +2269,11 @@ MainWindow::MessageReceived(BMessage* message)
 			for (size_t i = 0; i < 16 && i < nameLen; i++)
 				secret[i] = (uint8)name[i];
 
-			fProtocol->SendSetChannel((uint8)emptySlot, name, secret);
+			if (fProtocol->SendSetChannel((uint8)emptySlot, name,
+					secret) != B_OK) {
+				_LogMessage("ERROR", "Failed to create channel");
+				break;
+			}
 
 			// Add to local list immediately
 			ChannelInfo* ch = new ChannelInfo();
@@ -2554,18 +2505,6 @@ MainWindow::MessageReceived(BMessage* message)
 				fSerialMonitorWindow->Show();
 			} else {
 				_ShowWindow(fSerialMonitorWindow);
-			}
-			break;
-		}
-
-		case MSG_SHOW_REPEATER_MONITOR:
-		{
-			// Toggle between chat mode and repeater monitor
-			int32 current = fCardView->CardLayout()->VisibleIndex();
-			if (current == 0) {
-				_SwitchToRepeaterMode();
-			} else {
-				_SwitchToChatMode();
 			}
 			break;
 		}
@@ -2986,8 +2925,11 @@ MainWindow::MessageReceived(BMessage* message)
 				i++) {
 				const char* name = message->GetString("name", i, "");
 				int32 type = message->GetInt32("type", i);
-				fProtocol->SendAddUpdateContact((const uint8*)pubkey,
-					name, (uint8)type);
+				if (fProtocol->SendAddUpdateContact((const uint8*)pubkey,
+						name, (uint8)type) != B_OK) {
+					_LogMessage("ERROR", "Failed to import contact");
+					break;
+				}
 				count++;
 			}
 			if (count > 0) {
@@ -3016,8 +2958,11 @@ MainWindow::MessageReceived(BMessage* message)
 				ssize_t secretSize;
 				if (message->FindData("secret", B_RAW_TYPE, i,
 					&secret, &secretSize) == B_OK && secretSize == 16) {
-					fProtocol->SendSetChannel((uint8)index, name,
-						(const uint8*)secret);
+					if (fProtocol->SendSetChannel((uint8)index, name,
+							(const uint8*)secret) != B_OK) {
+						_LogMessage("ERROR", "Failed to import channel");
+						break;
+					}
 					count++;
 				}
 			}
@@ -3402,8 +3347,6 @@ MainWindow::QuitRequested()
 		fGifPickerWindow->Quit();
 		fGifPickerWindow = NULL;
 	}
-	// fRepeaterMonitorView is a child of fCardView, destroyed automatically
-
 	// Destroy singletons
 	DebugLogWindow::Destroy();
 	NotificationManager::Destroy();
@@ -3630,8 +3573,12 @@ MainWindow::_SendCliCommand(const char* command)
 	}
 
 	uint32 timestamp = (uint32)time(NULL);
-	fProtocol->SendDM(target->publicKey, TXT_TYPE_CLI_DATA, timestamp,
-		command, cmdLen);
+	status_t sendResult = fProtocol->SendDM(target->publicKey,
+		TXT_TYPE_CLI_DATA, timestamp, command, cmdLen);
+	if (sendResult != B_OK) {
+		_LogMessage("ERROR", "Failed to send CLI command");
+		return;
+	}
 	fTopBar->FlashTx();
 
 	// Add to chat history
@@ -3743,7 +3690,12 @@ MainWindow::_SendTextMessage(const char* text)
 	uint8 txtType = isCli ? TXT_TYPE_CLI_DATA : TXT_TYPE_PLAIN;
 
 	uint32 timestamp = (uint32)time(NULL);
-	fProtocol->SendDM(contact->publicKey, txtType, timestamp, text, textLen);
+	status_t sendResult = fProtocol->SendDM(contact->publicKey, txtType,
+		timestamp, text, textLen);
+	if (sendResult != B_OK) {
+		_LogMessage("ERROR", "Failed to send message — not connected");
+		return;
+	}
 	fTopBar->FlashTx();
 
 	// Add to chat view as outgoing message (pending delivery)
@@ -3812,7 +3764,12 @@ MainWindow::_SendChannelMessage(const char* text)
 	uint8 wireChannelIdx = (fSelectedChannelIdx >= 0)
 		? (uint8)fSelectedChannelIdx : 0;
 	uint32 timestamp = (uint32)time(NULL);
-	fProtocol->SendChannelMsg(wireChannelIdx, timestamp, text, textLen);
+	status_t sendResult = fProtocol->SendChannelMsg(wireChannelIdx,
+		timestamp, text, textLen);
+	if (sendResult != B_OK) {
+		_LogMessage("ERROR", "Failed to send channel message — not connected");
+		return;
+	}
 	fTopBar->FlashTx();
 
 	// Add to chat view as outgoing message (sent immediately for channel)
@@ -4606,10 +4563,6 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 	// Start offline message sync to drain any queued messages
 	fProtocol->SendSyncNextMessage();
 
-	// Trigger immediate repeater map update now that contacts are available
-	if (fCardView != NULL && fCardView->CardLayout()->VisibleIndex() == 1)
-		_UpdateRepeaterMap();
-
 	// Forward contact counts to Mission Control
 	if (_LockIfVisible(fMissionControlWindow)) {
 		uint32 now = (uint32)time(NULL);
@@ -4763,9 +4716,6 @@ MainWindow::_HandleSelfInfo(const uint8* data, size_t length)
 			"Self type:%d txPower:%d maxTxPower:%d", advType, fRadioTxPower, maxTxPower));
 
 		// Auto-switch to repeater monitor for repeater/room devices
-		if (advType == 2 || advType == 3)
-			_SwitchToRepeaterMode();
-
 		// Extract and store public key as hex string (offset 4-35)
 		FormatPubKeyFull(fPublicKey, data + 4);
 
@@ -6190,8 +6140,13 @@ MainWindow::_RetryMessage(PendingMessage* pending)
 
 	// Re-send via protocol
 	size_t textLen = strlen(pending->text);
-	fProtocol->SendDM(pending->pubKey, pending->txtType,
-		pending->timestamp, pending->text, textLen);
+	status_t sendResult = fProtocol->SendDM(pending->pubKey,
+		pending->txtType, pending->timestamp, pending->text, textLen);
+	if (sendResult != B_OK) {
+		_LogMessage("ERROR", "Retry send failed — not connected");
+		_FailMessage(pending);
+		return;
+	}
 	fTopBar->FlashTx();
 }
 
@@ -6290,7 +6245,6 @@ MainWindow::_OnDisconnected()
 	fConnected = false;
 	fHasDeviceInfo = false;  // Reset for next connection
 	fDeviceAdvType = 0;
-	_SwitchToChatMode();
 	fSyncingMessages = false;
 	fEnumeratingChannels = false;
 
@@ -7544,163 +7498,6 @@ MainWindow::_ShowAdminToolbar(bool show)
 
 
 void
-MainWindow::_SwitchToRepeaterMode()
-{
-	if (fCardView == NULL)
-		return;
-
-	// If already in repeater mode, just update the map and return
-	if (fCardView->CardLayout()->VisibleIndex() == 1) {
-		_UpdateRepeaterMap();
-		return;
-	}
-
-	fCardView->CardLayout()->SetVisibleItem(1);
-
-	// Update window title
-	SetTitle("Sestriere \xe2\x80\x94 Repeater Monitor");
-
-	// Auto-request firmware version and log
-	if (fSerialHandler != NULL) {
-		BMessage verMsg(MSG_SERIAL_SEND_RAW);
-		verMsg.AddString("text", "ver");
-		fSerialHandler->PostMessage(&verMsg);
-
-		BMessage logMsg(MSG_SERIAL_SEND_RAW);
-		logMsg.AddString("text", "log");
-		fSerialHandler->PostMessage(&logMsg);
-	}
-
-	// Start repeater map update timer (5 seconds)
-	delete fRepeaterMapTimer;
-	fRepeaterMapTimer = NULL;
-	BMessage mapTick(MSG_REPEATER_MAP_TICK);
-	fRepeaterMapTimer = new BMessageRunner(this, &mapTick, 5000000);
-
-	// Auto-open the network map (only on first switch, not re-activation)
-	if (fNetworkMapWindow == NULL)
-		PostMessage(MSG_SHOW_NETWORK_MAP);
-	else
-		_UpdateRepeaterMap();
-}
-
-
-void
-MainWindow::_SwitchToChatMode()
-{
-	if (fCardView == NULL)
-		return;
-
-	// Only switch if we're not already in chat mode
-	if (fCardView->CardLayout()->VisibleIndex() == 0)
-		return;
-
-	fCardView->CardLayout()->SetVisibleItem((int32)0);
-
-	// Stop repeater map timer
-	delete fRepeaterMapTimer;
-	fRepeaterMapTimer = NULL;
-
-	// Clear repeater monitor data
-	if (fRepeaterMonitorView != NULL)
-		fRepeaterMonitorView->Clear();
-
-	// Reset window title
-	SetTitle("Sestriere");
-}
-
-
-void
-MainWindow::_UpdateRepeaterMap()
-{
-	if (fNetworkMapWindow == NULL || fRepeaterMonitorView == NULL)
-		return;
-	if (!_LockIfVisible(fNetworkMapWindow))
-		return;
-
-	RepeaterNodeInfo nodes[64];
-	int32 nodeCount = fRepeaterMonitorView->GetNodeInfos(nodes, 64);
-
-	// Try to resolve full names by matching hex ID (first pubkey byte)
-	// against known contacts
-	for (int32 i = 0; i < nodeCount; i++) {
-		if (nodes[i].fullName[0] != '\0')
-			continue;  // Already resolved
-
-		// Parse hex ID to byte value
-		unsigned int hexVal = 0;
-		sscanf(nodes[i].name, "%x", &hexVal);
-		uint8 idByte = (uint8)(hexVal & 0xFF);
-
-		// Search contacts for matching first pubkey byte
-		for (int32 c = 0; c < fContacts.CountItems(); c++) {
-			ContactInfo* contact = fContacts.ItemAt(c);
-			if (contact != NULL && contact->isValid
-				&& contact->publicKey[0] == idByte
-				&& contact->name[0] != '\0') {
-				strlcpy(nodes[i].fullName, contact->name,
-					sizeof(nodes[i].fullName));
-				break;
-			}
-		}
-	}
-
-	// Merge companion contacts that aren't already in the repeater log
-	int32 mergedCount = 0;
-	int32 contactTotal = fContacts.CountItems();
-	_LogMessage("MAP", BString().SetToFormat(
-		"RepeaterMap: %d log nodes, %d contacts to merge",
-		(int)nodeCount, (int)contactTotal));
-	for (int32 c = 0; c < contactTotal && nodeCount < 64; c++) {
-		ContactInfo* contact = fContacts.ItemAt(c);
-		if (contact == NULL || !contact->isValid || contact->name[0] == '\0')
-			continue;
-
-		uint8 idByte = contact->publicKey[0];
-
-		// Skip if this contact is already in the repeater node list
-		bool alreadyPresent = false;
-		for (int32 n = 0; n < nodeCount; n++) {
-			unsigned int hexVal = 0;
-			sscanf(nodes[n].name, "%x", &hexVal);
-			if ((uint8)(hexVal & 0xFF) == idByte) {
-				alreadyPresent = true;
-				break;
-			}
-		}
-		if (alreadyPresent)
-			continue;
-
-		// Add as a new node from companion contacts
-		RepeaterNodeInfo& info = nodes[nodeCount];
-		memset(&info, 0, sizeof(RepeaterNodeInfo));
-		snprintf(info.name, sizeof(info.name), "%02X", idByte);
-		strlcpy(info.fullName, contact->name, sizeof(info.fullName));
-		info.packetCount = 0;
-		info.isSelf = false;
-		info.isDirect = (contact->outPathLen < 0);
-		info.isForwarded = (contact->outPathLen > 0);
-		nodeCount++;
-		mergedCount++;
-	}
-
-	if (mergedCount > 0) {
-		_LogMessage("MAP", BString().SetToFormat(
-			"RepeaterMap: merged %d companion contacts (total nodes: %d)",
-			(int)mergedCount, (int)nodeCount));
-	}
-
-	RepeaterLink links[128];
-	int32 linkCount = fRepeaterMonitorView->GetLinks(links, 128);
-
-	fNetworkMapWindow->SetRepeaterTopology(
-		fDeviceName[0] ? fDeviceName : "Repeater",
-		nodes, nodeCount, links, linkCount);
-	fNetworkMapWindow->UnlockLooper();
-}
-
-
-void
 MainWindow::_ForwardSarMarkerToMap(const SarMarker& marker,
 	const char* senderName)
 {
@@ -8084,8 +7881,14 @@ MainWindow::_SendNextImageFragment()
 		session->totalFragments, frag.data, frag.length);
 
 	// Send via CMD_SEND_RAW_DATA (broadcast).
-	if (fProtocol != NULL)
-		fProtocol->SendRawData(packet, pktLen);
+	if (fProtocol == NULL || fProtocol->SendRawData(packet, pktLen) != B_OK) {
+		_LogMessage("IMG", "Send failed — aborting image transfer");
+		session->state = IMAGE_FAILED;
+		_UpdateImageMessageView(fCurrentSendSession);
+		delete fImageFragmentTimer;
+		fImageFragmentTimer = NULL;
+		return;
+	}
 
 	fCurrentSendIndex++;
 
@@ -8232,8 +8035,11 @@ MainWindow::_HandleIncomingFetchRequest(const uint8* payload, size_t length)
 			sid, session->format, idx, session->totalFragments,
 			frag.data, frag.length);
 
-		if (fProtocol != NULL)
-			fProtocol->SendRawData(packet, pktLen);
+		if (fProtocol == NULL
+			|| fProtocol->SendRawData(packet, pktLen) != B_OK) {
+			_LogMessage("IMG", "Resend failed — not connected");
+			break;
+		}
 	}
 }
 
@@ -8267,11 +8073,11 @@ MainWindow::_StartImageFetch(uint32 sessionId)
 	// CMD_SEND_BINARY_REQ does NOT deliver decrypted data on current
 	// firmware — arrives as PUSH_RAW_RADIO_PACKET (0x88) which the
 	// sender can't process. SendRawData delivers as PUSH_RAW_DATA (0x84).
-	if (fProtocol == NULL) {
+	if (fProtocol == NULL
+		|| fProtocol->SendRawData(packet, pktLen) != B_OK) {
 		_LogMessage("IMG", "Cannot fetch: not connected");
 		return;
 	}
-	fProtocol->SendRawData(packet, pktLen);
 
 	session->state = IMAGE_LOADING;
 	_UpdateImageMessageView(sessionId);
@@ -8469,8 +8275,14 @@ MainWindow::_SendNextVoiceFragment()
 		session->totalFragments, frag.data, frag.length);
 
 	// Send via CMD_SEND_RAW_DATA (broadcast) — see _SendNextImageFragment
-	if (fProtocol != NULL)
-		fProtocol->SendRawData(packet, pktLen);
+	if (fProtocol == NULL || fProtocol->SendRawData(packet, pktLen) != B_OK) {
+		_LogMessage("VOICE", "Send failed — aborting voice transfer");
+		session->state = VOICE_FAILED;
+		_UpdateVoiceMessageView(fCurrentVoiceSendSession);
+		delete fVoiceFragmentTimer;
+		fVoiceFragmentTimer = NULL;
+		return;
+	}
 
 	fCurrentVoiceSendIndex++;
 
@@ -8580,8 +8392,11 @@ MainWindow::_HandleIncomingVoiceFetch(const uint8* payload, size_t length)
 			sid, session->mode, idx, session->totalFragments,
 			frag.data, frag.length);
 
-		if (fProtocol != NULL)
-			fProtocol->SendRawData(packet, pktLen);
+		if (fProtocol == NULL
+			|| fProtocol->SendRawData(packet, pktLen) != B_OK) {
+			_LogMessage("VOICE", "Resend failed — not connected");
+			break;
+		}
 	}
 }
 
@@ -8613,11 +8428,11 @@ MainWindow::_StartVoiceFetch(uint32 sessionId)
 		missing, count);
 
 	// Send via CMD_SEND_RAW_DATA (broadcast) — see _StartImageFetch
-	if (fProtocol == NULL) {
+	if (fProtocol == NULL
+		|| fProtocol->SendRawData(packet, pktLen) != B_OK) {
 		_LogMessage("VOICE", "Cannot fetch: not connected");
 		return;
 	}
-	fProtocol->SendRawData(packet, pktLen);
 
 	session->state = VOICE_LOADING;
 	_UpdateVoiceMessageView(sessionId);
