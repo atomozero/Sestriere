@@ -384,6 +384,7 @@ private:
 			uint8			fRadioCr;
 			uint8			fRadioTxPower;
 			bool			fHasRadioParams;
+			uint32			fDevicePin;
 
 			// Other params from RSP_SELF_INFO (for CMD_SET_OTHER_PARAMS)
 			uint8			fMultiAcks;

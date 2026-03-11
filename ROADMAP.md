@@ -82,10 +82,10 @@ Spostato in `fake_radio/` con Makefile e icona HVIF.
 - **Cosa fare**: tab "Custom Variables" in SettingsWindow con lista chiave/valore
 - **Sforzo**: medio
 
-### P3. Tuning Parameters UI (GET/SET_TUNING_PARAMS)
+### P3. Tuning Parameters UI (GET/SET_TUNING_PARAMS) — COMPLETATO
 - **Dove**: comandi definiti, metodi in ProtocolHandler, mai esposti
-- **Cosa fare**: sezione in Settings per RX delay base e airtime factor
-- **Sforzo**: basso
+- **Fix**: aggiunta sezione "Tuning" nel tab Device di SettingsWindow con campi RX Delay Base e Airtime Factor + pulsante "Apply Tuning". Message routing `MSG_SET_TUNING_PARAMS` → MainWindow → `ProtocolHandler::SendSetTuningParams()`. Check return value con log errore.
+- **Stato**: completato v1.8.0-beta
 
 ### P4. Device PIN (SET_DEVICE_PIN)
 - **Dove**: comando implementato, nessuna UI

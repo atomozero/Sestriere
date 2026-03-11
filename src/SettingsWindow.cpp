@@ -36,6 +36,8 @@ static const uint32 kMsgPresetSelected	= 'prsl';
 static const uint32 kMsgMqttEnableChanged = 'mqen';
 static const uint32 kMsgTogglePasswordVis = 'tpvs';
 static const uint32 kMsgBatteryTypeSelected = 'btsl';
+static const uint32 kMsgApplyTuning = 'atun';
+static const uint32 kMsgSetDevicePin = 'sdpn';
 
 
 SettingsWindow::SettingsWindow(BWindow* parent)
@@ -48,6 +50,9 @@ SettingsWindow::SettingsWindow(BWindow* parent)
 	fLatitudeControl(NULL),
 	fLongitudeControl(NULL),
 	fBatteryTypeMenu(NULL),
+	fRxDelayBaseControl(NULL),
+	fAirtimeFactorControl(NULL),
+	fDevicePinControl(NULL),
 	fPresetMenu(NULL),
 	fTxPowerSlider(NULL),
 	fFrequencyControl(NULL),
@@ -190,6 +195,31 @@ SettingsWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case kMsgApplyTuning:
+		{
+			if (fParent == NULL)
+				break;
+			uint32 rxDelay = (uint32)atoi(fRxDelayBaseControl->Text());
+			uint32 airtimeFactor = (uint32)atoi(
+				fAirtimeFactorControl->Text());
+			BMessage tuningMsg(MSG_SET_TUNING_PARAMS);
+			tuningMsg.AddUInt32("rx_delay_base", rxDelay);
+			tuningMsg.AddUInt32("airtime_factor", airtimeFactor);
+			fParent->PostMessage(&tuningMsg);
+			break;
+		}
+
+		case kMsgSetDevicePin:
+		{
+			if (fParent == NULL)
+				break;
+			uint32 pin = (uint32)atoi(fDevicePinControl->Text());
+			BMessage pinMsg(MSG_SET_DEVICE_PIN);
+			pinMsg.AddUInt32("pin", pin);
+			fParent->PostMessage(&pinMsg);
+			break;
+		}
+
 		default:
 			BWindow::MessageReceived(message);
 			break;
@@ -298,6 +328,33 @@ SettingsWindow::_BuildDeviceTab(BView* parent)
 	// Default to LiPo
 	battPopUp->ItemAt(BATTERY_LIPO)->SetMarked(true);
 
+	// Tuning parameters
+	fRxDelayBaseControl = new BTextControl("rx_delay", "RX Delay Base:", "",
+		new BMessage(kMsgSettingChanged));
+	fRxDelayBaseControl->SetModificationMessage(
+		new BMessage(kMsgSettingChanged));
+	fRxDelayBaseControl->SetToolTip("Base delay for receive window (ms)");
+
+	fAirtimeFactorControl = new BTextControl("airtime_factor",
+		"Airtime Factor:", "", new BMessage(kMsgSettingChanged));
+	fAirtimeFactorControl->SetModificationMessage(
+		new BMessage(kMsgSettingChanged));
+	fAirtimeFactorControl->SetToolTip(
+		"Multiplier for airtime calculation");
+
+	BButton* applyTuningButton = new BButton("apply_tuning",
+		"Apply Tuning", new BMessage(kMsgApplyTuning));
+
+	// Device PIN
+	fDevicePinControl = new BTextControl("device_pin", "BLE PIN:", "",
+		new BMessage(kMsgSettingChanged));
+	fDevicePinControl->SetModificationMessage(
+		new BMessage(kMsgSettingChanged));
+	fDevicePinControl->SetToolTip("BLE pairing PIN (0 = disabled)");
+
+	BButton* setPinButton = new BButton("set_pin",
+		"Set PIN", new BMessage(kMsgSetDevicePin));
+
 	BStringView* infoLabel = new BStringView("info",
 		"Changes will be sent to the connected device.");
 	infoLabel->SetHighColor(kStatusOffline);
@@ -313,7 +370,23 @@ SettingsWindow::_BuildDeviceTab(BView* parent)
 			.Add(fLongitudeControl->CreateTextViewLayoutItem(), 1, 2)
 		.End()
 		.Add(fBatteryTypeMenu)
-		.AddStrut(B_USE_DEFAULT_SPACING)
+		.Add(new BSeparatorView(B_HORIZONTAL))
+		.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
+			.Add(fRxDelayBaseControl->CreateLabelLayoutItem(), 0, 0)
+			.Add(fRxDelayBaseControl->CreateTextViewLayoutItem(), 1, 0)
+			.Add(fAirtimeFactorControl->CreateLabelLayoutItem(), 0, 1)
+			.Add(fAirtimeFactorControl->CreateTextViewLayoutItem(), 1, 1)
+		.End()
+		.AddGroup(B_HORIZONTAL)
+			.AddGlue()
+			.Add(applyTuningButton)
+		.End()
+		.Add(new BSeparatorView(B_HORIZONTAL))
+		.AddGroup(B_HORIZONTAL, B_USE_DEFAULT_SPACING)
+			.Add(fDevicePinControl)
+			.Add(setPinButton)
+		.End()
+		.AddStrut(B_USE_HALF_ITEM_SPACING)
 		.Add(infoLabel)
 		.AddGlue()
 	.End();
@@ -630,4 +703,31 @@ SettingsWindow::_OnMqttEnableChanged()
 	fMqttPortControl->SetEnabled(enabled);
 	fMqttUsernameControl->SetEnabled(enabled);
 	fMqttPasswordControl->SetEnabled(enabled);
+}
+
+
+void
+SettingsWindow::SetTuningParams(uint32 rxDelayBase, uint32 airtimeFactor)
+{
+	if (fRxDelayBaseControl != NULL) {
+		char buf[16];
+		snprintf(buf, sizeof(buf), "%u", (unsigned)rxDelayBase);
+		fRxDelayBaseControl->SetText(buf);
+	}
+	if (fAirtimeFactorControl != NULL) {
+		char buf[16];
+		snprintf(buf, sizeof(buf), "%u", (unsigned)airtimeFactor);
+		fAirtimeFactorControl->SetText(buf);
+	}
+}
+
+
+void
+SettingsWindow::SetDevicePin(uint32 pin)
+{
+	if (fDevicePinControl != NULL) {
+		char buf[16];
+		snprintf(buf, sizeof(buf), "%u", (unsigned)pin);
+		fDevicePinControl->SetText(buf);
+	}
 }

@@ -36,6 +36,9 @@ public:
 			void			SetRadioParams(uint32 freqHz, uint32 bwHz,
 								uint8 sf, uint8 cr, uint8 txPower);
 			void			SetMqttSettings(const MqttSettings& settings);
+			void			SetTuningParams(uint32 rxDelayBase,
+								uint32 airtimeFactor);
+			void			SetDevicePin(uint32 pin);
 
 private:
 			void			_BuildDeviceTab(BView* parent);
@@ -53,6 +56,9 @@ private:
 			BTextControl*	fLatitudeControl;
 			BTextControl*	fLongitudeControl;
 			BMenuField*		fBatteryTypeMenu;
+			BTextControl*	fRxDelayBaseControl;
+			BTextControl*	fAirtimeFactorControl;
+			BTextControl*	fDevicePinControl;
 
 			// Radio settings
 			BMenuField*		fPresetMenu;

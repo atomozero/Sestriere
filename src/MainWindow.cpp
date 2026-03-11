@@ -430,6 +430,7 @@ MainWindow::MainWindow()
 	fRadioCr = 0;
 	fRadioTxPower = 0;
 	fHasRadioParams = false;
+	fDevicePin = 0;
 	fMultiAcks = 0;
 	fAdvertLocPolicy = 0;
 	fTelemetryModes = 0;
@@ -1303,6 +1304,7 @@ MainWindow::MessageReceived(BMessage* message)
 				}
 				fSettingsWindow->SetMqttSettings(fMqttSettings);
 				fSettingsWindow->SetBatteryType(fBatteryType);
+				fSettingsWindow->SetDevicePin(fDevicePin);
 				fSettingsWindow->Show();
 			} else {
 				if (fSettingsWindow->LockLooper()) {
@@ -1311,6 +1313,7 @@ MainWindow::MessageReceived(BMessage* message)
 							fRadioSf, fRadioCr, fRadioTxPower);
 					}
 					fSettingsWindow->SetBatteryType(fBatteryType);
+					fSettingsWindow->SetDevicePin(fDevicePin);
 					fSettingsWindow->UnlockLooper();
 				}
 				_ShowWindow(fSettingsWindow);
@@ -2453,6 +2456,50 @@ MainWindow::MessageReceived(BMessage* message)
 			uint8 txpower;
 			if (message->FindUInt8("txpower", &txpower) == B_OK) {
 				fProtocol->SendSetTxPower(txpower);
+			}
+			break;
+		}
+
+		case MSG_SET_TUNING_PARAMS:
+		{
+			if (!fSerialHandler->IsConnected()) {
+				_LogMessage("ERROR",
+					"Cannot set tuning params: not connected");
+				break;
+			}
+			uint32 rxDelay, airtimeFactor;
+			if (message->FindUInt32("rx_delay_base", &rxDelay) == B_OK
+				&& message->FindUInt32("airtime_factor",
+					&airtimeFactor) == B_OK) {
+				if (fProtocol->SendSetTuningParams(rxDelay,
+						airtimeFactor) != B_OK) {
+					_LogMessage("ERROR",
+						"Failed to set tuning parameters");
+				} else {
+					_LogMessage("INFO", BString().SetToFormat(
+						"Tuning params set: rxDelay=%u airtime=%u",
+						(unsigned)rxDelay, (unsigned)airtimeFactor));
+				}
+			}
+			break;
+		}
+
+		case MSG_SET_DEVICE_PIN:
+		{
+			if (!fSerialHandler->IsConnected()) {
+				_LogMessage("ERROR",
+					"Cannot set device PIN: not connected");
+				break;
+			}
+			uint32 pin;
+			if (message->FindUInt32("pin", &pin) == B_OK) {
+				if (fProtocol->SendSetDevicePin(pin) != B_OK) {
+					_LogMessage("ERROR",
+						"Failed to set device PIN");
+				} else {
+					_LogMessage("INFO", BString().SetToFormat(
+						"Device PIN set to %u", (unsigned)pin));
+				}
 			}
 			break;
 		}
@@ -4395,6 +4442,13 @@ MainWindow::_HandleDeviceInfo(const uint8* data, size_t length)
 		info << BString().SetToFormat("Protocol version: %d\n", fwVer);
 		info << BString().SetToFormat("Max contacts: %d\nMax channels: %d\n",
 			maxContacts, fMaxChannels);
+	}
+
+	if (length >= 8) {
+		fDevicePin = data[4] | (data[5] << 8) | (data[6] << 16)
+			| (data[7] << 24);
+		info << BString().SetToFormat("BLE PIN: %u\n",
+			(unsigned)fDevicePin);
 	}
 
 	if (length >= 20) {

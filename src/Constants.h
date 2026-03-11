@@ -222,6 +222,8 @@ enum {
 	MSG_REFRESH_PORTS = 'rfpt',
 	MSG_CLEAR_LOG = 'clog',
 	MSG_SET_NAME = 'snam',
+	MSG_SET_TUNING_PARAMS = 'stun',
+	MSG_SET_DEVICE_PIN = 'spin',
 	MSG_INSTALL_DESKBAR = 'idkb',
 	MSG_REMOVE_DESKBAR = 'rdkb',
 
