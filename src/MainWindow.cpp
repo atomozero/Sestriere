@@ -1897,15 +1897,17 @@ MainWindow::MessageReceived(BMessage* message)
 					ctxItem->GetContact().publicKey, kPubKeySize);
 				menu->AddItem(new BMenuItem("Share Contact", shareMsg));
 
-				// Line of Sight (only if both endpoints have GPS)
-				if ((fMqttSettings.latitude != 0
-					|| fMqttSettings.longitude != 0)
-					&& ctxItem->GetContact().HasGPS()) {
+				// Line of Sight (shown if self has GPS; disabled if contact lacks GPS)
+				if (fMqttSettings.latitude != 0
+					|| fMqttSettings.longitude != 0) {
 					BMessage* losMsg = new BMessage(MSG_SHOW_LOS);
 					losMsg->AddData("pubkey", B_RAW_TYPE,
 						ctxItem->GetContact().publicKey, kPubKeySize);
-					menu->AddItem(
-						new BMenuItem("Line of Sight", losMsg));
+					BMenuItem* losItem =
+						new BMenuItem("Line of Sight", losMsg);
+					if (!ctxItem->GetContact().HasGPS())
+						losItem->SetEnabled(false);
+					menu->AddItem(losItem);
 				}
 
 				menu->AddSeparatorItem();
