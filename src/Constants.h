@@ -26,6 +26,9 @@ const size_t kFrameHeaderSize = 3;       // marker + len_lo + len_hi
 const size_t kMaxFramePayload = 512;
 const size_t kMaxFrameSize = kFrameHeaderSize + kMaxFramePayload;
 
+// Serial timeout detection
+const int kMaxZeroReads = 30;  // consecutive zero reads before disconnect (~3s)
+
 // =============================================================================
 // MeshCore Companion Protocol - Inbound Commands (App -> Radio)
 // =============================================================================

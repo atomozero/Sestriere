@@ -50,11 +50,11 @@ Spostato in `fake_radio/` con Makefile e icona HVIF.
 - **Fix**: controllato `status_t` di ritorno su SendDM (3 call site), SendChannelMsg (1), SendRawData (6 image + voice), SendRemoveContact, SendResetPath, SendSetChannel (2), SendRemoveChannel, SendAddUpdateContact. Image/voice transfer abortiti con stato FAILED e cleanup timer.
 - **Stato**: completato v1.8.0-beta
 
-### B2. Timeout connessione seriale
+### B2. Timeout connessione seriale — COMPLETATO
 - **Dove**: SerialHandler::_ReadLoop()
 - **Problema**: se il device si spegne, il read loop resta bloccato per sempre
-- **Fix**: usare `select()` con timeout sul fd seriale, notificare disconnessione
-- **Stato**: da fare
+- **Fix**: `select()` con timeout 1s prima di ogni `read()`. Se `select()` ritorna errore (fd invalido), notifica disconnessione e termina. Sul timeout, verifica fd con `ioctl(TIOCMGET)`. Contatore zero-read consecutivi: dopo `kMaxZeroReads` (30, ~3s) zero-read, dichiara disconnessione. Costante `kMaxZeroReads` in Constants.h.
+- **Stato**: completato v1.8.0-beta
 
 ### B3. PUSH_CONTROL_DATA (0x8E) non gestito
 - **Dove**: MainWindow::_ParseFrame() — manca il case per 0x8E

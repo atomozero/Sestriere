@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <termios.h>
 #include <sys/ioctl.h>
+#include <sys/select.h>
 #include <errno.h>
 
 #include <cstdio>
@@ -367,28 +368,83 @@ SerialHandler::SetRawMode(bool raw)
 void
 SerialHandler::_ReadLoop()
 {
+	int zeroReadCount = 0;
+
 	while (fRunning) {
-		if (fSerialFd < 0)
+		int fd = fSerialFd;
+		if (fd < 0)
 			break;
 
-		// Read available data
-		ssize_t bytesRead = read(fSerialFd, fReadBuffer + fBufferLen,
+		// Use select() with 1-second timeout to detect dead fd
+		fd_set readSet;
+		FD_ZERO(&readSet);
+		FD_SET(fd, &readSet);
+
+		struct timeval timeout;
+		timeout.tv_sec = 1;
+		timeout.tv_usec = 0;
+
+		int selectResult = select(fd + 1, &readSet, NULL, NULL, &timeout);
+
+		if (selectResult < 0) {
+			// select() error — fd is likely invalid (USB disconnected)
+			if (fRunning && errno != EINTR) {
+				fprintf(stderr, "SerialHandler: select() error: %s\n",
+					strerror(errno));
+				_NotifyError(errno, "Serial port disconnected");
+			}
+			break;
+		}
+
+		if (selectResult == 0) {
+			// Timeout — no data available, check if fd is still valid
+			if (fd >= 0) {
+				int modemFlags;
+				if (ioctl(fd, TIOCMGET, &modemFlags) < 0) {
+					// ioctl failed — fd is dead
+					if (fRunning) {
+						fprintf(stderr,
+							"SerialHandler: device disappeared\n");
+						_NotifyError(ENXIO, "Serial device disconnected");
+					}
+					break;
+				}
+			}
+			continue;
+		}
+
+		// Data ready — read it
+		ssize_t bytesRead = read(fd, fReadBuffer + fBufferLen,
 			sizeof(fReadBuffer) - fBufferLen);
 
 		if (bytesRead > 0) {
 			fBufferLen += bytesRead;
 			_ProcessBuffer();
-		} else if (bytesRead < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-			// Read error
-			if (fRunning) {
-				_NotifyError(errno, "Serial read error");
+			zeroReadCount = 0;
+		} else if (bytesRead == 0) {
+			// EOF — USB may have been removed silently
+			zeroReadCount++;
+			if (zeroReadCount >= kMaxZeroReads) {
+				if (fRunning) {
+					fprintf(stderr,
+						"SerialHandler: %d consecutive zero reads, "
+						"assuming disconnected\n", kMaxZeroReads);
+					_NotifyError(ENXIO, "Serial device disconnected");
+				}
+				break;
 			}
-			break;
-		}
-
-		// Small delay to prevent busy-waiting
-		if (bytesRead <= 0)
 			snooze(10000);  // 10ms
+		} else {
+			// Read error
+			if (errno != EAGAIN && errno != EWOULDBLOCK) {
+				if (fRunning) {
+					fprintf(stderr, "SerialHandler: read error: %s\n",
+						strerror(errno));
+					_NotifyError(errno, "Serial read error");
+				}
+				break;
+			}
+		}
 	}
 }
 

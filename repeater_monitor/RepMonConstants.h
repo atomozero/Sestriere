@@ -18,6 +18,9 @@ const size_t kFrameHeaderSize = 3;       // marker + len_lo + len_hi
 const size_t kMaxFramePayload = 512;
 const size_t kMaxFrameSize = kFrameHeaderSize + kMaxFramePayload;
 
+// Serial timeout detection
+const int kMaxZeroReads = 30;  // consecutive zero reads before disconnect (~3s)
+
 // Signal quality level colors
 const rgb_color kColorGood = {80, 180, 80, 255};
 const rgb_color kColorFair = {200, 170, 50, 255};
