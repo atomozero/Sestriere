@@ -72,10 +72,10 @@ Spostato in `fake_radio/` con Makefile e icona HVIF.
 
 ## Feature mancanti dal protocollo (media priorità)
 
-### P1. Share Contact (CMD_SHARE_CONTACT)
+### P1. Share Contact (CMD_SHARE_CONTACT) — COMPLETATO
 - **Dove**: `SendShareContact()` esiste ma nessuna UI lo chiama
-- **Cosa fare**: voce "Condividi contatto" nel context menu sidebar
-- **Sforzo**: basso
+- **Fix**: aggiunta voce "Share Contact" nel context menu sidebar (right-click). Handler `MSG_CONTACT_SHARE` chiama `fProtocol->SendShareContact()` con check return value. Log successo/errore. Alert su fallimento. Solo per contatti non-canale.
+- **Stato**: completato v1.8.0-beta
 
 ### P2. Custom Variables UI (GET/SET_CUSTOM_VARS)
 - **Dove**: protocollo implementato, risposta loggata, nessuna interfaccia
@@ -179,7 +179,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 
 | Categoria | Implementati | Totale | Note |
 |-----------|-------------|--------|------|
-| CMD_* (inbound) | 38 | 39 | CMD_SHARE_CONTACT ha metodo ma nessuna UI |
+| CMD_* (inbound) | 39 | 39 | Tutti con UI |
 | RSP_* (outbound) | 17 | 17 | Tutti gestiti |
 | PUSH_* (notifiche) | 15 | 15 | Tutti gestiti |
 

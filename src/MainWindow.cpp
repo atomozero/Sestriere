@@ -183,6 +183,7 @@ enum {
 	MSG_CONTACT_CONTEXT = 'cctx',
 	MSG_CONTACT_REMOVE = 'crmv',
 	MSG_CONTACT_RESET_PATH = 'crsp',
+	MSG_CONTACT_SHARE = 'cshr',
 	MSG_ADD_CHANNEL = 'achn',
 	MSG_REMOVE_CHANNEL = 'rmch',
 	MSG_CREATE_CHANNEL = 'crcn',	// From AddChannelWindow
@@ -1885,6 +1886,12 @@ MainWindow::MessageReceived(BMessage* message)
 				groupMenu->SetTargetForItems(this);
 				menu->AddItem(groupMenu);
 
+				// Share Contact
+				BMessage* shareMsg = new BMessage(MSG_CONTACT_SHARE);
+				shareMsg->AddData("pubkey", B_RAW_TYPE,
+					ctxItem->GetContact().publicKey, kPubKeySize);
+				menu->AddItem(new BMenuItem("Share Contact", shareMsg));
+
 				menu->AddSeparatorItem();
 				BMessage* removeMsg = new BMessage(MSG_CONTACT_REMOVE);
 				removeMsg->AddData("pubkey", B_RAW_TYPE,
@@ -2119,6 +2126,40 @@ MainWindow::MessageReceived(BMessage* message)
 				&& keySize >= (ssize_t)kPubKeySize) {
 				if (fProtocol->SendResetPath((const uint8*)keyData) != B_OK)
 					_LogMessage("ERROR", "Failed to send reset path");
+			}
+			break;
+		}
+
+		case MSG_CONTACT_SHARE:
+		{
+			if (!fConnected) {
+				BAlert* alert = new BAlert("Error",
+					"Not connected to device.", "OK");
+				alert->Go();
+				break;
+			}
+
+			const void* keyData;
+			ssize_t keySize;
+			if (message->FindData("pubkey", B_RAW_TYPE, &keyData, &keySize) != B_OK
+				|| keySize < (ssize_t)kPubKeySize)
+				break;
+
+			ContactInfo* target = _FindContactByPrefix(
+				(const uint8*)keyData, 6);
+			BString name(target != NULL ? target->name : "contact");
+
+			if (fProtocol->SendShareContact(
+					(const uint8*)keyData) != B_OK) {
+				_LogMessage("ERROR", "Failed to share contact");
+				BString errMsg;
+				errMsg.SetToFormat("Failed to share \"%s\".", name.String());
+				BAlert* alert = new BAlert("Error",
+					errMsg.String(), "OK");
+				alert->Go();
+			} else {
+				_LogMessage("INFO", BString().SetToFormat(
+					"Shared contact \"%s\"", name.String()));
 			}
 			break;
 		}
