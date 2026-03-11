@@ -87,10 +87,10 @@ Spostato in `fake_radio/` con Makefile e icona HVIF.
 - **Fix**: aggiunta sezione "Tuning" nel tab Device di SettingsWindow con campi RX Delay Base e Airtime Factor + pulsante "Apply Tuning". Message routing `MSG_SET_TUNING_PARAMS` → MainWindow → `ProtocolHandler::SendSetTuningParams()`. Check return value con log errore.
 - **Stato**: completato v1.8.0-beta
 
-### P4. Device PIN (SET_DEVICE_PIN)
+### P4. Device PIN (SET_DEVICE_PIN) — COMPLETATO
 - **Dove**: comando implementato, nessuna UI
-- **Cosa fare**: campo PIN in SettingsWindow → tab Device
-- **Sforzo**: basso
+- **Fix**: aggiunto campo "BLE PIN" con pulsante "Set PIN" nel tab Device di SettingsWindow. PIN corrente letto da RSP_DEVICE_INFO bytes [4-7] e pre-compilato. Message routing `MSG_SET_DEVICE_PIN` → MainWindow → `ProtocolHandler::SendSetDevicePin()`. Check return value con log errore. PIN 0 = disabilitato.
+- **Stato**: completato v1.8.0-beta
 
 ---
 
