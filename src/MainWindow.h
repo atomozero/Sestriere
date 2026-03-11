@@ -136,6 +136,8 @@ private:
 								size_t length);
 			void			_HandleRawPacket(const uint8* data, size_t length);
 			void			_HandlePushRawData(const uint8* data, size_t length);
+			void			_HandlePushControlData(const uint8* data,
+								size_t length);
 
 			// Connection events
 			void			_OnConnected(BMessage* message);

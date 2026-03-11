@@ -4147,6 +4147,10 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			_HandlePushRawData(data, length);
 			break;
 
+		case PUSH_CONTROL_DATA:
+			_HandlePushControlData(data, length);
+			break;
+
 		case RSP_CUSTOM_VARS:
 			_HandleCustomVars(data, length);
 			break;
@@ -4267,6 +4271,57 @@ MainWindow::_HandlePushRawData(const uint8* data, size_t length)
 	_LogMessage("INFO", BString().SetToFormat(
 		"Raw data received: SNR=%.1fdB RSSI=%ddBm payload=%zu bytes",
 		snrDb, rssi, payloadLen));
+}
+
+
+void
+MainWindow::_HandlePushControlData(const uint8* data, size_t length)
+{
+	// PUSH_CONTROL_DATA (0x8E):
+	// [0]=code [1]=SNR*4 [2]=RSSI [3]=path_len [4..4+path_len-1]=path
+	// [4+path_len..]=payload
+	if (length < 4) {
+		_LogMessage("WARN", "PUSH_CONTROL_DATA: frame too short");
+		return;
+	}
+
+	float snrDb = (int8)data[1] / 4.0f;
+	int8 rssi = (int8)data[2];
+	uint8 pathLen = data[3];
+
+	if (length < (size_t)(4 + pathLen)) {
+		_LogMessage("WARN", "PUSH_CONTROL_DATA: truncated path");
+		return;
+	}
+
+	const uint8* payload = data + 4 + pathLen;
+	size_t payloadLen = length - 4 - pathLen;
+
+	// Build hex dump of payload (up to 32 bytes)
+	BString hexDump;
+	size_t dumpLen = payloadLen < 32 ? payloadLen : 32;
+	for (size_t i = 0; i < dumpLen; i++) {
+		if (i > 0)
+			hexDump << " ";
+		hexDump << BString().SetToFormat("%02X", payload[i]);
+	}
+	if (payloadLen > 32)
+		hexDump << "...";
+
+	BString logMsg;
+	logMsg.SetToFormat(
+		"Control data: SNR=%.1fdB RSSI=%ddBm path_len=%d payload=%zu bytes [%s]",
+		snrDb, (int)rssi, pathLen, payloadLen, hexDump.String());
+	_LogMessage("CTRL", logMsg);
+
+	// Forward to MissionControl activity feed
+	if (_LockIfVisible(fMissionControlWindow)) {
+		BString event;
+		event.SetToFormat("Control data: %zu bytes (SNR %.1f dB)",
+			payloadLen, snrDb);
+		fMissionControlWindow->AddActivityEvent("SYS", event.String());
+		fMissionControlWindow->UnlockLooper();
+	}
 }
 
 

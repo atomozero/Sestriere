@@ -56,11 +56,11 @@ Spostato in `fake_radio/` con Makefile e icona HVIF.
 - **Fix**: `select()` con timeout 1s prima di ogni `read()`. Se `select()` ritorna errore (fd invalido), notifica disconnessione e termina. Sul timeout, verifica fd con `ioctl(TIOCMGET)`. Contatore zero-read consecutivi: dopo `kMaxZeroReads` (30, ~3s) zero-read, dichiara disconnessione. Costante `kMaxZeroReads` in Constants.h.
 - **Stato**: completato v1.8.0-beta
 
-### B3. PUSH_CONTROL_DATA (0x8E) non gestito
+### B3. PUSH_CONTROL_DATA (0x8E) non gestito — COMPLETATO
 - **Dove**: MainWindow::_ParseFrame() — manca il case per 0x8E
 - **Problema**: unico push V3 ignorato. Messaggi di controllo dal device droppati silenziosamente
-- **Fix**: aggiungere handler, loggare nel debug log, gestire sottotipi noti
-- **Stato**: da fare
+- **Fix**: aggiunto `case PUSH_CONTROL_DATA` in `_ParseFrame()` con `_HandlePushControlData()`. Parser: SNR (data[1]/4.0), RSSI (data[2]), path_len (data[3]), path, payload. Log nel debug log con categoria "CTRL" e hex dump (fino a 32 byte). Forward a MissionControl activity feed. Protezione frame corti. Copertura PUSH_* ora 15/15.
+- **Stato**: completato v1.8.0-beta
 
 ### B4. Strip rimuove le risorse ELF
 - **Dove**: processo di build release
@@ -181,7 +181,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 |-----------|-------------|--------|------|
 | CMD_* (inbound) | 38 | 39 | CMD_SHARE_CONTACT ha metodo ma nessuna UI |
 | RSP_* (outbound) | 17 | 17 | Tutti gestiti |
-| PUSH_* (notifiche) | 14 | 15 | PUSH_CONTROL_DATA (0x8E) mancante |
+| PUSH_* (notifiche) | 15 | 15 | Tutti gestiti |
 
 ---
 
