@@ -199,15 +199,20 @@ ChatView::InitiateDrag(BPoint point, int32 index, bool wasSelected)
 	find_directory(B_SYSTEM_TEMP_DIRECTORY, &tempPath);
 	tempPath.Append("sestriere_drag.png");
 
+	// Deep copy — BBitmapStream takes ownership and deletes on scope exit
 	BBitmap* copy = new BBitmap(item->ImageBitmap());
-	BBitmapStream stream(copy);
+	if (copy->InitCheck() != B_OK) {
+		delete copy;
+		return false;
+	}
+	BBitmapStream stream(copy);  // stream now owns copy
 	BFile file(tempPath.Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
 	if (file.InitCheck() != B_OK)
-		return false;
+		return false;  // stream destructor deletes copy
 
 	BTranslatorRoster* roster = BTranslatorRoster::Default();
 	if (roster->Translate(&stream, NULL, NULL, &file, B_PNG_FORMAT) != B_OK)
-		return false;
+		return false;  // stream destructor deletes copy
 
 	file.Unset();
 
@@ -234,6 +239,10 @@ ChatView::InitiateDrag(BPoint point, int32 index, bool wasSelected)
 	float dstH = srcH * scale;
 	BBitmap* thumb = new BBitmap(BRect(0, 0, dstW - 1, dstH - 1),
 		B_RGBA32, true);
+	if (thumb->InitCheck() != B_OK) {
+		delete thumb;
+		return false;
+	}
 	BView* drawView = new BView(thumb->Bounds(), "draw", 0, 0);
 	thumb->AddChild(drawView);
 	thumb->Lock();
