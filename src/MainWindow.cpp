@@ -255,14 +255,40 @@ public:
 };
 
 
+// RAII locker for BWindow — null-safe, auto-unlock on scope exit.
+class WindowLocker {
+public:
+	WindowLocker(BWindow* window)
+		: fWindow(window), fLocked(false)
+	{
+		if (fWindow != NULL)
+			fLocked = fWindow->LockLooper();
+	}
+
+	~WindowLocker()
+	{
+		if (fLocked)
+			fWindow->UnlockLooper();
+	}
+
+	bool IsLocked() const { return fLocked; }
+
+private:
+	BWindow*	fWindow;
+	bool		fLocked;
+};
+
+
 static void
 _ShowWindow(BWindow* window)
 {
-	if (window->LockLooper()) {
+	if (window == NULL)
+		return;
+	WindowLocker locker(window);
+	if (locker.IsLocked()) {
 		if (window->IsHidden())
 			window->Show();
 		window->Activate();
-		window->UnlockLooper();
 	}
 }
 
@@ -1051,10 +1077,10 @@ MainWindow::MessageReceived(BMessage* message)
 			if (message->FindString("line", &line) == B_OK) {
 				_LogMessage("SERIAL", line);
 				// Forward to Serial Monitor window
-				if (fSerialMonitorWindow != NULL
-					&& fSerialMonitorWindow->LockLooper()) {
-					fSerialMonitorWindow->AppendOutput(line);
-					fSerialMonitorWindow->UnlockLooper();
+				{
+					WindowLocker monLock(fSerialMonitorWindow);
+					if (monLock.IsLocked())
+						fSerialMonitorWindow->AppendOutput(line);
 				}
 			}
 			break;
@@ -1441,11 +1467,13 @@ MainWindow::MessageReceived(BMessage* message)
 			_LogMessage("MQTT", "Connected to broker");
 			fTopBar->SetMqttStatus(true);
 			fTopBar->SetMqttEnabled(fMqttSettings.enabled);
-			if (fMqttLogWindow != NULL && fMqttLogWindow->LockLooper()) {
-				fMqttLogWindow->AddLogEntry(MQTT_LOG_CONN,
-					"Connected to broker");
-				fMqttLogWindow->SetMqttStatus(true);
-				fMqttLogWindow->UnlockLooper();
+			{
+				WindowLocker logLock(fMqttLogWindow);
+				if (logLock.IsLocked()) {
+					fMqttLogWindow->AddLogEntry(MQTT_LOG_CONN,
+						"Connected to broker");
+					fMqttLogWindow->SetMqttStatus(true);
+				}
 			}
 			// Publish initial status only if we have device info
 			if (fMqttClient != NULL && fHasDeviceInfo) {
@@ -1461,11 +1489,13 @@ MainWindow::MessageReceived(BMessage* message)
 			_LogMessage("MQTT", "Disconnected from broker");
 			fTopBar->SetMqttStatus(false);
 			fTopBar->SetMqttEnabled(fMqttSettings.enabled);
-			if (fMqttLogWindow != NULL && fMqttLogWindow->LockLooper()) {
-				fMqttLogWindow->AddLogEntry(MQTT_LOG_CONN,
-					"Disconnected from broker");
-				fMqttLogWindow->SetMqttStatus(false);
-				fMqttLogWindow->UnlockLooper();
+			{
+				WindowLocker logLock(fMqttLogWindow);
+				if (logLock.IsLocked()) {
+					fMqttLogWindow->AddLogEntry(MQTT_LOG_CONN,
+						"Disconnected from broker");
+					fMqttLogWindow->SetMqttStatus(false);
+				}
 			}
 			break;
 
@@ -1474,11 +1504,13 @@ MainWindow::MessageReceived(BMessage* message)
 			const char* error = message->GetString("error", "Unknown error");
 			_LogMessage("MQTT", BString().SetToFormat("Error: %s", error).String());
 			fTopBar->SetMqttStatus(false);
-			if (fMqttLogWindow != NULL && fMqttLogWindow->LockLooper()) {
-				BString entry;
-				entry.SetToFormat("Error: %s", error);
-				fMqttLogWindow->AddLogEntry(MQTT_LOG_ERR, entry.String());
-				fMqttLogWindow->UnlockLooper();
+			{
+				WindowLocker logLock(fMqttLogWindow);
+				if (logLock.IsLocked()) {
+					BString entry;
+					entry.SetToFormat("Error: %s", error);
+					fMqttLogWindow->AddLogEntry(MQTT_LOG_ERR, entry.String());
+				}
 			}
 			break;
 		}
@@ -4404,10 +4436,9 @@ MainWindow::_HandleTuningParams(const uint8* data, size_t length)
 		"Tuning params: rxDelay=%u, airtimeFactor=%u",
 		rxDelayBase, airtimeFactor));
 
-	if (fSettingsWindow != NULL && fSettingsWindow->LockLooper()) {
+	WindowLocker locker(fSettingsWindow);
+	if (locker.IsLocked())
 		fSettingsWindow->SetTuningParams(rxDelayBase, airtimeFactor);
-		fSettingsWindow->UnlockLooper();
-	}
 }
 
 
@@ -4933,9 +4964,10 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 	}
 
 	// Refresh NetworkMapWindow edges even when hidden — keep topology alive
-	if (fNetworkMapWindow != NULL && fNetworkMapWindow->LockLooper()) {
-		fNetworkMapWindow->UpdateFromContacts(&fContacts);
-		fNetworkMapWindow->UnlockLooper();
+	{
+		WindowLocker mapLock(fNetworkMapWindow);
+		if (mapLock.IsLocked())
+			fNetworkMapWindow->UpdateFromContacts(&fContacts);
 	}
 }
 
@@ -5630,8 +5662,9 @@ MainWindow::_HandleBattAndStorage(const uint8* data, size_t length)
 		fTopBar->SetBattery(battMv);
 
 		// Forward battery voltage to TelemetryWindow as sensor data
-		if (fTelemetryWindow != NULL) {
-			if (fTelemetryWindow->LockLooper()) {
+		{
+			WindowLocker teleLock(fTelemetryWindow);
+			if (teleLock.IsLocked()) {
 				const char* name = fDeviceName[0] != '\0' ? fDeviceName : NULL;
 				float batteryV = battMv / 1000.0f;
 				fTelemetryWindow->AddTelemetryData(fSelfNodeId, "Battery",
@@ -5641,7 +5674,6 @@ MainWindow::_HandleBattAndStorage(const uint8* data, size_t length)
 					fTelemetryWindow->AddTelemetryData(fSelfNodeId, "Storage",
 						SENSOR_CUSTOM, storagePctF, "%", name);
 				}
-				fTelemetryWindow->UnlockLooper();
 			}
 		}
 
