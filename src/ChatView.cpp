@@ -83,6 +83,9 @@ ChatView::FrameResized(float newWidth, float newHeight)
 void
 ChatView::MouseDown(BPoint where)
 {
+	if (Window() == NULL)
+		return;
+
 	BMessage* current = Window()->CurrentMessage();
 	int32 buttons = 0;
 	if (current != NULL)

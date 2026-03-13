@@ -497,6 +497,8 @@ MainWindow::~MainWindow()
 	delete fHandshakeTimer;
 	delete fPingTimeoutRunner;
 	delete fDeliveryCheckTimer;
+	delete fAdminRefreshTimer;
+	delete fTelemetryPollTimer;
 
 	// Protocol handler cleanup
 	delete fProtocol;

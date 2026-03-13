@@ -686,40 +686,44 @@ TopBarView::Draw(BRect updateRect)
 void
 TopBarView::MouseDown(BPoint where)
 {
+	BWindow* window = Window();
+	if (window == NULL)
+		return;
+
 	if (fNetworkMapRect.Contains(where)) {
-		Window()->PostMessage(MSG_SHOW_NETWORK_MAP);
+		window->PostMessage(MSG_SHOW_NETWORK_MAP);
 		return;
 	}
 	if (fGeoMapRect.Contains(where)) {
-		Window()->PostMessage(MSG_SHOW_MAP);
+		window->PostMessage(MSG_SHOW_MAP);
 		return;
 	}
 	if (fStatsRect.Contains(where)) {
-		Window()->PostMessage(new BMessage(MSG_SHOW_STATS));
+		window->PostMessage(MSG_SHOW_STATS);
 		return;
 	}
 	if (fTelemetryRect.Contains(where)) {
-		Window()->PostMessage(new BMessage(MSG_SHOW_TELEMETRY));
+		window->PostMessage(MSG_SHOW_TELEMETRY);
 		return;
 	}
 	if (fPacketAnalyzerRect.Contains(where)) {
-		Window()->PostMessage(MSG_SHOW_PACKET_ANALYZER);
+		window->PostMessage(MSG_SHOW_PACKET_ANALYZER);
 		return;
 	}
 	if (fDebugLogRect.Contains(where)) {
-		Window()->PostMessage(new BMessage(MSG_SHOW_DEBUG_LOG));
+		window->PostMessage(MSG_SHOW_DEBUG_LOG);
 		return;
 	}
 	if (fMissionControlRect.Contains(where)) {
-		Window()->PostMessage(MSG_SHOW_MISSION_CONTROL);
+		window->PostMessage(MSG_SHOW_MISSION_CONTROL);
 		return;
 	}
 	if (fMqttToggleRect.Contains(where)) {
-		Window()->PostMessage(MSG_MQTT_TOGGLE);
+		window->PostMessage(MSG_MQTT_TOGGLE);
 		return;
 	}
 	if (fMqttLogRect.Contains(where)) {
-		Window()->PostMessage(MSG_SHOW_MQTT_LOG);
+		window->PostMessage(MSG_SHOW_MQTT_LOG);
 		return;
 	}
 	BView::MouseDown(where);

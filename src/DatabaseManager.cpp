@@ -75,7 +75,7 @@ DatabaseManager::Open(const char* directory)
 	if (rc != SQLITE_OK) {
 		fprintf(stderr, "[DatabaseManager] Failed to open database: %s\n",
 			sqlite3_errmsg(fDB));
-		sqlite3_close(fDB);
+		sqlite3_close_v2(fDB);
 		fDB = NULL;
 		return false;
 	}
@@ -95,7 +95,7 @@ DatabaseManager::Open(const char* directory)
 		if (rc2 != SQLITE_OK) {
 			fprintf(stderr, "[DatabaseManager] Failed to reopen database: %s\n",
 				sqlite3_errmsg(fDB));
-			sqlite3_close(fDB);
+			sqlite3_close_v2(fDB);
 			fDB = NULL;
 			return false;
 		}

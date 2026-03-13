@@ -56,9 +56,13 @@ void
 GrowingTextView::KeyDown(const char* bytes, int32 numBytes)
 {
 	if (numBytes == 1 && bytes[0] == B_RETURN) {
+		BWindow* window = Window();
+		if (window == NULL)
+			return;
+
 		// Check for Shift+Enter (insert newline)
 		int32 modifiers = 0;
-		BMessage* msg = Window()->CurrentMessage();
+		BMessage* msg = window->CurrentMessage();
 		if (msg != NULL)
 			msg->FindInt32("modifiers", &modifiers);
 
@@ -71,7 +75,7 @@ GrowingTextView::KeyDown(const char* bytes, int32 numBytes)
 		// Enter alone: send message
 		if (fEnterMessage != NULL && fEnabled && TextLength() > 0) {
 			BMessage copy(*fEnterMessage);
-			Window()->PostMessage(&copy);
+			window->PostMessage(&copy);
 		}
 		return;
 	}
