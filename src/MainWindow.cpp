@@ -6916,6 +6916,7 @@ void
 MainWindow::_LogTx(const uint8* data, size_t length)
 {
 	DebugLogWindow::Instance()->LogHex("TX", data, length);
+	_ForwardFrameToSerialMonitor("TX", data, length);
 }
 
 
@@ -6923,6 +6924,32 @@ void
 MainWindow::_LogRx(const uint8* data, size_t length)
 {
 	DebugLogWindow::Instance()->LogHex("RX", data, length);
+	_ForwardFrameToSerialMonitor("RX", data, length);
+}
+
+
+void
+MainWindow::_ForwardFrameToSerialMonitor(const char* direction,
+	const uint8* data, size_t length)
+{
+	if (fSerialMonitorWindow == NULL)
+		return;
+	if (!fSerialMonitorWindow->LockLooper())
+		return;
+
+	BString line;
+	line << direction << " [" << (int)length << "] ";
+	size_t showLen = (length > 32) ? 32 : length;
+	for (size_t i = 0; i < showLen; i++) {
+		char hex[4];
+		snprintf(hex, sizeof(hex), "%02X ", data[i]);
+		line << hex;
+	}
+	if (length > 32)
+		line << "...";
+
+	fSerialMonitorWindow->AppendOutput(line.String());
+	fSerialMonitorWindow->UnlockLooper();
 }
 
 

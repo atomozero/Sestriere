@@ -150,6 +150,8 @@ private:
 			// Logging (now uses DebugLogWindow)
 			void			_LogTx(const uint8* data, size_t length);
 			void			_LogRx(const uint8* data, size_t length);
+			void			_ForwardFrameToSerialMonitor(const char* direction,
+								const uint8* data, size_t length);
 			void			_LogMessage(const char* prefix, const char* text);
 
 			// Sidebar
