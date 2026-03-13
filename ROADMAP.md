@@ -1,7 +1,7 @@
 # Sestriere — Roadmap
 
 Analisi dello stato attuale e piano di sviluppo futuro.
-Ultimo aggiornamento: marzo 2026 (v1.8.0-beta)
+Ultimo aggiornamento: marzo 2026 (v1.9.1)
 
 ---
 
@@ -67,6 +67,18 @@ Spostato in `fake_radio/` con Makefile e icona HVIF.
 - **Problema**: `strip` rimuove sezioni `.rsrc`, icone TopBar mancanti nei pacchetti distribuiti
 - **Fix**: ri-applicare `xres -o binary binary.rsrc` dopo `strip`
 - **Stato**: risolto in 1.8.0-beta
+
+### B5. Null dereference, timer leak, sqlite3_close — COMPLETATO
+- **Dove**: ChatView.cpp, TopBarView.cpp, GrowingTextView.cpp, MainWindow.cpp, DatabaseManager.cpp
+- **Problema**: Window() poteva restituire NULL se la view era detached, crash su MouseDown/KeyDown. TopBarView allocava `new BMessage` in PostMessage che leakava se PostMessage falliva. fAdminRefreshTimer e fTelemetryPollTimer non erano eliminati nel distruttore di MainWindow (leak se quit durante la connessione). DatabaseManager usava sqlite3_close() invece di sqlite3_close_v2() nei percorsi di errore.
+- **Fix**: guardie Window()==NULL con return anticipato in ChatView::MouseDown, TopBarView::MouseDown, GrowingTextView::KeyDown. TopBarView usa puntatore window locale con message code diretto (no new BMessage). Aggiunto delete fAdminRefreshTimer/fTelemetryPollTimer nel distruttore. sqlite3_close_v2 consistente.
+- **Stato**: completato v1.9.1
+
+### B6. Serial Monitor forward frame binari — COMPLETATO
+- **Dove**: MainWindow.cpp — Serial Monitor Window mostrava solo output testuale
+- **Problema**: _NotifyRawLine() trasmetteva solo byte non-frame (testo). I frame binari del protocollo andavano solo al debug log, non al Serial Monitor
+- **Fix**: aggiunto _ForwardFrameToSerialMonitor() chiamato da _LogTx/_LogRx. Mostra direzione (TX/RX), lunghezza e hex dump (fino a 32 byte)
+- **Stato**: completato v1.9.1
 
 ---
 
