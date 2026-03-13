@@ -228,7 +228,7 @@ SNRChartView::_DrawLine(BRect chartRect)
 		SetHighColor(FillColor());
 		SetDrawingMode(B_OP_ALPHA);
 
-		BPoint points[fPointCount + 2];
+		BPoint* points = new BPoint[fPointCount + 2];
 		for (int32 i = 0; i < fPointCount; i++) {
 			float x = _MapX(chartRect, fPoints[i].timestamp);
 			float y = _MapY(chartRect, fPoints[i].snr);
@@ -245,6 +245,7 @@ SNRChartView::_DrawLine(BRect chartRect)
 			chartRect.bottom);
 
 		FillPolygon(points, fPointCount + 2);
+		delete[] points;
 		SetDrawingMode(B_OP_COPY);
 	}
 
