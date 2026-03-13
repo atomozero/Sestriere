@@ -179,9 +179,15 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 
 | Categoria | Implementati | Totale | Note |
 |-----------|-------------|--------|------|
-| CMD_* (inbound) | 39 | 39 | Tutti con UI |
-| RSP_* (outbound) | 17 | 17 | Tutti gestiti |
+| CMD_* (inbound) | 40 | 40 | Tutti con UI, +CMD_GET_ALLOWED_REPEAT_FREQ |
+| RSP_* (outbound) | 20 | 20 | +RSP_TUNING_PARAMS, +RSP_ALLOWED_REPEAT_FREQ |
 | PUSH_* (notifiche) | 15 | 15 | Tutti gestiti |
+
+### Conformità completata (v1.9)
+- **SNR ×4 fix**: V3 DM/Channel SNR ora diviso per 4 (formato Q6.2 come da spec)
+- **RSP_TUNING_PARAMS (23)**: handler aggiunto, forward a SettingsWindow
+- **CMD_GET_ALLOWED_REPEAT_FREQ (60)**: comando + handler RSP (26) per bande repeater
+- **Cleanup**: rimosse costanti V3 inutilizzate (kV3DmRssiOffset, kV3DmPathLenOffsetB)
 
 ---
 

@@ -782,3 +782,15 @@ ProtocolHandler::SendControlData(uint8 subType, const uint8* ctrlPayload,
 		memcpy(payload + 3, ctrlPayload, ctrlLength);
 	return fSerial->SendFrame(payload, 3 + ctrlLength);
 }
+
+
+status_t
+ProtocolHandler::SendGetAllowedRepeatFreq()
+{
+	if (!IsConnected())
+		return B_NOT_INITIALIZED;
+
+	uint8 payload[1];
+	payload[0] = CMD_GET_ALLOWED_REPEAT_FREQ;
+	return fSerial->SendFrame(payload, 1);
+}

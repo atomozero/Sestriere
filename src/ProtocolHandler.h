@@ -92,6 +92,7 @@ public:
 							const uint8* data, size_t length);
 		status_t		SendControlData(uint8 subType,
 							const uint8* payload, size_t length);
+		status_t		SendGetAllowedRepeatFreq();
 
 private:
 		SerialHandler*	fSerial;

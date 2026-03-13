@@ -71,6 +71,7 @@ const uint8 CMD_SEND_BINARY_REQ = 50;
 const uint8 CMD_FACTORY_RESET = 51;
 const uint8 CMD_SEND_CONTROL_DATA = 55;
 const uint8 CMD_GET_STATS = 56;
+const uint8 CMD_GET_ALLOWED_REPEAT_FREQ = 60;
 
 // =============================================================================
 // MeshCore Companion Protocol - Outbound Responses (Radio -> App)
@@ -94,7 +95,9 @@ const uint8 RSP_CHANNEL_INFO = 18;
 const uint8 RSP_CHANNEL_MSG_RECV_V3 = 17;
 const uint8 RSP_CUSTOM_VARS = 21;
 const uint8 RSP_ADVERT_PATH = 22;
+const uint8 RSP_TUNING_PARAMS = 23;
 const uint8 RSP_STATS = 24;
+const uint8 RSP_ALLOWED_REPEAT_FREQ = 26;
 
 // =============================================================================
 // MeshCore Companion Protocol - Push Notifications (Radio -> App, unsolicited)
@@ -141,11 +144,10 @@ const size_t kContactLatOffset = 136;      // [136-139] = latitude (int32 LE)
 const size_t kContactLonOffset = 140;      // [140-143] = longitude (int32 LE)
 
 // RSP_CONTACT_MSG_RECV_V3 (V3 direct message)
-const size_t kV3DmSnrOffset = 1;           // [1] = SNR (int8)
-const size_t kV3DmRssiOffset = 2;          // [2] = RSSI (int8)
-const size_t kV3DmPathLenOffsetB = 3;      // [3] = path_len
+// Bytes [1]=SNR*4, [2-3]=reserved(0x00), [4-9]=pubkey, [10]=pathLen, ...
+const size_t kV3DmSnrOffset = 1;           // [1] = SNR * 4 (int8, Q6.2)
 const size_t kV3DmSenderOffset = 4;        // [4-9] = sender pubkey prefix
-const size_t kV3DmPathLenOffset = 10;      // [10] = path_len (duplicate)
+const size_t kV3DmPathLenOffset = 10;      // [10] = path_len
 const size_t kV3DmTxtTypeOffset = 11;      // [11] = txt_type
 const size_t kV3DmTimestampOffset = 12;    // [12-15] = timestamp (uint32 LE)
 const size_t kV3DmTextOffset = 16;         // [16+] = text content

@@ -124,6 +124,8 @@ private:
 			void			_HandleCurrTime(const uint8* data, size_t length);
 			void			_HandleCustomVars(const uint8* data, size_t length);
 			void			_HandleAdvertPath(const uint8* data, size_t length);
+			void			_HandleTuningParams(const uint8* data, size_t length);
+			void			_HandleAllowedRepeatFreq(const uint8* data, size_t length);
 
 			// Push notification handlers
 			void			_HandleChannelInfo(const uint8* data, size_t length);

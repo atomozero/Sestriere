@@ -4301,6 +4301,14 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			_HandleAdvertPath(data, length);
 			break;
 
+		case RSP_TUNING_PARAMS:
+			_HandleTuningParams(data, length);
+			break;
+
+		case RSP_ALLOWED_REPEAT_FREQ:
+			_HandleAllowedRepeatFreq(data, length);
+			break;
+
 		default:
 			_LogMessage("WARN", BString().SetToFormat("Unknown response: 0x%02X", cmd));
 			break;
@@ -4374,6 +4382,54 @@ MainWindow::_HandleAdvertPath(const uint8* data, size_t length)
 	_LogMessage("INFO", BString().SetToFormat(
 		"Advert path: recvTime=%s pathLen=%d path=[%s]",
 		timeBuf, pathLen, pathHex.String()));
+}
+
+
+void
+MainWindow::_HandleTuningParams(const uint8* data, size_t length)
+{
+	// RSP_TUNING_PARAMS (23): [0]=code [1-4]=rxDelayBase(uint32 LE)
+	// [5-8]=airtimeFactor(uint32 LE) [9-16]=reserved
+	if (length < 9) {
+		_LogMessage("WARN", "RSP_TUNING_PARAMS: frame too short");
+		return;
+	}
+
+	uint32 rxDelayBase = ReadLE32(data + 1);
+	uint32 airtimeFactor = ReadLE32(data + 5);
+
+	_LogMessage("INFO", BString().SetToFormat(
+		"Tuning params: rxDelay=%u, airtimeFactor=%u",
+		rxDelayBase, airtimeFactor));
+
+	if (fSettingsWindow != NULL && fSettingsWindow->LockLooper()) {
+		fSettingsWindow->SetTuningParams(rxDelayBase, airtimeFactor);
+		fSettingsWindow->UnlockLooper();
+	}
+}
+
+
+void
+MainWindow::_HandleAllowedRepeatFreq(const uint8* data, size_t length)
+{
+	// RSP_ALLOWED_REPEAT_FREQ (26): [0]=code
+	// [1-4]=lower_freq_1(uint32 LE, kHz) [5-8]=upper_freq_1(uint32 LE, kHz)
+	// ... repeating pairs
+	if (length < 9) {
+		_LogMessage("INFO", "No allowed repeat frequencies reported");
+		return;
+	}
+
+	size_t pairCount = (length - 1) / 8;
+	BString info("Allowed repeat frequencies:");
+	for (size_t i = 0; i < pairCount; i++) {
+		uint32 lowerKHz = ReadLE32(data + 1 + i * 8);
+		uint32 upperKHz = ReadLE32(data + 5 + i * 8);
+		info.Append(BString().SetToFormat(
+			" %.3f-%.3f MHz",
+			lowerKHz / 1000.0, upperKHz / 1000.0));
+	}
+	_LogMessage("INFO", info);
 }
 
 
@@ -5041,7 +5097,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 			_LogMessage("WARN", "V3 contact message frame too short");
 			return;
 		}
-		snr = (int8)data[kV3DmSnrOffset];
+		snr = (int8)data[kV3DmSnrOffset] / 4;  // V3 SNR is stored ×4
 		senderPrefix = data + kV3DmSenderOffset;
 		pathLen = data[kV3DmPathLenOffset];
 		txtType = data[kV3DmTxtTypeOffset];
@@ -5301,7 +5357,7 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 			_LogMessage("WARN", "V3 channel message frame too short");
 			return;
 		}
-		snr = (int8)data[kV3ChSnrOffset];
+		snr = (int8)data[kV3ChSnrOffset] / 4;  // V3 SNR is stored ×4
 		channelIdx = data[kV3ChChannelOffset];
 		pathLen = data[kV3ChPathLenOffset];
 		// data[kV3ChTxtTypeOffset] = txt_type
