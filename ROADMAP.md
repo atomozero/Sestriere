@@ -80,6 +80,24 @@ Spostato in `fake_radio/` con Makefile e icona HVIF.
 - **Fix**: aggiunto _ForwardFrameToSerialMonitor() chiamato da _LogTx/_LogRx. Mostra direzione (TX/RX), lunghezza e hex dump (fino a 32 byte)
 - **Stato**: completato v1.9.1
 
+### B7. BBitmap InitCheck mancante in drag & drop — COMPLETATO
+- **Dove**: ChatView.cpp — InitiateDrag() non verificava il successo dell'allocazione bitmap
+- **Problema**: BBitmap copy constructor e thumb bitmap creati senza InitCheck(). Se l'allocazione falliva, crash su BBitmapStream o BView::AddChild con bitmap invalido
+- **Fix**: aggiunto InitCheck() + delete + early return sia per il copy bitmap sia per il thumbnail bitmap. Documentata ownership BBitmapStream nei commenti
+- **Stato**: completato v1.9.2
+
+### B8. VLA stack overflow in SNRChartView — COMPLETATO
+- **Dove**: SNRChartView.cpp — _DrawLine() usava `BPoint points[fPointCount + 2]` (VLA)
+- **Problema**: con molti punti dati, l'array sullo stack poteva causare stack overflow
+- **Fix**: sostituito con `new BPoint[fPointCount + 2]` + `delete[]` dopo FillPolygon
+- **Stato**: completato v1.9.2
+
+### B9. WindowLocker RAII e _ShowWindow null-safe — COMPLETATO
+- **Dove**: MainWindow.cpp — 30+ chiamate LockLooper/UnlockLooper ripetitive, _ShowWindow senza null check
+- **Problema**: pattern `if (ptr != NULL && ptr->LockLooper()) { ...; ptr->UnlockLooper(); }` duplicato, soggetto a errori di unlock dimenticato. _ShowWindow(NULL) crashava
+- **Fix**: introdotta classe WindowLocker RAII (null-safe, auto-unlock). Applicata a SettingsWindow, MqttLogWindow, NetworkMapWindow, SerialMonitorWindow, TelemetryWindow. Aggiunto null check a _ShowWindow
+- **Stato**: completato v1.9.2
+
 ---
 
 ## Feature mancanti dal protocollo (media priorità)
