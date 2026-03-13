@@ -300,6 +300,8 @@ ProfileView::_DrawFresnelZone(BRect chartRect)
 		return;
 
 	double totalDist = fMaxDist;
+	if (totalDist <= 0)
+		return;
 
 	// Draw Fresnel zone as a filled band around the LoS line
 	SetDrawingMode(B_OP_ALPHA);

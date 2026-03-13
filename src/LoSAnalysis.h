@@ -142,6 +142,9 @@ AnalyzeLineOfSight(const TerrainPoint* points, int32_t count,
 	double totalDist = points[count - 1].distance;
 	result.totalDistance = totalDist;
 
+	if (totalDist <= 0)
+		return result;
+
 	// Antenna elevations (ground + mast height)
 	double txElev = points[0].elevation + startHeight;
 	double rxElev = points[count - 1].elevation + endHeight;
