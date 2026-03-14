@@ -1227,8 +1227,7 @@ public:
 			SetFont(&labelFont);
 			SetHighColor(textColor);
 			char shortName[12];
-			strncpy(shortName, fNodes[i].name, 11);
-			shortName[11] = '\0';
+			strlcpy(shortName, fNodes[i].name, sizeof(shortName));
 
 			float nameW = StringWidth(shortName);
 			float labelX = nx - nameW / 2;
