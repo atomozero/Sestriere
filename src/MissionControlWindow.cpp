@@ -1535,13 +1535,14 @@ MissionControlWindow::_BuildLayout()
 	.End();
 	activityCard->AddChild(activityInner);
 
-	// Last update footer
+	// Last update footer (right-aligned, dim)
 	fLastUpdateLabel = new BStringView("lastUpdate", "Last update: --");
 	BFont footerFont;
 	fLastUpdateLabel->GetFont(&footerFont);
-	footerFont.SetSize(9);
+	footerFont.SetSize(8);
 	fLastUpdateLabel->SetFont(&footerFont);
-	fLastUpdateLabel->SetHighUIColor(B_PANEL_TEXT_COLOR, B_LIGHTEN_1_TINT);
+	fLastUpdateLabel->SetHighUIColor(B_PANEL_TEXT_COLOR, B_DARKEN_1_TINT);
+	fLastUpdateLabel->SetAlignment(B_ALIGN_RIGHT);
 
 	// === Main layout ===
 	BSplitView* topSplit = new BSplitView(B_HORIZONTAL, 4);
@@ -1877,7 +1878,7 @@ MissionControlWindow::_UpdateLastUpdate()
 	if (fLastDataTime == 0) {
 		fLastUpdateLabel->SetText("Last update: --");
 		fLastUpdateLabel->SetHighUIColor(B_PANEL_TEXT_COLOR,
-			B_LIGHTEN_1_TINT);
+			B_DARKEN_1_TINT);
 		return;
 	}
 
@@ -1895,12 +1896,12 @@ MissionControlWindow::_UpdateLastUpdate()
 
 	fLastUpdateLabel->SetText(str);
 
-	// Go red when stale
+	// Only go red when stale (>30s)
 	if (elapsed > kStaleThreshold && fConnected)
 		fLastUpdateLabel->SetHighColor(kColorBad);
 	else
 		fLastUpdateLabel->SetHighUIColor(B_PANEL_TEXT_COLOR,
-			B_LIGHTEN_1_TINT);
+			B_DARKEN_1_TINT);
 }
 
 
