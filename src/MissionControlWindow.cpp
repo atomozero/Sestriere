@@ -14,6 +14,7 @@
 #include <MessageRunner.h>
 #include <OS.h>
 #include <ScrollView.h>
+#include <SeparatorView.h>
 #include <SplitView.h>
 #include <String.h>
 #include <StringView.h>
@@ -1476,11 +1477,14 @@ MissionControlWindow::_BuildLayout()
 	fTimeline = new SessionTimelineView();
 
 	// === Quick Actions bar ===
-	fAdvertButton = new BButton("advert", "Send Advert",
+	fAdvertButton = new BButton("advert",
+		"\xF0\x9F\x93\xA1 Send Advert",
 		new BMessage(MSG_ACTION_ADVERT));
-	fSyncButton = new BButton("sync", "Sync Contacts",
+	fSyncButton = new BButton("sync",
+		"\xF0\x9F\x94\x84 Sync Contacts",
 		new BMessage(MSG_ACTION_SYNC));
-	fStatsButton = new BButton("stats", "Refresh Stats",
+	fStatsButton = new BButton("stats",
+		"\xF0\x9F\x93\x8A Refresh Stats",
 		new BMessage(MSG_ACTION_STATS));
 	fAdvertButton->SetEnabled(false);
 	fSyncButton->SetEnabled(false);
@@ -1544,7 +1548,8 @@ MissionControlWindow::_BuildLayout()
 		.Add(fAlertBanner)
 		.Add(topSplit, 2)
 		.Add(midSplit, 2)
-		.AddGroup(B_HORIZONTAL, 4, 0)
+		.Add(new BSeparatorView(B_HORIZONTAL))
+		.AddGroup(B_HORIZONTAL, 6, 0)
 			.Add(fAdvertButton)
 			.Add(fSyncButton)
 			.Add(fStatsButton)
