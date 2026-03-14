@@ -2,7 +2,7 @@
  * Copyright 2025, Sestriere Authors
  * All rights reserved. Distributed under the terms of the MIT license.
  *
- * TelemetryWindow.h — Sensor telemetry dashboard window
+ * TelemetryWindow.h — Sensor telemetry dashboard window (card-based redesign)
  */
 
 #ifndef TELEMETRYWINDOW_H
@@ -22,11 +22,11 @@
 
 // Message codes
 enum {
-	MSG_TELEMETRY_REFRESH		= 'tlrf',
 	MSG_TELEMETRY_TIMER			= 'tltm',
-	MSG_TELEMETRY_SELECT_SENSOR	= 'tlss',
 	MSG_TELEMETRY_EXPORT		= 'tlex',
-	MSG_TELEMETRY_CLEAR_HISTORY	= 'tlch'
+	MSG_TELEMETRY_CLEAR_HISTORY	= 'tlch',
+	MSG_TELEMETRY_CARD_CLICKED	= 'tlcc',
+	MSG_TELEMETRY_TIME_RANGE	= 'tltr'
 };
 
 
@@ -50,7 +50,12 @@ enum SensorType {
 };
 
 
-// Sensor info
+// Forward declarations for local views
+class SensorCardView;
+class TelemetryChartView;
+
+
+// Sensor info — owns history data and back-pointer to card view
 struct SensorInfo {
 	BString		name;
 	BString		unit;
@@ -62,6 +67,12 @@ struct SensorInfo {
 	float		maxValue;
 	float		avgValue;
 	rgb_color	color;
+	SensorCardView*	cardView;
+
+	// Sparkline data (last 20 points, pre-normalized 0..1)
+	float		sparkline[20];
+	int32		sparklineCount;
+
 	OwningObjectList<TelemetryDataPoint>	history;
 
 	SensorInfo()
@@ -70,67 +81,17 @@ struct SensorInfo {
 		  currentValue(0),
 		  minValue(FLT_MAX),
 		  maxValue(-FLT_MAX),
-		  avgValue(0)
+		  avgValue(0),
+		  cardView(NULL),
+		  sparklineCount(0)
 	{
-		color = (rgb_color){100, 150, 255, 255};
+		color = ui_color(B_CONTROL_HIGHLIGHT_COLOR);
+		memset(sparkline, 0, sizeof(sparkline));
 	}
 };
 
 
-// Telemetry graph view
-class TelemetryGraphView : public BView {
-public:
-						TelemetryGraphView(BRect frame);
-	virtual				~TelemetryGraphView();
-
-	virtual void		Draw(BRect updateRect);
-	virtual void		MouseDown(BPoint where);
-	virtual void		MouseMoved(BPoint where, uint32 transit,
-							const BMessage* dragMessage);
-
-	void				SetSensor(SensorInfo* sensor);
-	void				SetTimeRange(bigtime_t range);
-
-private:
-	void				_DrawGrid();
-	void				_DrawGraph();
-	void				_DrawCursor();
-	void				_DrawLegend();
-
-	float				_ValueToY(float value);
-
-	SensorInfo*			fSensor;
-	bigtime_t			fTimeRange;
-	BPoint				fCursorPos;
-	bool				fShowCursor;
-
-	BRect				fGraphRect;
-	float				fMarginLeft;
-	float				fMarginRight;
-	float				fMarginTop;
-	float				fMarginBottom;
-};
-
-
-// Sensor list item view
-class TelemetrySensorView : public BView {
-public:
-						TelemetrySensorView(BRect frame, SensorInfo* sensor);
-	virtual				~TelemetrySensorView();
-
-	virtual void		Draw(BRect updateRect);
-	virtual void		MouseDown(BPoint where);
-
-	void				SetSelected(bool selected);
-	void				UpdateValue();
-
-private:
-	SensorInfo*			fSensor;
-	bool				fSelected;
-};
-
-
-// Main telemetry window
+// Main telemetry window — card-based dashboard
 class TelemetryWindow : public BWindow {
 public:
 						TelemetryWindow(BWindow* parent);
@@ -139,6 +100,7 @@ public:
 	virtual void		MessageReceived(BMessage* message);
 	virtual bool		QuitRequested();
 
+	// Public API (preserved)
 	void				AddTelemetryData(uint32 nodeId,
 							const BString& sensorName,
 							SensorType type, float value,
@@ -149,9 +111,11 @@ public:
 
 private:
 	void				_BuildLayout();
-	void				_UpdateSensorList();
-	void				_SelectSensor(int32 index);
-	void				_UpdateStats();
+	void				_RebuildContent();
+	void				_SelectSensor(SensorInfo* sensor);
+	void				_DeselectSensor();
+	void				_UpdateSparkline(SensorInfo* sensor);
+	void				_UpdateFooter();
 	void				_ExportData();
 	SensorInfo*			_FindOrCreateSensor(uint32 nodeId,
 							const BString& name, SensorType type,
@@ -162,34 +126,26 @@ private:
 	BMessageRunner*		fRefreshRunner;
 
 	// UI components
-	BView*				fSensorListView;
-	BScrollView*		fSensorScrollView;
-	TelemetryGraphView*	fGraphView;
+	BView*				fContentView;
+	BScrollView*		fContentScroll;
+	TelemetryChartView*	fChartView;
+	BStringView*		fFooterLabel;
+	BStringView*		fSummaryLabel;
 
-	// Stats display
-	BStringView*		fCurrentValueView;
-	BStringView*		fMinValueView;
-	BStringView*		fMaxValueView;
-	BStringView*		fAvgValueView;
-	BStringView*		fNodeIdView;
-
-	// Buttons
-	BButton*			fRange1MinButton;
-	BButton*			fRange5MinButton;
-	BButton*			fRange15MinButton;
-	BButton*			fRange1HourButton;
-	BButton*			fRange6HourButton;
-	BButton*			fRange24HourButton;
-	BButton*			fRange7DayButton;
+	// Time range toolbar
+	BButton*			fTimeRangeButtons[7];
+	int32				fActiveTimeRange;
 	BButton*			fExportButton;
 	BButton*			fClearButton;
 	BButton*			fLoadHistoryButton;
 	BButton*			fRequestAllButton;
 
 	// Data
-	int32				fSelectedSensor;
+	SensorInfo*			fSelectedSensor;
 	bigtime_t			fCurrentTimeRange;
+	bigtime_t			fLastDataTime;
 	OwningObjectList<SensorInfo>	fSensors;
+	bool				fNeedsRebuild;
 };
 
 

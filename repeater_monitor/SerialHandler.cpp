@@ -204,15 +204,14 @@ SerialHandler::Disconnect()
 
 		fRunning = false;
 		threadToWait = fReadThread;
-
-		// Close fd first to unblock the read thread
-		if (fSerialFd >= 0) {
-			close(fSerialFd);
-			fSerialFd = -1;
-		}
+		fReadThread = -1;
 	}
 
-	// Wait for read thread to finish (outside the lock)
+	// Wait for read thread to finish BEFORE closing fd.
+	// The read thread uses select() with 1s timeout and checks fRunning,
+	// so it will exit within ~1 second. Closing the fd while the read
+	// thread is inside select()/ioctl() causes a kernel panic in the
+	// USB serial driver.
 	if (threadToWait >= 0) {
 		status_t exitValue;
 		wait_for_thread(threadToWait, &exitValue);
@@ -220,7 +219,11 @@ SerialHandler::Disconnect()
 
 	{
 		BAutolock lock(fLock);
-		fReadThread = -1;
+		// Now safe to close — read thread is no longer using the fd
+		if (fSerialFd >= 0) {
+			close(fSerialFd);
+			fSerialFd = -1;
+		}
 		fConnected = false;
 		fRawMode = false;
 		fPortName = "";
@@ -397,18 +400,19 @@ SerialHandler::_ReadLoop()
 		}
 
 		if (selectResult == 0) {
-			// Timeout — no data available, check if fd is still valid
-			if (fd >= 0) {
-				int modemFlags;
-				if (ioctl(fd, TIOCMGET, &modemFlags) < 0) {
-					// ioctl failed — fd is dead
-					if (fRunning) {
-						fprintf(stderr,
-							"SerialHandler: device disappeared\n");
-						_NotifyError(ENXIO, "Serial device disconnected");
-					}
-					break;
+			// Timeout — check fRunning before touching the fd again
+			if (!fRunning)
+				break;
+			// Check if fd is still valid (USB unplugged?)
+			int modemFlags;
+			if (ioctl(fd, TIOCMGET, &modemFlags) < 0) {
+				// ioctl failed — fd is dead
+				if (fRunning) {
+					fprintf(stderr,
+						"SerialHandler: device disappeared\n");
+					_NotifyError(ENXIO, "Serial device disconnected");
 				}
+				break;
 			}
 			continue;
 		}

@@ -5338,6 +5338,22 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 					kPubKeyPrefixSize) == 0) {
 				fInfoPanel->RefreshSNRChart();
 			}
+
+			// Forward synthetic telemetry for remote node
+			if (fTelemetryWindow != NULL) {
+				if (fTelemetryWindow->LockLooper()) {
+					uint32 nodeId = ((uint32)senderPrefix[0] << 24) |
+						((uint32)senderPrefix[1] << 16) |
+						((uint32)senderPrefix[2] << 8) | senderPrefix[3];
+					fTelemetryWindow->AddTelemetryData(nodeId, "SNR",
+						SENSOR_CUSTOM, (float)snr, "dB",
+						senderName.String());
+					fTelemetryWindow->AddTelemetryData(nodeId, "RSSI",
+						SENSOR_CUSTOM, (float)fLastRssi, "dBm",
+						senderName.String());
+					fTelemetryWindow->UnlockLooper();
+				}
+			}
 		}
 	}
 
@@ -5580,6 +5596,23 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 			&& memcmp(displayed->publicKey, sender->publicKey,
 				kPubKeyPrefixSize) == 0) {
 			fInfoPanel->RefreshSNRChart();
+		}
+
+		// Forward synthetic telemetry for remote node
+		if (fTelemetryWindow != NULL) {
+			if (fTelemetryWindow->LockLooper()) {
+				uint32 nodeId = ((uint32)sender->publicKey[0] << 24) |
+					((uint32)sender->publicKey[1] << 16) |
+					((uint32)sender->publicKey[2] << 8) |
+					sender->publicKey[3];
+				fTelemetryWindow->AddTelemetryData(nodeId, "SNR",
+					SENSOR_CUSTOM, (float)snr, "dB",
+					senderName.String());
+				fTelemetryWindow->AddTelemetryData(nodeId, "RSSI",
+					SENSOR_CUSTOM, (float)fLastRssi, "dBm",
+					senderName.String());
+				fTelemetryWindow->UnlockLooper();
+			}
 		}
 	}
 
@@ -5951,6 +5984,25 @@ MainWindow::_HandlePushAdvert(const uint8* data, size_t length)
 			&& memcmp(displayed->publicKey, pubKeyPrefix,
 				kPubKeyPrefixSize) == 0) {
 			fInfoPanel->RefreshSNRChart();
+		}
+
+		// Forward synthetic telemetry for remote node
+		if (fTelemetryWindow != NULL) {
+			if (fTelemetryWindow->LockLooper()) {
+				uint32 nodeId = ((uint32)pubKeyPrefix[0] << 24) |
+					((uint32)pubKeyPrefix[1] << 16) |
+					((uint32)pubKeyPrefix[2] << 8) | pubKeyPrefix[3];
+				ContactInfo* telContact = _FindContactByPrefix(
+					pubKeyPrefix, kPubKeyPrefixSize);
+				const char* nodeName = (telContact != NULL
+					&& telContact->name[0] != '\0')
+					? telContact->name : NULL;
+				fTelemetryWindow->AddTelemetryData(nodeId, "SNR",
+					SENSOR_CUSTOM, (float)actualSnr, "dB", nodeName);
+				fTelemetryWindow->AddTelemetryData(nodeId, "RSSI",
+					SENSOR_CUSTOM, (float)rssi, "dBm", nodeName);
+				fTelemetryWindow->UnlockLooper();
+			}
 		}
 	}
 

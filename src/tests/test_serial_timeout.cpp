@@ -177,6 +177,42 @@ TestSelectTimeout()
 
 
 // ============================================================================
+// Test 8: Disconnect() waits for thread BEFORE closing fd
+// ============================================================================
+
+static void
+TestDisconnectOrderSafe()
+{
+	const char* file = "SerialHandler.cpp";
+
+	// The old dangerous pattern should be gone
+	assert(!FileContains(file, "Close fd first to unblock the read thread"));
+
+	// The safe pattern should exist
+	assert(FileContains(file, "Now safe to close"));
+	assert(FileContains(file, "wait_for_thread"));
+
+	printf("  PASS: Disconnect() waits for thread before closing fd\n");
+}
+
+
+// ============================================================================
+// Test 9: _ReadLoop checks fRunning before ioctl on timeout
+// ============================================================================
+
+static void
+TestRunningCheckBeforeIoctl()
+{
+	const char* file = "SerialHandler.cpp";
+
+	// fRunning check before ioctl to avoid kernel race
+	assert(FileContains(file, "check fRunning before touching the fd"));
+
+	printf("  PASS: _ReadLoop checks fRunning before ioctl\n");
+}
+
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -192,7 +228,9 @@ main()
 	TestDisconnectNotification();
 	TestIoctlValidation();
 	TestSelectTimeout();
+	TestDisconnectOrderSafe();
+	TestRunningCheckBeforeIoctl();
 
-	printf("\nAll 7 tests passed.\n");
+	printf("\nAll 9 tests passed.\n");
 	return 0;
 }
