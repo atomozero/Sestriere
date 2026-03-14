@@ -1504,6 +1504,17 @@ MissionControlWindow::_BuildLayout()
 		B_FOLLOW_ALL, 0, false, true);
 	fActivityScroll->SetExplicitMinSize(BSize(B_SIZE_UNSET, 80));
 
+	// Activity feed card
+	BBox* activityCard = new BBox("activityCard");
+	activityCard->SetLabel("Activity Feed");
+	BView* activityInner = new BView("activityInner", 0);
+	activityInner->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	BLayoutBuilder::Group<>(activityInner, B_VERTICAL, 0)
+		.SetInsets(2, 2, 2, 2)
+		.Add(fActivityScroll)
+	.End();
+	activityCard->AddChild(activityInner);
+
 	// Last update footer
 	fLastUpdateLabel = new BStringView("lastUpdate", "Last update: --");
 	BFont footerFont;
@@ -1528,15 +1539,6 @@ MissionControlWindow::_BuildLayout()
 		.Add(fMiniTopo, 2)
 	.End();
 
-	// Activity feed title
-	BStringView* feedTitle = new BStringView("feedTitle", "Activity Feed");
-	BFont feedFont;
-	feedTitle->GetFont(&feedFont);
-	feedFont.SetSize(11);
-	feedFont.SetFace(B_BOLD_FACE);
-	feedTitle->SetFont(&feedFont);
-	feedTitle->SetHighUIColor(B_PANEL_TEXT_COLOR, B_LIGHTEN_1_TINT);
-
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 2)
 		.SetInsets(6, 6, 6, 6)
 		.Add(fAlertBanner)
@@ -1549,8 +1551,7 @@ MissionControlWindow::_BuildLayout()
 			.AddGlue()
 		.End()
 		.Add(fTimeline)
-		.Add(feedTitle)
-		.Add(fActivityScroll, 1)
+		.Add(activityCard, 1)
 		.Add(fLastUpdateLabel)
 	.End();
 }
