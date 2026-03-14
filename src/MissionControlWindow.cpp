@@ -105,6 +105,63 @@ ThemeAccent(uint8 r, uint8 g, uint8 b)
 
 
 // ============================================================================
+// CardWrapperView — Rounded border + title card hosting child views
+// ============================================================================
+
+class CardWrapperView : public BView {
+public:
+	CardWrapperView(const char* title)
+		:
+		BView(title, B_WILL_DRAW | B_DRAW_ON_CHILDREN),
+		fTitle(title)
+	{
+		SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+		BGroupLayout* layout = new BGroupLayout(B_VERTICAL, 4);
+		SetLayout(layout);
+		// Leave top space for title + separator
+		layout->SetInsets(8, 28, 8, 8);
+	}
+
+	void Draw(BRect updateRect)
+	{
+		BRect bounds = Bounds();
+		rgb_color bg = ui_color(B_PANEL_BACKGROUND_COLOR);
+		rgb_color textColor = ui_color(B_PANEL_TEXT_COLOR);
+		rgb_color dimColor = tint_color(textColor, B_LIGHTEN_1_TINT);
+		rgb_color borderColor = tint_color(bg, B_DARKEN_1_TINT);
+
+		SetLowColor(bg);
+		FillRect(bounds, B_SOLID_LOW);
+
+		// Border
+		SetHighColor(borderColor);
+		StrokeRoundRect(bounds, 4, 4);
+
+		// Title
+		BFont titleFont;
+		GetFont(&titleFont);
+		titleFont.SetSize(11);
+		titleFont.SetFace(B_BOLD_FACE);
+		SetFont(&titleFont);
+
+		font_height fh;
+		titleFont.GetHeight(&fh);
+		float y = 8 + fh.ascent;
+		SetHighColor(dimColor);
+		DrawString(fTitle.String(), BPoint(10, y));
+		y += fh.descent + fh.leading + 2;
+
+		// Separator
+		SetHighColor(borderColor);
+		StrokeLine(BPoint(8, y), BPoint(bounds.right - 8, y));
+	}
+
+private:
+	BString fTitle;
+};
+
+
+// ============================================================================
 // AlertBannerView — Flashing red/amber banner for critical conditions
 // ============================================================================
 
@@ -1467,22 +1524,17 @@ MissionControlWindow::_BuildLayout()
 	fRadioCard->SetRow(4, "Frequency", "--");
 	fRadioCard->SetRow(5, "Bandwidth", "--");
 
-	// Network overview card
-	BBox* networkCard = new BBox("networkCard");
-	networkCard->SetLabel("Network Overview");
+	// Network overview card (same style as Device Status / Radio Health)
+	CardWrapperView* networkCard = new CardWrapperView("Network Overview");
 	networkCard->SetExplicitMinSize(BSize(kCardMinWidth, kCardMinHeight));
 
 	fHealthScore = new HealthScoreView();
 	fContactGrid = new ContactGridView();
 
-	BView* networkInner = new BView("networkInner", 0);
-	networkInner->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-	BLayoutBuilder::Group<>(networkInner, B_VERTICAL, 4)
-		.SetInsets(4, 4, 4, 4)
-		.Add(fHealthScore, 2)
-		.Add(fContactGrid, 1)
-	.End();
-	networkCard->AddChild(networkInner);
+	networkCard->AddChild(fHealthScore);
+	networkCard->AddChild(fContactGrid);
+	((BGroupLayout*)networkCard->GetLayout())->SetItemWeight(0, 2);
+	((BGroupLayout*)networkCard->GetLayout())->SetItemWeight(1, 1);
 
 	// === Middle row charts + mini topology ===
 	fSNRChart = new DashboardSNRView();
@@ -1524,16 +1576,9 @@ MissionControlWindow::_BuildLayout()
 		B_FOLLOW_ALL, 0, false, true);
 	fActivityScroll->SetExplicitMinSize(BSize(B_SIZE_UNSET, 80));
 
-	// Activity feed card
-	BBox* activityCard = new BBox("activityCard");
-	activityCard->SetLabel("Activity Feed");
-	BView* activityInner = new BView("activityInner", 0);
-	activityInner->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-	BLayoutBuilder::Group<>(activityInner, B_VERTICAL, 0)
-		.SetInsets(4, 4, 4, 4)
-		.Add(fActivityScroll)
-	.End();
-	activityCard->AddChild(activityInner);
+	// Activity feed card (same style as other cards)
+	CardWrapperView* activityCard = new CardWrapperView("Activity Feed");
+	activityCard->AddChild(fActivityScroll);
 
 	// Last update footer (right-aligned, dim)
 	fLastUpdateLabel = new BStringView("lastUpdate", "Last update: --");
