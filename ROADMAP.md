@@ -110,6 +110,18 @@ Spostato in `fake_radio/` con Makefile e icona HVIF.
 - **Fix**: sostituito con `strlcpy(shortName, fNodes[i].name, sizeof(shortName))` — idiomatico su Haiku, sempre null-terminato
 - **Stato**: completato v1.9.2
 
+### B12. Thread leak in GifPickerWindow — COMPLETATO
+- **Dove**: GifPickerWindow.cpp — `_Search()` e `_LoadTrending()`
+- **Problema**: `fSearchThread` era resettato a -1 incondizionatamente dopo `spawn_thread()`, rendendo impossibile `wait_for_thread()` nel distruttore. `_LoadTrending()` usava variabile locale `tid` mai salvata in `fSearchThread`. Thread leak su ogni ricerca/trending.
+- **Fix**: rimosso reset prematuro di `fSearchThread`, `_LoadTrending()` salva thread_id in `fSearchThread`, `kMsgSearchDone` resetta a -1 quando il thread termina
+- **Stato**: completato v1.9.2
+
+### B13. getenv("HOME") senza null check in MapView — COMPLETATO
+- **Dove**: MapView.cpp — costruttore, path cache tile
+- **Problema**: `getenv("HOME")` può restituire NULL → undefined behavior in `BString::SetToFormat("%s/...", NULL)`. Pattern non idiomatico su Haiku.
+- **Fix**: sostituito con `find_directory(B_USER_SETTINGS_DIRECTORY)` + `BPath::Append()`, API nativa Haiku null-safe
+- **Stato**: completato v1.9.2
+
 ---
 
 ## Feature mancanti dal protocollo (media priorità)
