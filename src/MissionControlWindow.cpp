@@ -91,6 +91,18 @@ ScoreColor(int32 score)
 	return kColorBad;
 }
 
+// Theme-adaptive accent colors (mix base accent with panel background)
+static rgb_color
+ThemeAccent(uint8 r, uint8 g, uint8 b)
+{
+	rgb_color bg = ui_color(B_PANEL_BACKGROUND_COLOR);
+	// 80% accent, 20% background — adapts to dark/light themes
+	return (rgb_color){
+		(uint8)(r * 0.80f + bg.red * 0.20f),
+		(uint8)(g * 0.80f + bg.green * 0.20f),
+		(uint8)(b * 0.80f + bg.blue * 0.20f), 255};
+}
+
 
 // ============================================================================
 // AlertBannerView — Flashing red/amber banner for critical conditions
@@ -683,7 +695,7 @@ public:
 		SetHighColor(dimColor);
 		DrawString("SNR", BPoint(lx + 14, 12));
 		lx += 40;
-		SetHighColor((rgb_color){100, 140, 200, 255});
+		SetHighColor(ThemeAccent(100, 140, 200));
 		StrokeLine(BPoint(lx, 9), BPoint(lx + 12, 9));
 		SetHighColor(dimColor);
 		DrawString("RSSI", BPoint(lx + 14, 12));
@@ -748,7 +760,7 @@ public:
 		float rssiMax = -40.0f;
 		float rssiMin = -120.0f;
 		float rssiRange = rssiMax - rssiMin;
-		SetHighColor((rgb_color){100, 140, 200, 255});
+		SetHighColor(ThemeAccent(100, 140, 200));
 		for (int rssi = -120; rssi <= -40; rssi += 20) {
 			float y = chartTop + ((rssiMax - rssi) / rssiRange) * chartHeight;
 			char label[8];
@@ -762,7 +774,7 @@ public:
 			int32 start = (fRssiHead - fRssiCount + kSNRBufferSize)
 				% kSNRBufferSize;
 			float stepX = chartWidth / (float)(kSNRBufferSize - 1);
-			rgb_color rssiLineColor = {100, 140, 200, 255};
+			rgb_color rssiLineColor = ThemeAccent(100, 140, 200);
 			SetHighColor(rssiLineColor);
 
 			BPoint prev;
@@ -880,8 +892,8 @@ public:
 
 		// Legend
 		float legendX = bounds.right - 80;
-		rgb_color txColor = {100, 180, 255, 255};
-		rgb_color rxColor = {255, 160, 40, 255};
+		rgb_color txColor = ThemeAccent(100, 180, 255);
+		rgb_color rxColor = ThemeAccent(255, 160, 40);
 		titleFont.SetSize(8);
 		SetFont(&titleFont);
 		SetHighColor(txColor);
@@ -1072,7 +1084,7 @@ public:
 			float markerH;
 			switch (fEvents[i].type) {
 				case 1:  // Message
-					evColor = (rgb_color){100, 180, 255, 255};
+					evColor = ThemeAccent(100, 180, 255);
 					markerH = 8;
 					break;
 				case 2:  // Advert
@@ -1160,7 +1172,7 @@ public:
 		DrawString("Topology", BPoint(cx - titleW / 2, 14));
 
 		// Self node (center)
-		rgb_color selfColor = {100, 180, 255, 255};
+		rgb_color selfColor = ThemeAccent(100, 180, 255);
 		SetHighColor(selfColor);
 		FillEllipse(BPoint(cx, cy), 8, 8);
 		SetHighColor(tint_color(selfColor, B_DARKEN_2_TINT));
@@ -1921,7 +1933,7 @@ MissionControlWindow::_AddTimestampedEvent(const char* category,
 	// Color the category tag
 	rgb_color catColor = ui_color(B_DOCUMENT_TEXT_COLOR);
 	if (strcmp(category, "MSG") == 0)
-		catColor = (rgb_color){100, 180, 255, 255};
+		catColor = ThemeAccent(100, 180, 255);
 	else if (strcmp(category, "ADV") == 0)
 		catColor = kColorGood;
 	else if (strcmp(category, "SYS") == 0)
