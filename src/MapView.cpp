@@ -10,8 +10,10 @@
 #include <Bitmap.h>
 #include <Button.h>
 #include <CheckBox.h>
+#include <FindDirectory.h>
 #include <GroupLayout.h>
 #include <LayoutBuilder.h>
+#include <Path.h>
 
 #include <algorithm>
 #include <cmath>
@@ -94,10 +96,10 @@ MapView::MapView(const char* name)
 	SetViewColor(B_TRANSPARENT_COLOR);
 
 	// Create tile cache in settings directory
-	BString cacheDir;
-	cacheDir.SetToFormat("%s/.config/settings/Sestriere/tiles",
-		getenv("HOME"));
-	fTileCache = new TileCache(cacheDir.String());
+	BPath settingsPath;
+	find_directory(B_USER_SETTINGS_DIRECTORY, &settingsPath);
+	settingsPath.Append("Sestriere/tiles");
+	fTileCache = new TileCache(settingsPath.Path());
 	fTileCache->Run();
 }
 
