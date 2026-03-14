@@ -406,15 +406,15 @@ public:
 		FillRect(bounds, B_SOLID_LOW);
 
 		float cx = floorf(bounds.Width() / 2);
-		float cy = floorf(bounds.Height() * 0.6f);
-		float penW = 4.0f;
+		float cy = floorf(bounds.Height() * 0.55f);
+		float penW = 6.0f;
 		float maxRadiusX = cx - penW - 2;
 		float maxRadiusY = cy - penW - 2;
 		float radius = fmin(maxRadiusX, maxRadiusY);
-		if (radius < 8) radius = 8;
+		if (radius < 10) radius = 10;
 
 		// Background arc (gray)
-		rgb_color trackColor = tint_color(bg, B_DARKEN_2_TINT);
+		rgb_color trackColor = tint_color(bg, B_DARKEN_1_TINT);
 		SetHighColor(trackColor);
 		SetPenSize(penW);
 		StrokeArc(BPoint(cx, cy), radius, radius, 0, 180);
@@ -426,31 +426,38 @@ public:
 		StrokeArc(BPoint(cx, cy), radius, radius, 180, sweepAngle);
 		SetPenSize(1.0f);
 
-		// Score text centered in arc
+		// Score text centered in arc — "79/100" inline
 		char scoreStr[8];
 		snprintf(scoreStr, sizeof(scoreStr), "%d", (int)fScore);
 
 		BFont scoreFont;
 		GetFont(&scoreFont);
-		scoreFont.SetSize(16);
+		scoreFont.SetSize(20);
 		scoreFont.SetFace(B_BOLD_FACE);
 		SetFont(&scoreFont);
 
 		font_height fh;
 		scoreFont.GetHeight(&fh);
-		float textW = StringWidth(scoreStr);
-		SetHighColor(ScoreColor(fScore));
-		DrawString(scoreStr, BPoint(cx - textW / 2, cy - 4));
+		float scoreW = StringWidth(scoreStr);
 
-		// "/ 100" label below score
-		scoreFont.SetSize(9);
-		scoreFont.SetFace(B_REGULAR_FACE);
-		SetFont(&scoreFont);
+		// Measure "/100" suffix
+		BFont suffixFont(scoreFont);
+		suffixFont.SetSize(10);
+		suffixFont.SetFace(B_REGULAR_FACE);
+		float suffixW = suffixFont.StringWidth("/100");
+
+		float totalW = scoreW + suffixW + 1;
+		float startX = cx - totalW / 2;
+		float textY = cy - 2;
+
+		SetHighColor(ScoreColor(fScore));
+		DrawString(scoreStr, BPoint(startX, textY));
+
+		SetFont(&suffixFont);
 		rgb_color dimText = tint_color(ui_color(B_PANEL_TEXT_COLOR),
 			B_LIGHTEN_1_TINT);
 		SetHighColor(dimText);
-		textW = StringWidth("/ 100");
-		DrawString("/ 100", BPoint(cx - textW / 2, cy + 8));
+		DrawString("/100", BPoint(startX + scoreW + 1, textY));
 	}
 
 private:
