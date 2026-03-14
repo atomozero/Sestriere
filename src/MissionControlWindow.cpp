@@ -342,15 +342,23 @@ public:
 		// Storage gauge bar (at bottom of card)
 		if (fStoragePct >= 0) {
 			float gaugeY = y + 2;
-			float gaugeH = 6;
+			float gaugeH = 8;
+
+			// Percentage label (right-aligned, inline with gauge)
+			labelFont.SetSize(8);
+			SetFont(&labelFont);
+			char storLabel[24];
+			snprintf(storLabel, sizeof(storLabel), "%d%%",
+				(int)fStoragePct);
+			float pctWidth = StringWidth(storLabel) + 4;
 			float gaugeLeft = 10;
-			float gaugeRight = bounds.right - 10;
+			float gaugeRight = bounds.right - 10 - pctWidth;
 			float gaugeWidth = gaugeRight - gaugeLeft;
 
 			// Track
 			SetHighColor(tint_color(bg, B_DARKEN_1_TINT));
 			FillRoundRect(BRect(gaugeLeft, gaugeY,
-				gaugeRight, gaugeY + gaugeH), 2, 2);
+				gaugeRight, gaugeY + gaugeH), 3, 3);
 
 			// Fill
 			float fillWidth = (fStoragePct / 100.0f) * gaugeWidth;
@@ -362,16 +370,12 @@ public:
 			SetHighColor(fillColor);
 			if (fillWidth > 1)
 				FillRoundRect(BRect(gaugeLeft, gaugeY,
-					gaugeLeft + fillWidth, gaugeY + gaugeH), 2, 2);
+					gaugeLeft + fillWidth, gaugeY + gaugeH), 3, 3);
 
-			// Label
-			labelFont.SetSize(8);
-			SetFont(&labelFont);
+			// Draw percentage text right of gauge
 			SetHighColor(dimColor);
-			char storLabel[24];
-			snprintf(storLabel, sizeof(storLabel), "Storage: %d%%",
-				(int)fStoragePct);
-			DrawString(storLabel, BPoint(gaugeLeft, gaugeY + gaugeH + 9));
+			DrawString(storLabel, BPoint(gaugeRight + 4,
+				gaugeY + gaugeH - 1));
 		}
 	}
 
