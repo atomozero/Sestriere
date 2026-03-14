@@ -309,10 +309,8 @@ DeskbarReplicant::_ShowPopupMenu(BPoint where)
 	menu->AddItem(new BMenuItem("Open Sestriere",
 		new BMessage('open')));
 
-	BMenuItem* advertItem = new BMenuItem("Send Advert",
-		new BMessage('advt'));
-	advertItem->SetEnabled(fConnected);
-	menu->AddItem(advertItem);
+	menu->AddItem(new BMenuItem("Send Advert",
+		new BMessage('advt')));
 
 	menu->AddSeparatorItem();
 
