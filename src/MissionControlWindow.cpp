@@ -256,7 +256,7 @@ public:
 		// Title + pulsing dot
 		BFont titleFont;
 		GetFont(&titleFont);
-		titleFont.SetSize(10);
+		titleFont.SetSize(11);
 		titleFont.SetFace(B_BOLD_FACE);
 		SetFont(&titleFont);
 
@@ -658,7 +658,7 @@ public:
 		// Title and legend
 		BFont titleFont;
 		GetFont(&titleFont);
-		titleFont.SetSize(10);
+		titleFont.SetSize(11);
 		titleFont.SetFace(B_BOLD_FACE);
 		SetFont(&titleFont);
 		font_height fh;
@@ -862,7 +862,7 @@ public:
 
 		BFont titleFont;
 		GetFont(&titleFont);
-		titleFont.SetSize(10);
+		titleFont.SetSize(11);
 		titleFont.SetFace(B_BOLD_FACE);
 		SetFont(&titleFont);
 		font_height fh;
@@ -1144,12 +1144,12 @@ public:
 		// Draw title
 		BFont titleFont;
 		GetFont(&titleFont);
-		titleFont.SetSize(9);
+		titleFont.SetSize(11);
 		titleFont.SetFace(B_BOLD_FACE);
 		SetFont(&titleFont);
 		SetHighColor(tint_color(textColor, B_LIGHTEN_1_TINT));
 		float titleW = StringWidth("Topology");
-		DrawString("Topology", BPoint(cx - titleW / 2, 12));
+		DrawString("Topology", BPoint(cx - titleW / 2, 14));
 
 		// Self node (center)
 		rgb_color selfColor = {100, 180, 255, 255};
@@ -1525,7 +1525,7 @@ MissionControlWindow::_BuildLayout()
 	BStringView* feedTitle = new BStringView("feedTitle", "Activity Feed");
 	BFont feedFont;
 	feedTitle->GetFont(&feedFont);
-	feedFont.SetSize(10);
+	feedFont.SetSize(11);
 	feedFont.SetFace(B_BOLD_FACE);
 	feedTitle->SetFont(&feedFont);
 	feedTitle->SetHighUIColor(B_PANEL_TEXT_COLOR, B_LIGHTEN_1_TINT);
