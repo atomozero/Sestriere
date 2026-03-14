@@ -108,6 +108,8 @@ private:
 	BButton*				fAdvertButton;
 	BButton*				fSyncButton;
 	BButton*				fStatsButton;
+	BButton*				fPingAllButton;
+	BButton*				fTraceButton;
 
 	// Bottom activity feed
 	BTextView*				fActivityFeed;

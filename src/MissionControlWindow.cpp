@@ -41,6 +41,8 @@ static const uint32 MSG_ALERT_FLASH = 'alfl';
 static const uint32 MSG_ACTION_ADVERT = 'aadv';
 static const uint32 MSG_ACTION_SYNC = 'asyn';
 static const uint32 MSG_ACTION_STATS = 'asta';
+static const uint32 MSG_ACTION_PING_ALL = 'apng';
+static const uint32 MSG_ACTION_TRACE = 'atrc';
 
 static const int32 kMaxActivityLines = 50;
 static const int32 kSNRBufferSize = 200;
@@ -1417,6 +1419,8 @@ MissionControlWindow::MissionControlWindow(BWindow* parent)
 	fAdvertButton(NULL),
 	fSyncButton(NULL),
 	fStatsButton(NULL),
+	fPingAllButton(NULL),
+	fTraceButton(NULL),
 	fActivityFeed(NULL),
 	fActivityScroll(NULL),
 	fActivityLineCount(0),
@@ -1517,6 +1521,16 @@ MissionControlWindow::MessageReceived(BMessage* message)
 			}
 			break;
 
+		case MSG_ACTION_PING_ALL:
+			if (fParent != NULL)
+				fParent->PostMessage(MSG_PING_ALL);
+			break;
+
+		case MSG_ACTION_TRACE:
+			if (fParent != NULL)
+				fParent->PostMessage('shtp');  // MSG_SHOW_TRACE_PATH
+			break;
+
 		default:
 			BWindow::MessageReceived(message);
 			break;
@@ -1567,18 +1581,21 @@ MissionControlWindow::_BuildLayout()
 	fTimeline = new SessionTimelineView();
 
 	// === Quick Actions bar ===
-	fAdvertButton = new BButton("advert",
-		"\xF0\x9F\x93\xA1 Send Advert",
+	fAdvertButton = new BButton("advert", "Send Advert",
 		new BMessage(MSG_ACTION_ADVERT));
-	fSyncButton = new BButton("sync",
-		"\xF0\x9F\x94\x84 Sync Contacts",
+	fSyncButton = new BButton("sync", "Sync Contacts",
 		new BMessage(MSG_ACTION_SYNC));
-	fStatsButton = new BButton("stats",
-		"\xF0\x9F\x93\x8A Refresh Stats",
+	fStatsButton = new BButton("stats", "Refresh Stats",
 		new BMessage(MSG_ACTION_STATS));
+	fPingAllButton = new BButton("pingAll", "Ping All",
+		new BMessage(MSG_ACTION_PING_ALL));
+	fTraceButton = new BButton("trace", "Trace Route",
+		new BMessage(MSG_ACTION_TRACE));
 	fAdvertButton->SetEnabled(false);
 	fSyncButton->SetEnabled(false);
 	fStatsButton->SetEnabled(false);
+	fPingAllButton->SetEnabled(false);
+	fTraceButton->SetEnabled(false);
 
 	// === Bottom: Activity feed ===
 	BRect textRect(0, 0, 600, 200);
@@ -1637,6 +1654,8 @@ MissionControlWindow::_BuildLayout()
 			.Add(fAdvertButton)
 			.Add(fSyncButton)
 			.Add(fStatsButton)
+			.Add(fPingAllButton)
+			.Add(fTraceButton)
 			.AddGlue()
 		.End()
 		.Add(fTimeline)
@@ -1664,6 +1683,8 @@ MissionControlWindow::SetConnectionState(bool connected,
 		fAdvertButton->SetEnabled(true);
 		fSyncButton->SetEnabled(true);
 		fStatsButton->SetEnabled(true);
+		fPingAllButton->SetEnabled(true);
+		fTraceButton->SetEnabled(true);
 	} else {
 		fDeviceCard->SetRow(0, "Connection", "Disconnected",
 			kColorBad);
@@ -1687,6 +1708,8 @@ MissionControlWindow::SetConnectionState(bool connected,
 		fAdvertButton->SetEnabled(false);
 		fSyncButton->SetEnabled(false);
 		fStatsButton->SetEnabled(false);
+		fPingAllButton->SetEnabled(false);
+		fTraceButton->SetEnabled(false);
 		fMiniTopo->ClearNodes();
 		fTimeline->Clear();
 		fContactGrid->ClearHeatmap();
