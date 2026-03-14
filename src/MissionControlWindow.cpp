@@ -965,8 +965,8 @@ public:
 		fSessionStart(0)
 	{
 		SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-		SetExplicitMinSize(BSize(B_SIZE_UNSET, 36));
-		SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 36));
+		SetExplicitMinSize(BSize(B_SIZE_UNSET, 48));
+		SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 48));
 	}
 
 	void SetSessionStart(bigtime_t startTime)
@@ -1516,9 +1516,9 @@ MissionControlWindow::_BuildLayout()
 	.End();
 
 	BLayoutBuilder::Split<>(midSplit)
-		.Add(fSNRChart, 3)
+		.Add(fSNRChart, 2)
 		.Add(fPacketRateChart, 2)
-		.Add(fMiniTopo, 1)
+		.Add(fMiniTopo, 2)
 	.End();
 
 	// Activity feed title
