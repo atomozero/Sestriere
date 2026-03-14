@@ -98,6 +98,18 @@ Spostato in `fake_radio/` con Makefile e icona HVIF.
 - **Fix**: introdotta classe WindowLocker RAII (null-safe, auto-unlock). Applicata a SettingsWindow, MqttLogWindow, NetworkMapWindow, SerialMonitorWindow, TelemetryWindow. Aggiunto null check a _ShowWindow
 - **Stato**: completato v1.9.2
 
+### B10. Divide-by-zero in LoS Analysis — COMPLETATO
+- **Dove**: LoSAnalysis.h — `AnalyzeLineOfSight()`, LoSWindow.cpp — `_DrawFresnelZone()`
+- **Problema**: `d1 / totalDist` senza guardia. Se start e end hanno le stesse coordinate, `totalDist = 0` → divisione per zero (NaN/Inf nei calcoli Fresnel e nel rendering)
+- **Fix**: aggiunto `if (totalDist <= 0) return` in entrambe le funzioni prima del loop
+- **Stato**: completato v1.9.2
+
+### B11. strncpy in MissionControlWindow — COMPLETATO
+- **Dove**: MissionControlWindow.cpp — troncamento label nodi topologia
+- **Problema**: `strncpy(shortName, fNodes[i].name, 11)` non garantisce null-termination se la sorgente è >= 11 byte. Pattern fragile con null-termination manuale successiva
+- **Fix**: sostituito con `strlcpy(shortName, fNodes[i].name, sizeof(shortName))` — idiomatico su Haiku, sempre null-terminato
+- **Stato**: completato v1.9.2
+
 ---
 
 ## Feature mancanti dal protocollo (media priorità)
