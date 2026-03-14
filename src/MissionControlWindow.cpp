@@ -273,7 +273,6 @@ public:
 		fStoragePct(-1)
 	{
 		SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-		SetExplicitMinSize(BSize(kCardMinWidth, kCardMinHeight));
 		memset(fLabels, 0, sizeof(fLabels));
 		memset(fValues, 0, sizeof(fValues));
 		for (int i = 0; i < 6; i++)
@@ -299,6 +298,29 @@ public:
 	void SetPulse(bool show) { fShowPulse = show; Invalidate(); }
 
 	void SetStorageGauge(int8 pct) { fStoragePct = pct; Invalidate(); }
+
+	BSize PreferredSize()
+	{
+		// Calculate height based on row count
+		BFont font;
+		GetFont(&font);
+		font.SetSize(11);
+		font_height fh;
+		font.GetHeight(&fh);
+
+		float titleH = 8 + fh.ascent + fh.descent + fh.leading + 2; // top + title
+		float sepH = 6;  // separator gap
+		float rowH = fh.ascent + fh.descent + fh.leading + 4;
+		int32 rows = (fRowCount > 0) ? fRowCount : 4;
+		float storageH = (fStoragePct >= 0) ? 20 : 0;
+		float bottomPad = 6;
+
+		float h = titleH + sepH + rows * rowH + storageH + bottomPad;
+		if (h < kCardMinHeight) h = kCardMinHeight;
+		return BSize(kCardMinWidth, h);
+	}
+
+	BSize MinSize() { return PreferredSize(); }
 
 	void Pulse()
 	{
@@ -1634,10 +1656,8 @@ MissionControlWindow::SetConnectionState(bool connected,
 {
 	fConnected = connected;
 	if (connected) {
-		BString connStr;
-		connStr.SetToFormat("Connected: %s",
-			deviceName != NULL ? deviceName : "");
-		fDeviceCard->SetRow(0, "Connection", connStr.String(),
+		fDeviceCard->SetRow(0, "Connection",
+			deviceName != NULL ? deviceName : "Connected",
 			kColorGood);
 		fDeviceCard->SetPulse(true);
 		fTimeline->SetSessionStart(system_time());
