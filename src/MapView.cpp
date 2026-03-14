@@ -750,19 +750,25 @@ MapView::_DrawGrid()
 	_ScreenToLatLon(BPoint(0, bounds.Height()), minLat, minLon);
 	_ScreenToLatLon(BPoint(bounds.Width(), 0), maxLat, maxLon);
 
+	// Adaptive spacing: maintain ~50-120px between grid lines at all zoom levels
 	float gridSpacing;
 	if (fZoom > 50000) gridSpacing = 0.001f;
 	else if (fZoom > 10000) gridSpacing = 0.01f;
 	else if (fZoom > 1000) gridSpacing = 0.1f;
 	else if (fZoom > 500) gridSpacing = 0.5f;
-	else gridSpacing = 1.0f;
+	else if (fZoom > 100) gridSpacing = 1.0f;
+	else if (fZoom > 40) gridSpacing = 2.0f;
+	else if (fZoom > 20) gridSpacing = 5.0f;
+	else if (fZoom > 8) gridSpacing = 10.0f;
+	else if (fZoom > 4) gridSpacing = 15.0f;
+	else gridSpacing = 30.0f;
 
-	// Dimmed grid when tiles are active
-	if (fShowTiles)
-		SetHighColor(80, 80, 80, 80);
-	else
-		SetHighColor(50, 60, 80);
-
+	// Theme-aware grid color
+	rgb_color panelBg = ui_color(B_PANEL_BACKGROUND_COLOR);
+	rgb_color gridColor = tint_color(panelBg, B_DARKEN_2_TINT);
+	gridColor.alpha = fShowTiles ? 60 : 120;
+	SetHighColor(gridColor);
+	SetDrawingMode(B_OP_ALPHA);
 	SetPenSize(1.0f);
 
 	float startLat = floor(minLat / gridSpacing) * gridSpacing;
@@ -778,6 +784,79 @@ MapView::_DrawGrid()
 		BPoint p2 = _LatLonToScreen(maxLat, lon);
 		StrokeLine(p1, p2);
 	}
+
+	// Coordinate labels on grid edges
+	BFont labelFont(be_plain_font);
+	labelFont.SetSize(9.0f);
+	SetFont(&labelFont);
+	font_height fh;
+	labelFont.GetHeight(&fh);
+	float fontAscent = fh.ascent;
+	float fontHeight = fh.ascent + fh.descent;
+
+	rgb_color labelBg = panelBg;
+	labelBg.alpha = 180;
+	rgb_color textColor = tint_color(panelBg, B_DARKEN_MAX_TINT);
+
+	const float kLabelPadH = 2.0f;
+	const float kLabelPadV = 1.0f;
+	const float kLabelMargin = 3.0f;
+
+	// Latitude labels on left edge
+	for (float lat = startLat; lat <= maxLat; lat += gridSpacing) {
+		BPoint screenPt = _LatLonToScreen(lat, minLon);
+		float y = screenPt.y;
+		if (y < fontHeight || y > bounds.Height() - kLabelMargin)
+			continue;
+
+		char label[16];
+		float absLat = fabsf(lat);
+		if (gridSpacing >= 1.0f)
+			snprintf(label, sizeof(label), "%d°%s", (int)absLat,
+				lat > 0 ? "N" : (lat < 0 ? "S" : ""));
+		else
+			snprintf(label, sizeof(label), "%.1f°%s", absLat,
+				lat > 0 ? "N" : (lat < 0 ? "S" : ""));
+
+		float labelWidth = labelFont.StringWidth(label);
+		BRect bg(kLabelMargin, y - fontAscent - kLabelPadV,
+			kLabelMargin + labelWidth + 2 * kLabelPadH,
+			y + fh.descent + kLabelPadV);
+		SetHighColor(labelBg);
+		FillRect(bg);
+		SetHighColor(textColor);
+		DrawString(label, BPoint(kLabelMargin + kLabelPadH, y));
+	}
+
+	// Longitude labels on bottom edge
+	for (float lon = startLon; lon <= maxLon; lon += gridSpacing) {
+		BPoint screenPt = _LatLonToScreen(maxLat, lon);
+		float x = screenPt.x;
+
+		char label[16];
+		float absLon = fabsf(lon);
+		if (gridSpacing >= 1.0f)
+			snprintf(label, sizeof(label), "%d°%s", (int)absLon,
+				lon > 0 ? "E" : (lon < 0 ? "W" : ""));
+		else
+			snprintf(label, sizeof(label), "%.1f°%s", absLon,
+				lon > 0 ? "E" : (lon < 0 ? "W" : ""));
+
+		float labelWidth = labelFont.StringWidth(label);
+		if (x < kLabelMargin || x + labelWidth > bounds.Width() - kLabelMargin)
+			continue;
+
+		float labelY = bounds.Height() - kLabelMargin - fh.descent;
+		BRect bg(x - kLabelPadH, labelY - fontAscent - kLabelPadV,
+			x + labelWidth + kLabelPadH,
+			labelY + fh.descent + kLabelPadV);
+		SetHighColor(labelBg);
+		FillRect(bg);
+		SetHighColor(textColor);
+		DrawString(label, BPoint(x, labelY));
+	}
+
+	SetDrawingMode(B_OP_COPY);
 }
 
 
