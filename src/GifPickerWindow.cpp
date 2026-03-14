@@ -427,6 +427,8 @@ GifPickerWindow::MessageReceived(BMessage* message)
 
 		case kMsgSearchDone:
 		{
+			fSearchThread = -1;
+
 			int32 count = 0;
 			if (message->FindInt32("count", &count) != B_OK)
 				break;
@@ -550,8 +552,6 @@ GifPickerWindow::_Search(const char* query)
 		resume_thread(fSearchThread);
 	else
 		delete ctx;
-
-	fSearchThread = -1;
 }
 
 
@@ -569,7 +569,7 @@ GifPickerWindow::_LoadTrending()
 	ctx->count = &fResultCount;
 	ctx->window = this;
 
-	thread_id tid = spawn_thread([](void* data) -> int32 {
+	fSearchThread = spawn_thread([](void* data) -> int32 {
 		TrendingContext* ctx = (TrendingContext*)data;
 		int32 count = GiphyClient::Trending(ctx->results, 20);
 		*ctx->count = count;
@@ -582,8 +582,8 @@ GifPickerWindow::_LoadTrending()
 		return 0;
 	}, "gif_trending", B_NORMAL_PRIORITY, ctx);
 
-	if (tid >= 0)
-		resume_thread(tid);
+	if (fSearchThread >= 0)
+		resume_thread(fSearchThread);
 	else
 		delete ctx;
 }
