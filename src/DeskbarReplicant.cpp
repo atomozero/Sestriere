@@ -11,6 +11,7 @@
 #include <Deskbar.h>
 #include <IconUtils.h>
 #include <MenuItem.h>
+#include <Messenger.h>
 #include <PopUpMenu.h>
 #include <Roster.h>
 #include <String.h>
@@ -19,8 +20,19 @@
 #include <cstdio>
 #include <cstring>
 
-#include "Constants.h"
-#include "Utils.h"
+// Inline constants to avoid pulling in the full app's headers and globals
+// when loaded as a lightweight Deskbar add-on.
+static const char* kAppSignature = "application/x-vnd.Sestriere";
+static const uint32 kMsgSendAdvert = 'advt';
+
+static inline int
+_BatteryPercent(uint16 millivolts)
+{
+	// Simple LiPo range: 3000-4200mV
+	if (millivolts <= 3000) return 0;
+	if (millivolts >= 4200) return 100;
+	return ((int)millivolts - 3000) * 100 / 1200;
+}
 
 
 // Messages from the app to update replicant state
@@ -84,7 +96,7 @@ DeskbarReplicant::Archive(BMessage* archive, bool deep) const
 	if (status != B_OK)
 		return status;
 
-	status = archive->AddString("add_on", APP_SIGNATURE);
+	status = archive->AddString("add_on", kAppSignature);
 	if (status != B_OK)
 		return status;
 
@@ -166,7 +178,7 @@ DeskbarReplicant::MouseDown(BPoint where)
 		_ShowPopupMenu(screenWhere);
 	} else {
 		// Launch or bring to front
-		be_roster->Launch(APP_SIGNATURE);
+		be_roster->Launch(kAppSignature);
 	}
 }
 
@@ -187,7 +199,7 @@ DeskbarReplicant::MessageReceived(BMessage* message)
 		{
 			uint16 mV;
 			if (message->FindUInt16("battery_mv", &mV) == B_OK) {
-				int level = BatteryPercent(mV);
+				int level = _BatteryPercent(mV);
 				SetBatteryLevel((uint8)level);
 			}
 			break;
@@ -297,6 +309,11 @@ DeskbarReplicant::_ShowPopupMenu(BPoint where)
 	menu->AddItem(new BMenuItem("Open Sestriere",
 		new BMessage('open')));
 
+	BMenuItem* advertItem = new BMenuItem("Send Advert",
+		new BMessage('advt'));
+	advertItem->SetEnabled(fConnected);
+	menu->AddItem(advertItem);
+
 	menu->AddSeparatorItem();
 
 	menu->AddItem(new BMenuItem("Remove from Deskbar",
@@ -311,8 +328,16 @@ DeskbarReplicant::_ShowPopupMenu(BPoint where)
 	if (selected != NULL) {
 		switch (selected->Message()->what) {
 			case 'open':
-				be_roster->Launch(APP_SIGNATURE);
+				be_roster->Launch(kAppSignature);
 				break;
+
+			case 'advt':
+			{
+				BMessenger appMessenger(kAppSignature);
+				if (appMessenger.IsValid())
+					appMessenger.SendMessage(kMsgSendAdvert);
+				break;
+			}
 
 			case 'rmdb':
 			{

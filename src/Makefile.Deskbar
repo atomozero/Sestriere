@@ -1,0 +1,17 @@
+# Lightweight Deskbar add-on for Sestriere
+# This builds only the replicant, without pulling in heavy app dependencies.
+
+NAME = SestriereDeskbar
+OBJ_DIR = objects.x86_64-cc13-debug
+
+all: $(OBJ_DIR)/$(NAME)
+
+$(OBJ_DIR)/$(NAME): DeskbarReplicant.cpp DeskbarReplicant.h
+	@mkdir -p $(OBJ_DIR)
+	g++ -shared -o $@ DeskbarReplicant.cpp \
+		-O3 -Wall -Wno-multichar \
+		-lbe -lstdc++ -lsupc++ \
+		-Xlinker -soname=$(NAME)
+
+clean:
+	rm -f $(OBJ_DIR)/$(NAME)

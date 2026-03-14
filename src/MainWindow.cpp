@@ -508,6 +508,27 @@ MainWindow::MainWindow()
 	SetSizeLimits(500, B_SIZE_UNLIMITED, 350, B_SIZE_UNLIMITED);
 	CenterOnScreen();
 
+	// Install lightweight Deskbar tray add-on if not already present
+	BDeskbar deskbar;
+	if (!deskbar.HasItem("Sestriere")) {
+		entry_ref appRef;
+		if (be_roster->FindApp(APP_SIGNATURE, &appRef) == B_OK) {
+			BEntry appEntry(&appRef);
+			BPath appPath;
+			appEntry.GetPath(&appPath);
+			appPath.GetParent(&appPath);
+			appPath.Append("SestriereDeskbar");
+			BEntry addonEntry(appPath.Path());
+			entry_ref addonRef;
+			if (addonEntry.Exists() && addonEntry.GetRef(&addonRef) == B_OK)
+				deskbar.AddItem(&addonRef);
+			else {
+				// Fallback: use the main app binary
+				deskbar.AddItem(&appRef);
+			}
+		}
+	}
+
 	// Start auto-connect timer (will try to connect after 1 second)
 	BMessage autoConnectMsg(MSG_AUTO_CONNECT);
 	fAutoConnectTimer = new BMessageRunner(this, &autoConnectMsg, kAutoConnectDelay, 1);
@@ -1372,9 +1393,21 @@ MainWindow::MessageReceived(BMessage* message)
 		{
 			BDeskbar deskbar;
 			if (!deskbar.HasItem("Sestriere")) {
-				entry_ref ref;
-				if (be_roster->FindApp(APP_SIGNATURE, &ref) == B_OK) {
-					deskbar.AddItem(&ref);
+				entry_ref appRef;
+				if (be_roster->FindApp(APP_SIGNATURE, &appRef) == B_OK) {
+					BEntry appEntry(&appRef);
+					BPath appPath;
+					appEntry.GetPath(&appPath);
+					appPath.GetParent(&appPath);
+					appPath.Append("SestriereDeskbar");
+					BEntry addonEntry(appPath.Path());
+					entry_ref addonRef;
+					if (addonEntry.Exists()
+						&& addonEntry.GetRef(&addonRef) == B_OK) {
+						deskbar.AddItem(&addonRef);
+					} else {
+						deskbar.AddItem(&appRef);
+					}
 					_LogMessage("INFO", "Added to Deskbar");
 				}
 			} else {

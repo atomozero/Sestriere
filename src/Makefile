@@ -84,3 +84,16 @@ DRIVER_PATH =
 ## Include the Makefile-Engine
 DEVEL_DIRECTORY := /boot/system/develop
 include $(DEVEL_DIRECTORY)/etc/makefile-engine
+
+# Lightweight Deskbar add-on (built after the main app via ADDITIONAL_OBJS hook)
+deskbar-addon:
+	@mkdir -p objects.x86_64-cc13-debug
+	@g++ -shared -o objects.x86_64-cc13-debug/SestriereDeskbar \
+		DeskbarReplicant.cpp \
+		-O3 -Wall -Wno-multichar \
+		-lbe -lstdc++ -lsupc++ \
+		-Xlinker -soname=SestriereDeskbar
+	@echo "SestriereDeskbar add-on built"
+
+.DEFAULT_GOAL := all-with-addon
+all-with-addon: default deskbar-addon
