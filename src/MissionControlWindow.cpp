@@ -45,7 +45,7 @@ static const int32 kMaxActivityLines = 50;
 static const int32 kSNRBufferSize = 200;
 static const int32 kPacketRateBars = 60;
 static const float kCardMinWidth = 200.0f;
-static const float kCardMinHeight = 100.0f;
+static const float kCardMinHeight = 120.0f;
 static const bigtime_t kStaleThreshold = 30000000;  // 30 seconds
 
 
@@ -243,7 +243,7 @@ public:
 		rgb_color bg = ui_color(B_PANEL_BACKGROUND_COLOR);
 		rgb_color textColor = ui_color(B_PANEL_TEXT_COLOR);
 		rgb_color dimColor = tint_color(textColor, B_LIGHTEN_1_TINT);
-		rgb_color borderColor = tint_color(bg, B_DARKEN_2_TINT);
+		rgb_color borderColor = tint_color(bg, B_DARKEN_1_TINT);
 
 		// Background
 		SetLowColor(bg);
@@ -646,7 +646,7 @@ public:
 		rgb_color bg = ui_color(B_PANEL_BACKGROUND_COLOR);
 		rgb_color textColor = ui_color(B_PANEL_TEXT_COLOR);
 		rgb_color dimColor = tint_color(textColor, B_LIGHTEN_1_TINT);
-		rgb_color borderColor = tint_color(bg, B_DARKEN_2_TINT);
+		rgb_color borderColor = tint_color(bg, B_DARKEN_1_TINT);
 
 		SetLowColor(bg);
 		FillRect(bounds, B_SOLID_LOW);
@@ -852,7 +852,7 @@ public:
 		rgb_color bg = ui_color(B_PANEL_BACKGROUND_COLOR);
 		rgb_color textColor = ui_color(B_PANEL_TEXT_COLOR);
 		rgb_color dimColor = tint_color(textColor, B_LIGHTEN_1_TINT);
-		rgb_color borderColor = tint_color(bg, B_DARKEN_2_TINT);
+		rgb_color borderColor = tint_color(bg, B_DARKEN_1_TINT);
 
 		SetLowColor(bg);
 		FillRect(bounds, B_SOLID_LOW);
