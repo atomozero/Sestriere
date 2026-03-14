@@ -1473,8 +1473,8 @@ MissionControlWindow::_BuildLayout()
 
 	BView* networkInner = new BView("networkInner", 0);
 	networkInner->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-	BLayoutBuilder::Group<>(networkInner, B_VERTICAL, 2)
-		.SetInsets(2, 2, 2, 2)
+	BLayoutBuilder::Group<>(networkInner, B_VERTICAL, 4)
+		.SetInsets(4, 4, 4, 4)
 		.Add(fHealthScore, 2)
 		.Add(fContactGrid, 1)
 	.End();
@@ -1526,7 +1526,7 @@ MissionControlWindow::_BuildLayout()
 	BView* activityInner = new BView("activityInner", 0);
 	activityInner->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
 	BLayoutBuilder::Group<>(activityInner, B_VERTICAL, 0)
-		.SetInsets(2, 2, 2, 2)
+		.SetInsets(4, 4, 4, 4)
 		.Add(fActivityScroll)
 	.End();
 	activityCard->AddChild(activityInner);
@@ -1555,8 +1555,8 @@ MissionControlWindow::_BuildLayout()
 		.Add(fMiniTopo, 2)
 	.End();
 
-	BLayoutBuilder::Group<>(this, B_VERTICAL, 2)
-		.SetInsets(6, 6, 6, 6)
+	BLayoutBuilder::Group<>(this, B_VERTICAL, 4)
+		.SetInsets(8, 8, 8, 8)
 		.Add(fAlertBanner)
 		.Add(topSplit, 2)
 		.Add(midSplit, 2)
