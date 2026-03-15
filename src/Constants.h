@@ -14,7 +14,7 @@
 // Application info
 #define APP_SIGNATURE "application/x-vnd.Sestriere"
 #define APP_NAME "Sestriere"
-#define APP_VERSION "1.8.0-beta"
+#define APP_VERSION "1.8.0"
 #define APP_VERSION_MAJOR 1
 #define APP_VERSION_MIDDLE 8
 #define APP_VERSION_MINOR 0
