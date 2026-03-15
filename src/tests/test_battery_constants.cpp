@@ -121,12 +121,16 @@ TestNamedConstantsUsed()
 				totalUsage++;
 			if (strstr(line, "kBattRangeMv") != NULL)
 				totalUsage++;
+			// BatteryPercent() from Utils.h is the centralized function
+			// that uses kBatteryRanges — counts as proper usage
+			if (strstr(line, "BatteryPercent") != NULL)
+				totalUsage++;
 		}
 		fclose(fp);
 	}
 
 	printf("    Named constant references: %d\n", totalUsage);
-	assert(totalUsage >= 6 && "Expected kBattMinMv+kBattRangeMv in 3 files");
+	assert(totalUsage >= 6 && "Expected battery constants/BatteryPercent in 3 files");
 
 	printf("  PASS: Named battery constants used across 3 files\n");
 }

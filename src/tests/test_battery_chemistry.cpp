@@ -148,7 +148,8 @@ TestChemistryConstants()
 	assert(BATTERY_LIPO == 0);
 	assert(BATTERY_LIFEPO4 == 1);
 	assert(BATTERY_NMC == 2);
-	assert(BATTERY_CHEMISTRY_COUNT == 3);
+	assert(BATTERY_USB == 3);
+	assert(BATTERY_CHEMISTRY_COUNT == 4);
 
 	// Verify ranges
 	assert(kBatteryRanges[BATTERY_LIPO].minMv == 3000);
@@ -158,10 +159,15 @@ TestChemistryConstants()
 	assert(kBatteryRanges[BATTERY_NMC].minMv == 2500);
 	assert(kBatteryRanges[BATTERY_NMC].maxMv == 4200);
 
+	// Verify USB chemistry
+	assert(BatteryPercent(0, BATTERY_USB) == 0);
+	assert(BatteryPercent(5000, BATTERY_USB) == 100);
+
 	// Verify names
 	assert(strcmp(kBatteryChemistryNames[BATTERY_LIPO], "LiPo") == 0);
 	assert(strcmp(kBatteryChemistryNames[BATTERY_LIFEPO4], "LiFePO4") == 0);
 	assert(strcmp(kBatteryChemistryNames[BATTERY_NMC], "NMC") == 0);
+	assert(strcmp(kBatteryChemistryNames[BATTERY_USB], "USB") == 0);
 
 	printf("PASS\n");
 }

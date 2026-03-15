@@ -31,8 +31,12 @@ Version 1.8.0 | March 2026
 22. [SAR Markers](#22-sar-markers)
 23. [Radio Configuration](#23-radio-configuration)
 24. [Notifications and Deskbar](#24-notifications-and-deskbar)
-25. [Keyboard Shortcuts](#25-keyboard-shortcuts)
-26. [Troubleshooting](#26-troubleshooting)
+25. [Voice Messages](#25-voice-messages)
+26. [Line-of-Sight Analysis](#26-line-of-sight-analysis)
+27. [Multi-Companion Support](#27-multi-companion-support)
+28. [Keyboard Shortcuts](#28-keyboard-shortcuts)
+29. [Troubleshooting](#29-troubleshooting)
+- [Data Storage](#data-storage)
 - [Appendix A: Radio Presets Reference](#appendix-a-radio-presets-reference)
 - [Appendix B: MeshCore Protocol Reference](#appendix-b-meshcore-protocol-reference)
 
@@ -892,7 +896,85 @@ Remove via **Settings > Remove from Deskbar**.
 
 ---
 
-## 25. Keyboard Shortcuts
+## 25. Voice Messages
+
+Sestriere supports push-to-talk voice messages over LoRa using the Codec2 codec, compatible with meshcore-sar.
+
+### How It Works
+
+Voice is encoded with Codec2 at 1200 bps (mode 3), producing extremely compact audio data suitable for LoRa transmission. A 10-second voice message compresses to approximately 1.5 KB.
+
+### Sending a Voice Message
+
+1. Select a contact
+2. Press and hold the **microphone button** (or use the keyboard shortcut)
+3. Speak your message (max 30 seconds)
+4. Release to send — the audio is encoded and transmitted in chunks
+
+### Receiving a Voice Message
+
+Incoming voice messages are displayed as a play button in the chat. Click to play back the decoded audio through the system sound output.
+
+### Storage
+
+Voice clips are stored as Codec2 BLOB data in the SQLite database (`voice_clips` table) with session ID, duration, and codec mode metadata. Old clips are pruned after 30 days.
+
+---
+
+## 26. Line-of-Sight Analysis
+
+**View > Line-of-Sight** (from Geographic Map context menu)
+
+Analyzes the terrain profile between two nodes to determine if a clear radio line-of-sight exists.
+
+### How It Works
+
+1. Right-click a node on the Geographic Map
+2. Select **Line-of-Sight to...** and choose a target node
+3. Sestriere queries the Open-Meteo Elevation API to sample terrain elevation along the path
+4. A profile window displays the terrain cross-section with:
+   - **Ground elevation profile** (brown filled area)
+   - **Line-of-sight line** between the two antenna positions
+   - **First Fresnel zone** (green = clear, red = obstructed)
+   - Earth curvature correction (k-factor 4/3)
+   - Distance, elevation gain, and clearance metrics
+
+### Requirements
+
+- Both nodes must have valid GPS coordinates
+- Internet connection required for elevation data (Open-Meteo API)
+
+---
+
+## 27. Multi-Companion Support
+
+Sestriere supports switching between different companion radios without data mixing.
+
+### How It Works
+
+Each companion radio has a unique public key. When you connect, Sestriere identifies the companion and partitions the database accordingly:
+
+- **Messages** are stored and loaded per companion — connecting to companion A shows only A's message history
+- **SNR history** is partitioned per companion
+- **Message search** only returns results from the current companion's data
+
+### Switching Companions
+
+1. **Disconnect** from the current companion (Cmd+D)
+   - All runtime state is cleared: contacts, chat, telemetry, stats, network map, packet analyzer
+   - The sidebar and chat area become empty
+2. **Connect** to a different companion (Cmd+O)
+   - Contacts sync from the new device
+   - Messages are loaded from the database filtered by the new companion's identity
+3. **Reconnecting** to a previous companion restores its full message history from the database
+
+### Backward Compatibility
+
+Existing databases are automatically migrated. Messages saved before this feature was added remain accessible from any companion (they are associated with an empty companion key).
+
+---
+
+## 28. Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
@@ -1007,14 +1089,15 @@ Sestriere stores all persistent data in SQLite:
 
 | Table | Content |
 |-------|---------|
-| `messages` | Chat message history (DM and channel) |
-| `snr_history` | Signal quality data points per contact |
+| `messages` | Chat message history (DM and channel), partitioned by `companion_key` |
+| `snr_history` | Signal quality data points per contact, partitioned by `companion_key` |
 | `telemetry_history` | Sensor readings per node |
 | `mute_settings` | Muted contact/channel flags |
 | `contact_groups` | Group name definitions |
 | `contact_group_members` | Contact-to-group assignments |
 | `topology_edges` | Network map link persistence (30-day expiry) |
 | `voice_clips` | Codec2 voice message audio data |
+| `images` | LoRa image transfer BLOB storage |
 
 Database location: `~/config/settings/Sestriere/sestriere.db`
 
@@ -1032,7 +1115,7 @@ Map tile cache: `~/config/settings/Sestriere/tiles/` (50 MB max, LRU eviction)
 
 ---
 
-## 26. Troubleshooting
+## 29. Troubleshooting
 
 ### Database: "locking protocol" error
 

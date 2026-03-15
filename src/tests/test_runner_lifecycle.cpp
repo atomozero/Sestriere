@@ -81,9 +81,9 @@ TestRunnerDeleteNullPattern()
 		totalDeletes, nullAfterDelete);
 
 	// Every non-destructor delete should have a corresponding NULL assignment
-	// Destructor has 3 deletes without NULL (that's OK — object is dying)
-	// So we expect (totalDeletes - 3) == nullAfterDelete
-	int nonDestructorDeletes = totalDeletes - 3;
+	// Destructor has 5 deletes without NULL (that's OK — object is dying)
+	// So we expect (totalDeletes - 5) == nullAfterDelete
+	int nonDestructorDeletes = totalDeletes - 5;
 	assert(nullAfterDelete >= nonDestructorDeletes);
 
 	printf("  PASS: All non-destructor BMessageRunner deletes have NULL assignment\n");

@@ -1,7 +1,7 @@
 # Sestriere — Roadmap
 
 Analisi dello stato attuale e piano di sviluppo futuro.
-Ultimo aggiornamento: marzo 2026 (v1.9.1)
+Ultimo aggiornamento: marzo 2026 (v1.8.0-beta)
 
 ---
 
@@ -39,6 +39,23 @@ Estratto da Sestriere come app indipendente in `repeater_monitor/`.
 
 ### 10. Fake Radio → App standalone
 Spostato in `fake_radio/` con Makefile e icona HVIF.
+
+### 11. Line-of-Sight Analysis
+Profilo elevazione terreno tra due nodi, zona di Fresnel, curvatura terrestre (k-factor 4/3).
+API Open-Meteo per dati elevazione. File: LoSAnalysis.h, ElevationService.cpp/h, LoSWindow.cpp/h.
+
+### 12. Multi-Companion Support
+DB partizionato per companion radio: colonna `companion_key` su tabelle `messages` e `snr_history`.
+Al disconnect: clear totale di contatti, chat, telemetria, stats, network map, packet analyzer.
+Riconnessione: messaggi ricaricati dal DB filtrati per identità companion.
+Retrocompatibile: dati esistenti (companion_key vuota) accessibili da qualsiasi companion.
+
+### 13. TelemetryWindow Redesign
+Dashboard con card-based layout (CardWrapperView), flow layout, auto-sizing MetricCardView.
+
+### 14. Mission Control Improvements
+Ping All e Trace Route quick actions, health arc inline, card style unificato,
+timeline sessione, activity feed, footer last-update con stale detection.
 
 ---
 

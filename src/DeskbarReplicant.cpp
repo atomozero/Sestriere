@@ -25,13 +25,16 @@
 static const char* kAppSignature = "application/x-vnd.Sestriere";
 static const uint32 kMsgSendAdvert = 'advt';
 
+// Battery percentage (LiPo: 3.0V-4.2V) — mirrors Constants.h
+static const uint16 kBattMinMv = 3000;
+static const uint16 kBattRangeMv = 1200;
+
 static inline int
 _BatteryPercent(uint16 millivolts)
 {
-	// Simple LiPo range: 3000-4200mV
-	if (millivolts <= 3000) return 0;
-	if (millivolts >= 4200) return 100;
-	return ((int)millivolts - 3000) * 100 / 1200;
+	if (millivolts <= kBattMinMv) return 0;
+	if (millivolts >= kBattMinMv + kBattRangeMv) return 100;
+	return ((int)millivolts - kBattMinMv) * 100 / kBattRangeMv;
 }
 
 

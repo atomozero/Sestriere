@@ -62,8 +62,9 @@ Unified dashboard with device status, radio health, network health score arc, SN
 ### Visualization
 - **Network Map** -- Force-directed topology with SNR-colored links, animated flow dots, trace route visualization, auto-trace, full mesh discovery, and edge persistence
 - **Geographic Map** -- Lat/lon map with Google Maps-style zoom levels (Z2-Z18), pan, grid, compass, scale bar, hop-count colored connections, and OSM tile overlay with 50 MB LRU disk cache
-- **Telemetry Dashboard** -- Battery, storage, radio stats graphs with time ranges up to 7 days, CSV export
+- **Telemetry Dashboard** -- Battery, storage, radio stats graphs with time ranges up to 7 days, CSV export, card-based dashboard layout
 - **Mission Control** -- Unified dashboard: health score arc, SNR/RSSI trend, packet rate histogram, mini topology, session timeline, activity feed, and alert banners
+- **Line-of-Sight Analysis** -- Terrain profile between two nodes with Fresnel zone, earth curvature, and elevation data from Open-Meteo API
 
 ### Radio Analysis
 - **Packet Analyzer** -- Wireshark-style real-time analyzer with color-coded packet types, decoded detail view, hex dump, SNR trend chart, contact heatmap, delta-t timing, CSV export
@@ -75,6 +76,7 @@ Unified dashboard with device status, radio health, network health score arc, SN
 - **Repeater Admin** -- Remote administration of repeaters/rooms after login with contextual toolbar in chat area (stats, contacts, reboot, factory reset)
 - **Battery & Storage Monitoring** -- Real-time voltage and storage status with LiPo/LiFePO4/NMC chemistry curves
 - **Serial Monitor** -- Terminal-style CLI interaction for repeater/standalone devices
+- **Multi-Companion** -- DB partitioned per companion radio, clean state reset on disconnect, seamless switching between different radios
 
 ### MQTT Integration
 - **MQTT Bridge** -- Relay messages to MQTT broker (meshcoreitalia.it)
@@ -249,6 +251,9 @@ Sestriere/
 │   ├── VoiceCodec.cpp/h            # Codec2 encode/decode wrapper
 │   ├── AudioEngine.cpp/h           # Audio recording and playback (BSoundPlayer)
 │   ├── SarMarker.cpp/h             # SAR marker parsing (meshcore-sar protocol)
+│   ├── ElevationService.cpp/h      # Open-Meteo elevation API client
+│   ├── LoSAnalysis.h               # Line-of-Sight math library (header-only)
+│   ├── LoSWindow.cpp/h             # Line-of-Sight terrain profile window
 │   ├── TileCache.cpp/h             # OSM map tile download and cache (50 MB LRU disk limit)
 │   ├── CoastlineData.cpp/h         # Coastline polygon data for geographic map
 │   ├── Types.h                     # Protocol structures & radio presets
@@ -291,7 +296,8 @@ Sestriere/
         ├─ MqttClient (bridge)
         ├─ MqttLogWindow
         ├─ SerialMonitorWindow
-        └─ ProfileWindow
+        ├─ ProfileWindow
+        └─ LoSWindow (Line-of-Sight)
 ```
 
 ## License

@@ -212,6 +212,9 @@ src/
 ├── VoiceCodec.cpp/h              # Codec2 encode/decode wrapper
 ├── AudioEngine.cpp/h             # Audio recording and playback (BSoundPlayer)
 ├── SarMarker.cpp/h               # SAR marker parsing (meshcore-sar protocol)
+├── ElevationService.cpp/h        # Open-Meteo elevation API client
+├── LoSAnalysis.h                 # Line-of-Sight math library (header-only)
+├── LoSWindow.cpp/h               # Line-of-Sight terrain profile window
 ├── TileCache.cpp/h               # OSM map tile download and cache (50 MB LRU disk limit)
 └── CoastlineData.cpp/h           # Coastline polygon data for geographic map
 ```

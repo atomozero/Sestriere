@@ -105,7 +105,8 @@ TestUsesNamedConstants()
 		if (strstr(line, "kColorBad") != NULL)
 			usesColorBad = true;
 		if (strstr(line, "kBattMinMv") != NULL
-			|| strstr(line, "kBattRangeMv") != NULL)
+			|| strstr(line, "kBattRangeMv") != NULL
+			|| strstr(line, "BatteryPercent") != NULL)
 			usesBattConsts = true;
 	}
 	fclose(fp);
@@ -113,7 +114,7 @@ TestUsesNamedConstants()
 	assert(includesConstants && "Must include Constants.h");
 	assert(usesColorGood && "Must use kColorGood");
 	assert(usesColorBad && "Must use kColorBad");
-	assert(usesBattConsts && "Must use kBattMinMv/kBattRangeMv");
+	assert(usesBattConsts && "Must use kBattMinMv/kBattRangeMv or BatteryPercent()");
 
 	printf("  PASS: Uses Constants.h named color and battery constants\n");
 }
