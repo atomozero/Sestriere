@@ -252,6 +252,7 @@ public:
 			void			TriggerPacketFlow(const char* srcHex,
 								const char* dstHex, int8 snr,
 								bool isMessage);
+			void			ClearAll();
 
 private:
 			void			_RequestUpdate();

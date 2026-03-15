@@ -3010,6 +3010,14 @@ NetworkMapWindow::UpdateFromContacts(const OwningObjectList<ContactInfo>* contac
 
 
 void
+NetworkMapWindow::ClearAll()
+{
+	fMapView->SetNodes(NULL);
+	fMapView->ClearTraceRoutes();
+}
+
+
+void
 NetworkMapWindow::BuildEdgesFromOutPaths(
 	const OwningObjectList<ContactInfo>* contacts)
 {

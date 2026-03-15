@@ -50,6 +50,7 @@ DatabaseManager::DatabaseManager()
 	fLock("DatabaseManager"),
 	fDirectory("")
 {
+	fCompanionKey[0] = '\0';
 }
 
 
@@ -120,6 +121,12 @@ DatabaseManager::Open(const char* directory)
 	sqlite3_exec(fDB, "ALTER TABLE messages ADD COLUMN round_trip_ms INTEGER DEFAULT 0",
 		NULL, NULL, NULL);
 
+	// Multi-companion partitioning: add companion_key column
+	sqlite3_exec(fDB, "ALTER TABLE messages ADD COLUMN companion_key TEXT DEFAULT ''",
+		NULL, NULL, NULL);
+	sqlite3_exec(fDB, "ALTER TABLE snr_history ADD COLUMN companion_key TEXT DEFAULT ''",
+		NULL, NULL, NULL);
+
 	// Migrate old messages.txt if database is empty
 	if (_IsEmpty())
 		_MigrateFromTextFile(directory);
@@ -148,6 +155,19 @@ DatabaseManager::Close()
 }
 
 
+void
+DatabaseManager::SetCompanionKey(const char* key)
+{
+	BAutolock lock(fLock);
+	if (key != NULL)
+		strlcpy(fCompanionKey, key, sizeof(fCompanionKey));
+	else
+		fCompanionKey[0] = '\0';
+	fprintf(stderr, "[DatabaseManager] Companion key set to: %s\n",
+		fCompanionKey[0] ? fCompanionKey : "(none)");
+}
+
+
 bool
 DatabaseManager::InsertMessage(const char* contactKeyHex,
 	const ChatMessage& message)
@@ -163,8 +183,8 @@ DatabaseManager::InsertMessage(const char* contactKeyHex,
 	const char* sql =
 		"INSERT OR IGNORE INTO messages (contact_key, timestamp, outgoing, "
 		"channel, sender_key, text, path_len, snr, txt_type, "
-		"delivery_status, round_trip_ms) "
-		"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+		"delivery_status, round_trip_ms, companion_key) "
+		"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
@@ -185,6 +205,7 @@ DatabaseManager::InsertMessage(const char* contactKeyHex,
 	sqlite3_bind_int(stmt, 9, message.txtType);
 	sqlite3_bind_int(stmt, 10, message.deliveryStatus);
 	sqlite3_bind_int(stmt, 11, message.roundTripMs);
+	sqlite3_bind_text(stmt, 12, fCompanionKey, -1, SQLITE_TRANSIENT);
 
 	rc = sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
@@ -203,7 +224,8 @@ DatabaseManager::UpdateMessageDeliveryStatus(const char* contactKeyHex,
 
 	const char* sql =
 		"UPDATE messages SET delivery_status = ?, round_trip_ms = ? "
-		"WHERE contact_key = ? AND timestamp = ? AND outgoing = 1";
+		"WHERE contact_key = ? AND timestamp = ? AND outgoing = 1 "
+		"AND companion_key = ?";
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
@@ -217,6 +239,7 @@ DatabaseManager::UpdateMessageDeliveryStatus(const char* contactKeyHex,
 	sqlite3_bind_int(stmt, 2, roundTripMs);
 	sqlite3_bind_text(stmt, 3, contactKeyHex, -1, SQLITE_TRANSIENT);
 	sqlite3_bind_int64(stmt, 4, (int64_t)timestamp);
+	sqlite3_bind_text(stmt, 5, fCompanionKey, -1, SQLITE_TRANSIENT);
 
 	rc = sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
@@ -236,7 +259,7 @@ DatabaseManager::LoadMessages(const char* contactKeyHex,
 	const char* sql =
 		"SELECT timestamp, outgoing, channel, sender_key, text, path_len, "
 		"snr, txt_type, delivery_status, round_trip_ms "
-		"FROM messages WHERE contact_key = ? "
+		"FROM messages WHERE contact_key = ? AND companion_key = ? "
 		"ORDER BY timestamp ASC";
 
 	sqlite3_stmt* stmt;
@@ -248,6 +271,7 @@ DatabaseManager::LoadMessages(const char* contactKeyHex,
 	}
 
 	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_text(stmt, 2, fCompanionKey, -1, SQLITE_TRANSIENT);
 
 	int32 count = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -290,7 +314,7 @@ DatabaseManager::LoadChannelMessages(OwningObjectList<ChatMessage>& outMessages)
 	const char* sql =
 		"SELECT timestamp, outgoing, sender_key, text, path_len, snr, "
 		"txt_type, delivery_status, round_trip_ms "
-		"FROM messages WHERE contact_key = 'channel' "
+		"FROM messages WHERE contact_key = 'channel' AND companion_key = ? "
 		"ORDER BY timestamp ASC";
 
 	sqlite3_stmt* stmt;
@@ -300,6 +324,8 @@ DatabaseManager::LoadChannelMessages(OwningObjectList<ChatMessage>& outMessages)
 			sqlite3_errmsg(fDB));
 		return 0;
 	}
+
+	sqlite3_bind_text(stmt, 1, fCompanionKey, -1, SQLITE_TRANSIENT);
 
 	int32 count = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -340,8 +366,8 @@ DatabaseManager::InsertSNRDataPoint(const char* contactKeyHex,
 		return false;
 
 	const char* sql =
-		"INSERT INTO snr_history (contact_key, timestamp, snr, rssi, path_len) "
-		"VALUES (?, ?, ?, ?, ?)";
+		"INSERT INTO snr_history (contact_key, timestamp, snr, rssi, path_len, "
+		"companion_key) VALUES (?, ?, ?, ?, ?, ?)";
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
@@ -356,6 +382,7 @@ DatabaseManager::InsertSNRDataPoint(const char* contactKeyHex,
 	sqlite3_bind_int(stmt, 3, snr);
 	sqlite3_bind_int(stmt, 4, rssi);
 	sqlite3_bind_int(stmt, 5, pathLen);
+	sqlite3_bind_text(stmt, 6, fCompanionKey, -1, SQLITE_TRANSIENT);
 
 	rc = sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
@@ -374,7 +401,7 @@ DatabaseManager::LoadSNRHistory(const char* contactKeyHex,
 
 	const char* sql =
 		"SELECT timestamp, snr, rssi, path_len FROM snr_history "
-		"WHERE contact_key = ? AND timestamp >= ? "
+		"WHERE contact_key = ? AND timestamp >= ? AND companion_key = ? "
 		"ORDER BY timestamp ASC";
 
 	sqlite3_stmt* stmt;
@@ -387,6 +414,7 @@ DatabaseManager::LoadSNRHistory(const char* contactKeyHex,
 
 	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
 	sqlite3_bind_int64(stmt, 2, (int64_t)sinceTimestamp);
+	sqlite3_bind_text(stmt, 3, fCompanionKey, -1, SQLITE_TRANSIENT);
 
 	int32 count = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -415,7 +443,7 @@ DatabaseManager::SearchMessages(const char* query,
 
 	const char* sql =
 		"SELECT timestamp, outgoing, channel, sender_key, text, path_len, snr "
-		"FROM messages WHERE text LIKE ? "
+		"FROM messages WHERE text LIKE ? AND companion_key = ? "
 		"ORDER BY timestamp DESC LIMIT ?";
 
 	sqlite3_stmt* stmt;
@@ -430,7 +458,8 @@ DatabaseManager::SearchMessages(const char* query,
 	BString pattern;
 	pattern.SetToFormat("%%%s%%", query);
 	sqlite3_bind_text(stmt, 1, pattern.String(), -1, SQLITE_TRANSIENT);
-	sqlite3_bind_int(stmt, 2, maxResults);
+	sqlite3_bind_text(stmt, 2, fCompanionKey, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 3, maxResults);
 
 	int32 count = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -466,7 +495,9 @@ DatabaseManager::GetMessageCount(const char* contactKeyHex)
 	if (fDB == NULL)
 		return 0;
 
-	const char* sql = "SELECT COUNT(*) FROM messages WHERE contact_key = ?";
+	const char* sql =
+		"SELECT COUNT(*) FROM messages "
+		"WHERE contact_key = ? AND companion_key = ?";
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
@@ -477,6 +508,7 @@ DatabaseManager::GetMessageCount(const char* contactKeyHex)
 	}
 
 	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_text(stmt, 2, fCompanionKey, -1, SQLITE_TRANSIENT);
 
 	int32 count = 0;
 	if (sqlite3_step(stmt) == SQLITE_ROW)
@@ -494,7 +526,8 @@ DatabaseManager::GetTotalMessageCount()
 	if (fDB == NULL)
 		return 0;
 
-	const char* sql = "SELECT COUNT(*) FROM messages";
+	const char* sql =
+		"SELECT COUNT(*) FROM messages WHERE companion_key = ?";
 
 	sqlite3_stmt* stmt;
 	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
@@ -503,6 +536,8 @@ DatabaseManager::GetTotalMessageCount()
 			sqlite3_errmsg(fDB));
 		return 0;
 	}
+
+	sqlite3_bind_text(stmt, 1, fCompanionKey, -1, SQLITE_TRANSIENT);
 
 	int32 count = 0;
 	if (sqlite3_step(stmt) == SQLITE_ROW)
@@ -1469,11 +1504,11 @@ DatabaseManager::_CreateTables()
 
 	// Unique constraint to prevent duplicate messages
 	// Include sender_key so different senders with same text+timestamp
-	// on channel don't collide
+	// on channel don't collide; companion_key partitions per companion
 	_Execute("DROP INDEX IF EXISTS idx_messages_unique");
 	_Execute(
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_unique "
-		"ON messages (contact_key, timestamp, sender_key, text)");
+		"ON messages (companion_key, contact_key, timestamp, sender_key, text)");
 
 	// SNR history table - time-series signal quality data per contact
 	ok = _Execute(

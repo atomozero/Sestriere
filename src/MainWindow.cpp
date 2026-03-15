@@ -5046,6 +5046,11 @@ MainWindow::_HandleSelfInfo(const uint8* data, size_t length)
 		// Extract and store public key as hex string (offset 4-35)
 		FormatPubKeyFull(fPublicKey, data + 4);
 
+		// Set companion key for DB partitioning (first 6 pubkey bytes as hex)
+		char companionKey[kContactHexSize];
+		FormatContactKey(companionKey, data + 4);
+		DatabaseManager::Instance()->SetCompanionKey(companionKey);
+
 		// Derive numeric node ID from first 4 pubkey bytes
 		fSelfNodeId = ((uint32)data[4] << 24) | ((uint32)data[5] << 16)
 			| ((uint32)data[6] << 8) | (uint32)data[7];
@@ -6667,6 +6672,39 @@ MainWindow::_OnDisconnected()
 	// Stop active voice recording if in progress
 	if (fRecordingVoice)
 		_StopVoiceRecord();
+
+	// --- Multi-companion: clear all state for clean reconnect ---
+	fContacts.MakeEmpty();
+	fOldContacts.MakeEmpty();
+	fChannelMessages.MakeEmpty();
+	_UpdateContactList();
+	fChatView->ClearMessages();
+	fInfoPanel->Clear();
+	DatabaseManager::Instance()->SetCompanionKey("");
+
+	// Clear telemetry
+	if (fTelemetryWindow != NULL && fTelemetryWindow->LockLooper()) {
+		fTelemetryWindow->ClearAllData();
+		fTelemetryWindow->UnlockLooper();
+	}
+
+	// Clear stats
+	if (fStatsWindow != NULL && fStatsWindow->LockLooper()) {
+		fStatsWindow->ClearStats();
+		fStatsWindow->UnlockLooper();
+	}
+
+	// Clear network map
+	if (fNetworkMapWindow != NULL && fNetworkMapWindow->LockLooper()) {
+		fNetworkMapWindow->ClearAll();
+		fNetworkMapWindow->UnlockLooper();
+	}
+
+	// Clear packet analyzer
+	if (fPacketAnalyzerWindow != NULL && fPacketAnalyzerWindow->LockLooper()) {
+		fPacketAnalyzerWindow->Clear();
+		fPacketAnalyzerWindow->UnlockLooper();
+	}
 
 	// Forward to Mission Control
 	if (_LockIfVisible(fMissionControlWindow)) {

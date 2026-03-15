@@ -338,6 +338,26 @@ StatsWindow::SetPacketStats(const PacketStats& stats)
 
 
 void
+StatsWindow::ClearStats()
+{
+	fCoreStats = CoreStats();
+	fRadioStats = RadioStats();
+	fPacketStats = PacketStats();
+
+	// Reset all display rows to "--"
+	StatRowView* views[] = {
+		fUptimeView, fBatteryView, fNoiseFloorView, fRssiView, fSnrView,
+		fTxAirTimeView, fRxAirTimeView, fRecvPacketsView, fSentPacketsView,
+		fSentFloodView, fSentDirectView, fRecvFloodView, fRecvDirectView
+	};
+	for (size_t i = 0; i < sizeof(views) / sizeof(views[0]); i++) {
+		if (views[i] != NULL)
+			views[i]->SetValue("--");
+	}
+}
+
+
+void
 StatsWindow::ParseStatsResponse(const uint8* data, size_t length)
 {
 	if (length < 2)

@@ -131,6 +131,10 @@ public:
 								int32* outWidth, int32* outHeight);
 			void			PruneOldImages(uint32 maxAgeDays);
 
+			// Multi-companion partitioning
+			void			SetCompanionKey(const char* key);
+			const char*		CompanionKey() const { return fCompanionKey; }
+
 			// Maintenance
 			void			PruneOldData(uint32 maxAgeDays);
 			void			PruneOldMessages(uint32 maxAgeDays);
@@ -149,6 +153,7 @@ private:
 			sqlite3*		fDB;
 			BLocker			fLock;
 			BString			fDirectory;
+			char			fCompanionKey[13];  // 12 hex + null
 };
 
 #endif // DATABASEMANAGER_H

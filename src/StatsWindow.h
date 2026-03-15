@@ -57,6 +57,7 @@ public:
 			void			SetCoreStats(const CoreStats& stats);
 			void			SetRadioStats(const RadioStats& stats);
 			void			SetPacketStats(const PacketStats& stats);
+			void			ClearStats();
 
 			// Parse stats response from device
 			void			ParseStatsResponse(const uint8* data, size_t length);
