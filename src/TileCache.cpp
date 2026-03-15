@@ -244,6 +244,32 @@ TileCache::_LoadFromDisk(int z, int x, int y)
 	if (!entry.Exists())
 		return NULL;
 
+	// Validate PNG magic header before loading
+	static const uint8 kPngMagic[8] = {
+		0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A
+	};
+
+	BFile file(path.String(), B_READ_ONLY);
+	if (file.InitCheck() != B_OK)
+		return NULL;
+
+	uint8 header[8];
+	if (file.Read(header, 8) != 8
+		|| memcmp(header, kPngMagic, 8) != 0) {
+		fprintf(stderr, "[TileCache] Corrupt tile %d/%d/%d.png — deleting\n",
+			z, x, y);
+		// Update disk cache accounting before removing
+		struct stat st;
+		if (stat(path.String(), &st) == 0) {
+			fDiskCacheSize = (fDiskCacheSize > (off_t)st.st_size)
+				? (fDiskCacheSize - st.st_size) : 0;
+			if (fDiskTileCount > 0)
+				fDiskTileCount--;
+		}
+		entry.Remove();
+		return NULL;
+	}
+
 	BBitmap* bitmap = BTranslationUtils::GetBitmap(path.String());
 	return bitmap;
 }

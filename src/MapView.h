@@ -93,6 +93,9 @@ public:
 			void			SetTilesEnabled(bool enabled);
 			bool			TilesEnabled() const { return fShowTiles; }
 
+			void			SaveMapState();
+			void			LoadMapState();
+
 private:
 			// Mercator projection helpers
 	static	float			_MercatorY(float latDeg);

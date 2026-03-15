@@ -465,6 +465,7 @@ Displays contacts at their GPS coordinates on a real map with OSM tiles.
 - **Cache stats overlay**: bottom-right corner shows current zoom level, tile count, and disk usage
 - Scale bar and compass for orientation
 - Self position shown when latitude/longitude configured
+- **Map state persistence**: zoom level, center position, and tile toggle are saved on close and restored on next open
 
 ### GPX Export
 
@@ -563,7 +564,7 @@ A unified dashboard providing a complete network overview:
 | **Topology** | Mini network map showing nearest nodes |
 | **Timeline** | Session event log (connect, messages, errors) |
 
-**Quick actions**: Send Advert, Sync Contacts, Get Stats.
+**Quick actions**: Send Advert, Sync Contacts, Refresh Stats, Ping All, Trace Route.
 
 ---
 
@@ -889,6 +890,7 @@ The Deskbar icon shows:
 
 **Click** the icon to bring Sestriere to front. **Right-click** for a menu:
 - Connection status (informational)
+- Send Advert (always enabled for quick presence broadcast)
 - Open Sestriere
 - Remove from Deskbar
 
@@ -1108,6 +1110,8 @@ MQTT settings: `~/config/settings/Sestriere/mqtt.settings`
 Device settings: `~/config/settings/Sestriere/device.settings`
 
 UI settings: `~/config/settings/Sestriere/ui.settings` (contact filter state)
+
+Map state: `~/config/settings/Sestriere/map.settings` (zoom, center, tile toggle)
 
 GIF cache: `~/config/settings/Sestriere/gif_cache/`
 

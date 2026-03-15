@@ -10,6 +10,8 @@
 #include <Bitmap.h>
 #include <Button.h>
 #include <CheckBox.h>
+#include <Directory.h>
+#include <File.h>
 #include <FindDirectory.h>
 #include <GroupLayout.h>
 #include <LayoutBuilder.h>
@@ -101,6 +103,8 @@ MapView::MapView(const char* name)
 	settingsPath.Append("Sestriere/tiles");
 	fTileCache = new TileCache(settingsPath.Path());
 	fTileCache->Run();
+
+	LoadMapState();
 }
 
 
@@ -528,6 +532,63 @@ MapView::SetTilesEnabled(bool enabled)
 	if (fTileCache != NULL)
 		fTileCache->SetEnabled(enabled);
 	Invalidate();
+}
+
+
+void
+MapView::SaveMapState()
+{
+	BPath settingsPath;
+	find_directory(B_USER_SETTINGS_DIRECTORY, &settingsPath);
+	settingsPath.Append("Sestriere");
+	create_directory(settingsPath.Path(), 0755);
+	settingsPath.Append("map.settings");
+
+	FILE* fp = fopen(settingsPath.Path(), "w");
+	if (fp == NULL)
+		return;
+
+	fprintf(fp, "center_lat=%.6f\n", fCenterLat);
+	fprintf(fp, "center_lon=%.6f\n", fCenterLon);
+	fprintf(fp, "zoom=%.2f\n", fZoom);
+	fprintf(fp, "tiles=%d\n", fShowTiles ? 1 : 0);
+	fclose(fp);
+}
+
+
+void
+MapView::LoadMapState()
+{
+	BPath settingsPath;
+	find_directory(B_USER_SETTINGS_DIRECTORY, &settingsPath);
+	settingsPath.Append("Sestriere/map.settings");
+
+	FILE* fp = fopen(settingsPath.Path(), "r");
+	if (fp == NULL)
+		return;
+
+	char line[128];
+	while (fgets(line, sizeof(line), fp) != NULL) {
+		double val;
+		int ival;
+		if (sscanf(line, "center_lat=%lf", &val) == 1) {
+			if (val >= -85.0 && val <= 85.0)
+				fCenterLat = (float)val;
+		} else if (sscanf(line, "center_lon=%lf", &val) == 1) {
+			if (val >= -180.0 && val <= 180.0)
+				fCenterLon = (float)val;
+		} else if (sscanf(line, "zoom=%lf", &val) == 1) {
+			float minZoom = _ZoomForLevel(kMinZoomLevel);
+			float maxZoom = _ZoomForLevel(kMaxZoomLevel);
+			if (val >= minZoom && val <= maxZoom)
+				fZoom = (float)val;
+		} else if (sscanf(line, "tiles=%d", &ival) == 1) {
+			fShowTiles = (ival != 0);
+			if (fTileCache != NULL)
+				fTileCache->SetEnabled(fShowTiles);
+		}
+	}
+	fclose(fp);
 }
 
 
@@ -1142,6 +1203,10 @@ MapWindow::MapWindow(BWindow* parent)
 		CenterIn(fParent->Frame());
 	else
 		CenterOnScreen();
+
+	// Sync checkbox with loaded tile preference
+	fTilesCheckBox->SetValue(
+		fMapView->TilesEnabled() ? B_CONTROL_ON : B_CONTROL_OFF);
 }
 
 
@@ -1194,6 +1259,7 @@ MapWindow::MessageReceived(BMessage* message)
 bool
 MapWindow::QuitRequested()
 {
+	fMapView->SaveMapState();
 	Hide();
 	return false;
 }

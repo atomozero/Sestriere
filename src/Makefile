@@ -95,5 +95,8 @@ deskbar-addon:
 		-Xlinker -soname=SestriereDeskbar
 	@echo "SestriereDeskbar add-on built"
 
+test:
+	@cd tests && sh run_tests.sh
+
 .DEFAULT_GOAL := all-with-addon
 all-with-addon: default deskbar-addon

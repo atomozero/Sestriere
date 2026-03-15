@@ -106,6 +106,7 @@ DatabaseManager::Open(const char* directory)
 
 	_Execute("PRAGMA synchronous=NORMAL");
 	_Execute("PRAGMA foreign_keys=ON");
+	_Execute("PRAGMA auto_vacuum=INCREMENTAL");
 
 	if (!_CreateTables()) {
 		fprintf(stderr, "[DatabaseManager] Failed to create tables\n");
@@ -584,6 +585,9 @@ DatabaseManager::PruneOldData(uint32 maxAgeDays)
 
 	// Prune old voice clips
 	PruneOldVoiceClips(maxAgeDays);
+
+	// Reclaim disk space freed by the above DELETEs
+	_Execute("PRAGMA incremental_vacuum");
 }
 
 
