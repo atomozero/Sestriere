@@ -5921,15 +5921,27 @@ MainWindow::_HandleChannelInfo(const uint8* data, size_t length)
 		memcpy(name, data + 2, 32);
 
 		if (name[0] != '\0') {
-			// Non-empty channel — add to list
-			ChannelInfo* channel = new ChannelInfo();
-			channel->index = idx;
-			strlcpy(channel->name, name, sizeof(channel->name));
-			memcpy(channel->secret, data + 34, 16);
-			fChannels.AddItem(channel);
+			// Check for duplicate index before adding
+			bool duplicate = false;
+			for (int32 i = 0; i < fChannels.CountItems(); i++) {
+				if (fChannels.ItemAt(i)->index == idx) {
+					duplicate = true;
+					break;
+				}
+			}
+			if (!duplicate) {
+				ChannelInfo* channel = new ChannelInfo();
+				channel->index = idx;
+				strlcpy(channel->name, name, sizeof(channel->name));
+				memcpy(channel->secret, data + 34, 16);
+				fChannels.AddItem(channel);
 
-			_LogMessage("INFO", BString().SetToFormat(
-				"Channel %d: %s", idx, name));
+				_LogMessage("INFO", BString().SetToFormat(
+					"Channel %d: %s", idx, name));
+			} else {
+				_LogMessage("WARN", BString().SetToFormat(
+					"Duplicate channel index %d ignored", idx));
+			}
 		}
 	}
 
