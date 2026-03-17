@@ -5541,11 +5541,15 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 				break;
 			}
 		}
-		if (!added)
+		if (added) {
+			BString dbKey;
+			dbKey.SetToFormat("channel_%d", channelIdx);
+			db->InsertMessage(dbKey.String(), chatMsg);
+		} else {
+			_LogMessage("WARN", BString().SetToFormat(
+				"Dropped message for unknown channel %d", channelIdx));
 			delete stored;
-		BString dbKey;
-		dbKey.SetToFormat("channel_%d", channelIdx);
-		db->InsertMessage(dbKey.String(), chatMsg);
+		}
 	} else {
 		// Public channel
 		fChannelMessages.AddItem(stored);
