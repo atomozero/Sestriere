@@ -41,6 +41,8 @@
 #include <TextControl.h>
 #include <TranslatorRoster.h>
 
+#include <SHA256.h>
+
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -2388,12 +2390,14 @@ MainWindow::MessageReceived(BMessage* message)
 				break;
 			}
 
-			// Generate a simple PSK from the channel name
+			// Generate PSK by hashing the channel name with SHA-256
 			uint8 secret[16];
-			memset(secret, 0, sizeof(secret));
-			size_t nameLen = strlen(name);
-			for (size_t i = 0; i < 16 && i < nameLen; i++)
-				secret[i] = (uint8)name[i];
+			{
+				SHA256 hash;
+				hash.Update(name, strlen(name));
+				const uint8* digest = hash.Digest();
+				memcpy(secret, digest, 16);
+			}
 
 			if (fProtocol->SendSetChannel((uint8)emptySlot, name,
 					secret) != B_OK) {

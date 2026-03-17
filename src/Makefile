@@ -57,6 +57,7 @@ LIBS = be tracker shared columnlistview mosquitto sqlite3 translation curl gif c
 LIBPATHS = /boot/system/non-packaged/lib
 
 SYSTEM_INCLUDE_PATHS = /boot/system/develop/headers/private/interface \
+	/boot/system/develop/headers/private/libroot \
 	/boot/system/non-packaged/include
 
 LOCAL_INCLUDE_PATHS = .
