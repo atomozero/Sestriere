@@ -5705,11 +5705,11 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 		fMissionControlWindow->UnlockLooper();
 	}
 
-	// Publish to MQTT /packets topic
-	if (fMqttClient != NULL && fMqttClient->IsConnected()) {
-		const uint8* fromKey = (sender != NULL) ? sender->publicKey : (const uint8*)"\0\0\0\0\0\0";
+	// Publish to MQTT /packets topic (only if sender is a known contact)
+	if (fMqttClient != NULL && fMqttClient->IsConnected()
+		&& sender != NULL) {
 		fMqttClient->PublishPacket(timestamp, 0, fLastRssi,
-			"CH", fromKey, 6,
+			"CH", sender->publicKey, 6,
 			(const uint8*)messageText, strlen(messageText));
 	}
 
