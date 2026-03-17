@@ -10,13 +10,17 @@
 #include <Box.h>
 #include <Button.h>
 #include <CheckBox.h>
+#include <Clipboard.h>
 #include <LayoutBuilder.h>
+#include <ListView.h>
 #include <Menu.h>
 #include <MenuField.h>
 #include <MenuItem.h>
 #include <PopUpMenu.h>
+#include <ScrollView.h>
 #include <SeparatorView.h>
 #include <Slider.h>
+#include <StringItem.h>
 #include <StringView.h>
 #include <TabView.h>
 #include <TextControl.h>
@@ -38,6 +42,10 @@ static const uint32 kMsgTogglePasswordVis = 'tpvs';
 static const uint32 kMsgBatteryTypeSelected = 'btsl';
 static const uint32 kMsgApplyTuning = 'atun';
 static const uint32 kMsgSetDevicePin = 'sdpn';
+static const uint32 kMsgChannelSelected = 'chsl';
+static const uint32 kMsgCopyChannelPsk = 'cpsk';
+static const uint32 kMsgChannelAdd = 'chad';
+static const uint32 kMsgChannelRemove = 'chrm';
 
 
 SettingsWindow::SettingsWindow(BWindow* parent)
@@ -66,11 +74,20 @@ SettingsWindow::SettingsWindow(BWindow* parent)
 	fMqttUsernameControl(NULL),
 	fMqttPasswordControl(NULL),
 	fMqttStatusLabel(NULL),
+	fChannelListView(NULL),
+	fChannelSlotLabel(NULL),
+	fChannelPskField(NULL),
+	fChannelAddButton(NULL),
+	fChannelRemoveButton(NULL),
+	fChannelCopyPskButton(NULL),
+	fChannelEntryCount(0),
+	fMaxChannels(0),
 	fApplyButton(NULL),
 	fRevertButton(NULL),
 	fSettingsChanged(false),
 	fSelectedPreset(PRESET_CUSTOM)
 {
+	memset(fChannelEntries, 0, sizeof(fChannelEntries));
 	BTabView* tabView = new BTabView("settings_tabs", B_WIDTH_FROM_WIDEST);
 
 	// Device tab
@@ -93,6 +110,13 @@ SettingsWindow::SettingsWindow(BWindow* parent)
 	_BuildMqttTab(mqttTab);
 	tabView->AddTab(mqttTab, new BTab());
 	tabView->TabAt(2)->SetLabel("MQTT");
+
+	// Channels tab
+	BView* channelsTab = new BView("channels_tab", 0);
+	channelsTab->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	_BuildChannelsTab(channelsTab);
+	tabView->AddTab(channelsTab, new BTab());
+	tabView->TabAt(3)->SetLabel("Channels");
 
 	// Buttons
 	fApplyButton = new BButton("apply_button", "Apply",
@@ -217,6 +241,37 @@ SettingsWindow::MessageReceived(BMessage* message)
 			BMessage pinMsg(MSG_SET_DEVICE_PIN);
 			pinMsg.AddUInt32("pin", pin);
 			fParent->PostMessage(&pinMsg);
+			break;
+		}
+
+		case kMsgChannelSelected:
+			_OnChannelSelected();
+			break;
+
+		case kMsgCopyChannelPsk:
+			_OnCopyChannelPsk();
+			break;
+
+		case kMsgChannelAdd:
+		{
+			if (fParent == NULL)
+				break;
+			BMessage addMsg(MSG_ADD_CHANNEL);
+			fParent->PostMessage(&addMsg);
+			break;
+		}
+
+		case kMsgChannelRemove:
+		{
+			if (fParent == NULL || fChannelListView == NULL)
+				break;
+			int32 sel = fChannelListView->CurrentSelection();
+			if (sel < 0 || sel >= fChannelEntryCount)
+				break;
+			BMessage removeMsg(MSG_REMOVE_CHANNEL);
+			removeMsg.AddInt32("channel_idx",
+				fChannelEntries[sel].index);
+			fParent->PostMessage(&removeMsg);
 			break;
 		}
 
@@ -729,5 +784,151 @@ SettingsWindow::SetDevicePin(uint32 pin)
 		char buf[16];
 		snprintf(buf, sizeof(buf), "%u", (unsigned)pin);
 		fDevicePinControl->SetText(buf);
+	}
+}
+
+
+void
+SettingsWindow::_BuildChannelsTab(BView* parent)
+{
+	fChannelSlotLabel = new BStringView("slot_label", "0 / 0 slots used");
+
+	fChannelListView = new BListView("channel_list", B_SINGLE_SELECTION_LIST);
+	fChannelListView->SetSelectionMessage(new BMessage(kMsgChannelSelected));
+
+	BScrollView* scrollView = new BScrollView("channel_scroll",
+		fChannelListView, 0, false, true);
+
+	fChannelPskField = new BTextControl("channel_psk", "PSK:", "", NULL);
+	fChannelPskField->TextView()->MakeEditable(false);
+	fChannelPskField->SetEnabled(false);
+
+	fChannelCopyPskButton = new BButton("copy_psk", "Copy PSK",
+		new BMessage(kMsgCopyChannelPsk));
+	fChannelCopyPskButton->SetEnabled(false);
+
+	fChannelAddButton = new BButton("add_channel", "Add Channel",
+		new BMessage(kMsgChannelAdd));
+
+	fChannelRemoveButton = new BButton("remove_channel", "Remove Channel",
+		new BMessage(kMsgChannelRemove));
+	fChannelRemoveButton->SetEnabled(false);
+
+	BLayoutBuilder::Group<>(parent, B_VERTICAL)
+		.SetInsets(B_USE_DEFAULT_SPACING)
+		.Add(fChannelSlotLabel)
+		.Add(scrollView, 1.0)
+		.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
+			.Add(fChannelPskField->CreateLabelLayoutItem(), 0, 0)
+			.Add(fChannelPskField->CreateTextViewLayoutItem(), 1, 0)
+			.Add(fChannelCopyPskButton, 2, 0)
+		.End()
+		.AddGroup(B_HORIZONTAL)
+			.Add(fChannelAddButton)
+			.Add(fChannelRemoveButton)
+			.AddGlue()
+		.End()
+	.End();
+}
+
+
+void
+SettingsWindow::SetChannels(const OwningObjectList<ChannelInfo>& channels,
+	uint8 maxChannels)
+{
+	fMaxChannels = maxChannels;
+	fChannelEntryCount = 0;
+
+	for (int32 i = 0; i < channels.CountItems() && fChannelEntryCount < 16;
+			i++) {
+		ChannelInfo* ch = channels.ItemAt(i);
+		if (ch == NULL || ch->IsEmpty())
+			continue;
+		SettingsChannelEntry& entry = fChannelEntries[fChannelEntryCount];
+		entry.index = ch->index;
+		strlcpy(entry.name, ch->name, sizeof(entry.name));
+		memcpy(entry.secret, ch->secret, 16);
+		fChannelEntryCount++;
+	}
+
+	// Update list view
+	if (fChannelListView != NULL) {
+		fChannelListView->MakeEmpty();
+		for (int32 i = 0; i < fChannelEntryCount; i++) {
+			BString label;
+			label.SetToFormat("Slot %d: %s",
+				fChannelEntries[i].index, fChannelEntries[i].name);
+			fChannelListView->AddItem(new BStringItem(label.String()));
+		}
+	}
+
+	// Update slot counter
+	if (fChannelSlotLabel != NULL) {
+		BString slotText;
+		slotText.SetToFormat("%d / %d slots used",
+			(int)fChannelEntryCount, (int)fMaxChannels);
+		fChannelSlotLabel->SetText(slotText.String());
+	}
+
+	// Clear PSK display and disable buttons
+	if (fChannelPskField != NULL)
+		fChannelPskField->SetText("");
+	if (fChannelCopyPskButton != NULL)
+		fChannelCopyPskButton->SetEnabled(false);
+	if (fChannelRemoveButton != NULL)
+		fChannelRemoveButton->SetEnabled(false);
+}
+
+
+void
+SettingsWindow::_OnChannelSelected()
+{
+	if (fChannelListView == NULL)
+		return;
+
+	int32 sel = fChannelListView->CurrentSelection();
+	if (sel < 0 || sel >= fChannelEntryCount) {
+		fChannelPskField->SetText("");
+		fChannelCopyPskButton->SetEnabled(false);
+		fChannelRemoveButton->SetEnabled(false);
+		return;
+	}
+
+	// Format PSK as space-separated hex
+	const uint8* secret = fChannelEntries[sel].secret;
+	char hex[64];
+	int pos = 0;
+	for (int i = 0; i < 16; i++) {
+		if (i > 0)
+			hex[pos++] = ' ';
+		snprintf(hex + pos, sizeof(hex) - pos, "%02X", secret[i]);
+		pos += 2;
+	}
+	hex[pos] = '\0';
+
+	fChannelPskField->SetText(hex);
+	fChannelCopyPskButton->SetEnabled(true);
+	fChannelRemoveButton->SetEnabled(true);
+}
+
+
+void
+SettingsWindow::_OnCopyChannelPsk()
+{
+	if (fChannelPskField == NULL)
+		return;
+
+	const char* text = fChannelPskField->Text();
+	if (text == NULL || text[0] == '\0')
+		return;
+
+	if (be_clipboard->Lock()) {
+		be_clipboard->Clear();
+		BMessage* clip = be_clipboard->Data();
+		if (clip != NULL) {
+			clip->AddData("text/plain", B_MIME_TYPE, text, strlen(text));
+			be_clipboard->Commit();
+		}
+		be_clipboard->Unlock();
 	}
 }

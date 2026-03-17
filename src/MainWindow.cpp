@@ -187,8 +187,6 @@ enum {
 	MSG_CONTACT_REMOVE = 'crmv',
 	MSG_CONTACT_RESET_PATH = 'crsp',
 	MSG_CONTACT_SHARE = 'cshr',
-	MSG_ADD_CHANNEL = 'achn',
-	MSG_REMOVE_CHANNEL = 'rmch',
 	MSG_CREATE_CHANNEL = 'crcn',	// From AddChannelWindow
 	MSG_HANDSHAKE_TIMEOUT = 'hstm',
 	MSG_TRACE_ALL = 'tral',
@@ -1358,6 +1356,7 @@ MainWindow::MessageReceived(BMessage* message)
 				fSettingsWindow->SetMqttSettings(fMqttSettings);
 				fSettingsWindow->SetBatteryType(fBatteryType);
 				fSettingsWindow->SetDevicePin(fDevicePin);
+				fSettingsWindow->SetChannels(fChannels, fMaxChannels);
 				fSettingsWindow->Show();
 			} else {
 				if (fSettingsWindow->LockLooper()) {
@@ -1367,6 +1366,7 @@ MainWindow::MessageReceived(BMessage* message)
 					}
 					fSettingsWindow->SetBatteryType(fBatteryType);
 					fSettingsWindow->SetDevicePin(fDevicePin);
+					fSettingsWindow->SetChannels(fChannels, fMaxChannels);
 					fSettingsWindow->UnlockLooper();
 				}
 				_ShowWindow(fSettingsWindow);
@@ -2336,6 +2336,13 @@ MainWindow::MessageReceived(BMessage* message)
 					_SelectContact(0);  // Switch to Public Channel
 				}
 				_UpdateContactList();
+				// Refresh SettingsWindow channels tab
+				if (fSettingsWindow != NULL
+					&& fSettingsWindow->LockLooper()) {
+					fSettingsWindow->SetChannels(fChannels,
+						fMaxChannels);
+					fSettingsWindow->UnlockLooper();
+				}
 			}
 			break;
 		}
@@ -2412,6 +2419,14 @@ MainWindow::MessageReceived(BMessage* message)
 			memcpy(ch->secret, secret, 16);
 			fChannels.AddItem(ch);
 			_UpdateContactList();
+
+			// Refresh SettingsWindow channels tab
+			if (fSettingsWindow != NULL
+				&& fSettingsWindow->LockLooper()) {
+				fSettingsWindow->SetChannels(fChannels,
+					fMaxChannels);
+				fSettingsWindow->UnlockLooper();
+			}
 
 			_LogMessage("OK", BString().SetToFormat(
 				"Created channel #%s (slot %d)", name, (int)emptySlot));
@@ -4147,6 +4162,14 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 				}
 
 				_UpdateContactList();
+
+				// Refresh SettingsWindow channels tab
+				if (fSettingsWindow != NULL
+					&& fSettingsWindow->LockLooper()) {
+					fSettingsWindow->SetChannels(fChannels,
+						fMaxChannels);
+					fSettingsWindow->UnlockLooper();
+				}
 			} else if (!fHasDeviceInfo && length == 2 && data[1] <= 3) {
 				_LogMessage("OK", BString().SetToFormat(
 					"APP_START acknowledged, protocol version: %d", data[1]));
@@ -5979,6 +6002,14 @@ MainWindow::_HandleChannelInfo(const uint8* data, size_t length)
 			}
 
 			_UpdateContactList();
+
+			// Refresh SettingsWindow channels tab if visible
+			if (fSettingsWindow != NULL
+				&& fSettingsWindow->LockLooper()) {
+				fSettingsWindow->SetChannels(fChannels,
+					fMaxChannels);
+				fSettingsWindow->UnlockLooper();
+			}
 		}
 	}
 }

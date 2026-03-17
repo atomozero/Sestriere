@@ -15,10 +15,18 @@
 
 class BButton;
 class BCheckBox;
+class BListView;
 class BMenuField;
 class BSlider;
 class BStringView;
 class BTextControl;
+
+// Local channel data copy (no message history needed)
+struct SettingsChannelEntry {
+	uint8	index;
+	char	name[32];
+	uint8	secret[16];
+};
 
 class SettingsWindow : public BWindow {
 public:
@@ -39,15 +47,21 @@ public:
 			void			SetTuningParams(uint32 rxDelayBase,
 								uint32 airtimeFactor);
 			void			SetDevicePin(uint32 pin);
+			void			SetChannels(
+								const OwningObjectList<ChannelInfo>& channels,
+								uint8 maxChannels);
 
 private:
 			void			_BuildDeviceTab(BView* parent);
 			void			_BuildRadioTab(BView* parent);
 			void			_BuildMqttTab(BView* parent);
+			void			_BuildChannelsTab(BView* parent);
 
 			void			_OnApply();
 			void			_OnPresetSelected(int32 preset);
 			void			_OnMqttEnableChanged();
+			void			_OnChannelSelected();
+			void			_OnCopyChannelPsk();
 
 			BWindow*		fParent;
 
@@ -77,6 +91,17 @@ private:
 			BTextControl*	fMqttPasswordControl;
 			BStringView*	fMqttStatusLabel;
 			MqttSettings	fMqttSettings;
+
+			// Channels tab
+			BListView*		fChannelListView;
+			BStringView*	fChannelSlotLabel;
+			BTextControl*	fChannelPskField;
+			BButton*		fChannelAddButton;
+			BButton*		fChannelRemoveButton;
+			BButton*		fChannelCopyPskButton;
+			SettingsChannelEntry fChannelEntries[16];
+			int32			fChannelEntryCount;
+			uint8			fMaxChannels;
 
 			// Buttons
 			BButton*		fApplyButton;

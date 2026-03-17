@@ -364,6 +364,10 @@ enum {
 
 	// Line-of-Sight analysis
 	MSG_SHOW_LOS = 'slos',
+
+	// Channel management
+	MSG_ADD_CHANNEL = 'achn',
+	MSG_REMOVE_CHANNEL = 'rmch',
 };
 
 // =============================================================================
