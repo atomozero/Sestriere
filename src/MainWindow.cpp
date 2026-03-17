@@ -5908,32 +5908,34 @@ MainWindow::_HandleChannelInfo(const uint8* data, size_t length)
 	uint8 idx = data[1];
 
 	// Validate channel index against device capabilities
-	if (fMaxChannels > 0 && idx >= fMaxChannels) {
+	bool idxValid = !(fMaxChannels > 0 && idx >= fMaxChannels);
+	if (!idxValid) {
 		_LogMessage("WARN", BString().SetToFormat(
 			"RSP_CHANNEL_INFO index %d out of bounds (max %d)",
 			idx, fMaxChannels - 1));
-		return;
 	}
 
-	char name[33];
-	memset(name, 0, sizeof(name));
-	memcpy(name, data + 2, 32);
+	if (idxValid) {
+		char name[33];
+		memset(name, 0, sizeof(name));
+		memcpy(name, data + 2, 32);
 
-	if (name[0] != '\0') {
-		// Non-empty channel — add to list
-		ChannelInfo* channel = new ChannelInfo();
-		channel->index = idx;
-		strlcpy(channel->name, name, sizeof(channel->name));
-		memcpy(channel->secret, data + 34, 16);
-		fChannels.AddItem(channel);
+		if (name[0] != '\0') {
+			// Non-empty channel — add to list
+			ChannelInfo* channel = new ChannelInfo();
+			channel->index = idx;
+			strlcpy(channel->name, name, sizeof(channel->name));
+			memcpy(channel->secret, data + 34, 16);
+			fChannels.AddItem(channel);
 
-		_LogMessage("INFO", BString().SetToFormat(
-			"Channel %d: %s", idx, name));
+			_LogMessage("INFO", BString().SetToFormat(
+				"Channel %d: %s", idx, name));
+		}
 	}
 
-	// Continue enumeration
+	// Continue enumeration using our own counter, not device-reported idx
 	if (fEnumeratingChannels) {
-		fChannelEnumIndex = idx + 1;
+		fChannelEnumIndex++;
 		if (fChannelEnumIndex < fMaxChannels) {
 			fProtocol->SendGetChannel(fChannelEnumIndex);
 		} else {
