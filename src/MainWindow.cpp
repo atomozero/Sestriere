@@ -5586,8 +5586,17 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 		}
 	}
 
-	// Check for GIF message — auto-download
-	if (GiphyClient::IsGifMessage(messageText)) {
+	// Determine if this channel is currently displayed
+	bool isCurrentChannel = false;
+	if (fSendingToChannel) {
+		if (channelIdx == 0 && fSelectedChannelIdx < 0)
+			isCurrentChannel = true;  // Viewing public, message is public
+		else if (channelIdx > 0 && fSelectedChannelIdx == (int32)channelIdx)
+			isCurrentChannel = true;  // Viewing this private channel
+	}
+
+	// Check for GIF message — only update ChatView if channel is displayed
+	if (isCurrentChannel && GiphyClient::IsGifMessage(messageText)) {
 		int32 lastIndex = fChatView->CountItems() - 1;
 		if (lastIndex >= 0) {
 			MessageView* mv = dynamic_cast<MessageView*>(
@@ -5638,13 +5647,6 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 	}
 
 	// Add to chat if this channel is currently selected
-	bool isCurrentChannel = false;
-	if (fSendingToChannel) {
-		if (channelIdx == 0 && fSelectedChannelIdx < 0)
-			isCurrentChannel = true;  // Viewing public, message is public
-		else if (channelIdx > 0 && fSelectedChannelIdx == (int32)channelIdx)
-			isCurrentChannel = true;  // Viewing this private channel
-	}
 	if (isCurrentChannel)
 		fChatView->AddMessage(chatMsg, senderName.String());
 
