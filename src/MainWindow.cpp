@@ -5467,6 +5467,14 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 		timestamp = ReadLE32(data + kV2ChTimestampOffset);
 		textOffset = kV2ChTextOffset;
 	}
+
+	// Validate channel index against device capabilities
+	if (channelIdx > 0 && fMaxChannels > 0 && channelIdx >= fMaxChannels) {
+		_LogMessage("WARN", BString().SetToFormat(
+			"Channel index %d out of bounds (max %d)",
+			channelIdx, fMaxChannels - 1));
+		return;
+	}
 	size_t textLen = (length > textOffset) ? (length - textOffset) : 0;
 	char fullText[256];
 	if (textLen > 255) textLen = 255;
@@ -5898,6 +5906,15 @@ MainWindow::_HandleChannelInfo(const uint8* data, size_t length)
 		return;
 
 	uint8 idx = data[1];
+
+	// Validate channel index against device capabilities
+	if (fMaxChannels > 0 && idx >= fMaxChannels) {
+		_LogMessage("WARN", BString().SetToFormat(
+			"RSP_CHANNEL_INFO index %d out of bounds (max %d)",
+			idx, fMaxChannels - 1));
+		return;
+	}
+
 	char name[33];
 	memset(name, 0, sizeof(name));
 	memcpy(name, data + 2, 32);
