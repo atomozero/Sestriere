@@ -3662,7 +3662,10 @@ MainWindow::_SelectContact(int32 index)
 		}
 
 		BString headerName;
-		headerName.SetToFormat("#%s", ch ? ch->name : "Channel");
+		if (ch != NULL && ch->name[0] == '#')
+			headerName.SetTo(ch->name);
+		else
+			headerName.SetToFormat("#%s", ch ? ch->name : "Channel");
 		fChatHeader->SetChannelName(headerName.String());
 		fChatHeader->SetConsoleMode(false);
 		fChatView->SetCurrentContact(NULL);
@@ -6904,7 +6907,10 @@ MainWindow::_FilterContacts(const char* filter)
 		}
 
 		BString label;
-		label.SetToFormat("#%s", ch->name);
+		if (ch->name[0] == '#')
+			label.SetTo(ch->name);
+		else
+			label.SetToFormat("#%s", ch->name);
 		ContactItem* item = new ContactItem(label.String(), true);
 		item->SetChannelIndex(ch->index);
 
