@@ -236,21 +236,18 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 
 ## UX / Persistenza
 
-### U1. Persistere zoom/pan della mappa
-- **Dove**: MapView.cpp — zoom level e centro in RAM
-- **Fix**: salvare in `ui.settings` su zoom change, ricaricare all'apertura
+### U1. Persistere zoom/pan della mappa — GIÀ IMPLEMENTATO
+- Già presente: `SaveMapState()`/`LoadMapState()` salvano center_lat, center_lon, zoom e tiles toggle in `map.settings`. Nessuna modifica necessaria.
 
 ### U2. Persistere larghezza sidebar e info panel
 - **Dove**: MainWindow.cpp — BSplitView pesi
 - **Fix**: salvare proporzioni in `ui.settings`, applicare dopo _BuildUI
 
-### U3. VACUUM periodico del database
-- **Dove**: DatabaseManager — non chiama mai VACUUM
-- **Fix**: PRAGMA auto_vacuum = FULL alla creazione, oppure VACUUM al boot se > 10MB
+### U3. VACUUM periodico del database — GIÀ IMPLEMENTATO
+- Già presente: `PRAGMA auto_vacuum=INCREMENTAL` in Open() e `PRAGMA incremental_vacuum` dopo ogni PruneOldData(). Nessuna modifica necessaria.
 
-### U4. Validazione tile cache corrotte
-- **Dove**: TileCache::_LoadFromDisk()
-- **Fix**: verificare magic bytes PNG (89 50 4E 47), eliminare e ri-scaricare se invalidi
+### U4. Validazione tile cache corrotte — GIÀ IMPLEMENTATO
+- Già presente: `_LoadFromDisk()` verifica magic bytes PNG, elimina tile corrotte e aggiorna accounting. Nessuna modifica necessaria.
 
 ### U5. Admin multi-repeater simultaneo
 - **Dove**: MainWindow — `fLoggedInKey` è globale

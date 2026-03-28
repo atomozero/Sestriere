@@ -7631,6 +7631,17 @@ MainWindow::_SaveUISettings()
 	content << "show_chats=" << (fShowChats->Value() == B_CONTROL_ON ? "1" : "0") << "\n";
 	content << "show_repeaters=" << (fShowRepeaters->Value() == B_CONTROL_ON ? "1" : "0") << "\n";
 	content << "show_rooms=" << (fShowRooms->Value() == B_CONTROL_ON ? "1" : "0") << "\n";
+
+	// Save split view weights
+	if (fMainSplit != NULL) {
+		BString weights;
+		weights.SetToFormat("split_weights=%.4f,%.4f,%.4f\n",
+			fMainSplit->ItemWeight((int32)0),
+			fMainSplit->ItemWeight(1),
+			fMainSplit->ItemWeight(2));
+		content << weights;
+	}
+
 	file.Write(content.String(), content.Length());
 }
 
@@ -7677,6 +7688,15 @@ MainWindow::_LoadUISettings()
 				fShowRepeaters->SetValue(atoi(value) ? B_CONTROL_ON : B_CONTROL_OFF);
 			else if (strcmp(key, "show_rooms") == 0)
 				fShowRooms->SetValue(atoi(value) ? B_CONTROL_ON : B_CONTROL_OFF);
+			else if (strcmp(key, "split_weights") == 0
+				&& fMainSplit != NULL) {
+				float w0, w1, w2;
+				if (sscanf(value, "%f,%f,%f", &w0, &w1, &w2) == 3) {
+					fMainSplit->SetItemWeight((int32)0, w0, true);
+					fMainSplit->SetItemWeight(1, w1, true);
+					fMainSplit->SetItemWeight(2, w2, true);
+				}
+			}
 		}
 		line = strtok_r(NULL, "\n", &saveptr);
 	}
