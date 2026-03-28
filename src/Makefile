@@ -8,6 +8,7 @@ SRCS = \
 	Sestriere.cpp \
 	MainWindow.cpp \
 	AddChannelWindow.cpp \
+	Community.cpp \
 	SerialHandler.cpp \
 	ChatView.cpp \
 	ChatHeaderView.cpp \

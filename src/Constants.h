@@ -416,6 +416,10 @@ enum {
 	// Path hash mode
 	MSG_SET_PATH_HASH_MODE = 'sphm',
 
+	// Community
+	MSG_CREATE_COMMUNITY = 'ccom',
+	MSG_JOIN_COMMUNITY = 'jcom',
+
 	// Channel management
 	MSG_ADD_CHANNEL = 'achn',
 	MSG_ADD_PUBLIC_CHANNEL = 'apch',

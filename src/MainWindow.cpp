@@ -49,6 +49,7 @@
 #include <stdlib.h>
 
 #include "AddChannelWindow.h"
+#include "Community.h"
 #include "LoSAnalysis.h"
 #include "Reactions.h"
 #include "Smaz.h"
@@ -652,6 +653,13 @@ MainWindow::_BuildMenuBar()
 		new BMessage(MSG_ADD_PUBLIC_CHANNEL)));
 	contactMenu->AddItem(new BMenuItem("Add Channel" B_UTF8_ELLIPSIS,
 		new BMessage(MSG_ADD_CHANNEL)));
+	contactMenu->AddSeparatorItem();
+	contactMenu->AddItem(new BMenuItem(
+		"Create Community" B_UTF8_ELLIPSIS,
+		new BMessage(MSG_CREATE_COMMUNITY)));
+	contactMenu->AddItem(new BMenuItem(
+		"Join Community (from clipboard)" B_UTF8_ELLIPSIS,
+		new BMessage(MSG_JOIN_COMMUNITY)));
 	contactMenu->AddSeparatorItem();
 	contactMenu->AddItem(new BMenuItem("Export GPX" B_UTF8_ELLIPSIS,
 		new BMessage(MSG_EXPORT_GPX)));
@@ -2405,6 +2413,175 @@ MainWindow::MessageReceived(BMessage* message)
 					_LogMessage("ERROR",
 						"Failed to set path hash mode");
 			}
+			break;
+		}
+
+		case MSG_CREATE_COMMUNITY:
+		{
+			if (!fConnected) {
+				BAlert* alert = new BAlert("Error",
+					"Not connected to device.", "OK");
+				alert->Go();
+				break;
+			}
+
+			// Generate a new community with random secret
+			CommunityInfo community;
+			snprintf(community.name, sizeof(community.name),
+				"Community %d", (int)(system_time() % 1000));
+			srand48(real_time_clock_usecs());
+			for (int i = 0; i < 32; i++)
+				community.secret[i] = (uint8)(lrand48() & 0xFF);
+			ComputeCommunityId(community.secret,
+				community.communityId);
+
+			// Create the public channel on the device
+			uint8 psk[16];
+			DeriveCommunityPublicPsk(community.secret, psk);
+
+			// Find empty slot
+			int32 slot = -1;
+			for (uint8 s = 0; s < fMaxChannels; s++) {
+				bool used = false;
+				for (int32 i = 0; i < fChannels.CountItems(); i++) {
+					if (fChannels.ItemAt(i)->index == s) {
+						used = true;
+						break;
+					}
+				}
+				if (!used) { slot = s; break; }
+			}
+			if (slot < 0) {
+				BAlert* alert = new BAlert("Error",
+					"No empty channel slots.", "OK");
+				alert->Go();
+				break;
+			}
+
+			BString channelName;
+			channelName.SetToFormat("%s Public", community.name);
+			char chName[32];
+			strlcpy(chName, channelName.String(), sizeof(chName));
+
+			if (fProtocol->SendSetChannel((uint8)slot, chName,
+					psk) != B_OK) {
+				_LogMessage("ERROR",
+					"Failed to create community channel");
+				break;
+			}
+
+			ChannelInfo* ch = new ChannelInfo();
+			ch->index = (uint8)slot;
+			strlcpy(ch->name, chName, sizeof(ch->name));
+			memcpy(ch->secret, psk, 16);
+			fChannels.AddItem(ch);
+			_UpdateContactList();
+
+			// Copy sharing JSON to clipboard
+			char json[256];
+			if (FormatCommunityJson(&community, json,
+					sizeof(json))) {
+				if (be_clipboard->Lock()) {
+					be_clipboard->Clear();
+					BMessage* clip = be_clipboard->Data();
+					if (clip != NULL) {
+						clip->AddData("text/plain", B_MIME_TYPE,
+							json, strlen(json));
+						be_clipboard->Commit();
+					}
+					be_clipboard->Unlock();
+				}
+				_LogMessage("OK", BString().SetToFormat(
+					"Community '%s' created. "
+					"Sharing JSON copied to clipboard.",
+					community.name));
+			}
+			break;
+		}
+
+		case MSG_JOIN_COMMUNITY:
+		{
+			if (!fConnected) {
+				BAlert* alert = new BAlert("Error",
+					"Not connected to device.", "OK");
+				alert->Go();
+				break;
+			}
+
+			// Read community JSON from clipboard
+			const char* clipText = NULL;
+			ssize_t clipLen = 0;
+			if (!be_clipboard->Lock()) break;
+			BMessage* clip = be_clipboard->Data();
+			if (clip != NULL)
+				clip->FindData("text/plain", B_MIME_TYPE,
+					(const void**)&clipText, &clipLen);
+			BString jsonStr;
+			if (clipText != NULL && clipLen > 0)
+				jsonStr.SetTo(clipText, clipLen);
+			be_clipboard->Unlock();
+
+			if (jsonStr.IsEmpty()) {
+				BAlert* alert = new BAlert("Error",
+					"No community data in clipboard.\n"
+					"Copy the community JSON first.", "OK");
+				alert->Go();
+				break;
+			}
+
+			CommunityInfo community;
+			if (!ParseCommunityJson(jsonStr.String(), &community)) {
+				BAlert* alert = new BAlert("Error",
+					"Invalid community data in clipboard.",
+					"OK");
+				alert->Go();
+				break;
+			}
+
+			// Derive public channel PSK and add to device
+			uint8 psk[16];
+			DeriveCommunityPublicPsk(community.secret, psk);
+
+			int32 slot = -1;
+			for (uint8 s = 0; s < fMaxChannels; s++) {
+				bool used = false;
+				for (int32 i = 0; i < fChannels.CountItems(); i++) {
+					if (fChannels.ItemAt(i)->index == s) {
+						used = true;
+						break;
+					}
+				}
+				if (!used) { slot = s; break; }
+			}
+			if (slot < 0) {
+				BAlert* alert = new BAlert("Error",
+					"No empty channel slots.", "OK");
+				alert->Go();
+				break;
+			}
+
+			BString channelName;
+			channelName.SetToFormat("%s Public", community.name);
+			char chName[32];
+			strlcpy(chName, channelName.String(), sizeof(chName));
+
+			if (fProtocol->SendSetChannel((uint8)slot, chName,
+					psk) != B_OK) {
+				_LogMessage("ERROR",
+					"Failed to join community channel");
+				break;
+			}
+
+			ChannelInfo* ch = new ChannelInfo();
+			ch->index = (uint8)slot;
+			strlcpy(ch->name, chName, sizeof(ch->name));
+			memcpy(ch->secret, psk, 16);
+			fChannels.AddItem(ch);
+			_UpdateContactList();
+
+			_LogMessage("OK", BString().SetToFormat(
+				"Joined community '%s' (ID: %.8s...)",
+				community.name, community.communityId));
 			break;
 		}
 
