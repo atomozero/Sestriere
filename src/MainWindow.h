@@ -204,6 +204,9 @@ private:
 			void			_LoadContactGroups();
 			void			_RefreshContactList();
 
+			// Nearest repeater calculation
+			void			_UpdateNearestRepeater();
+
 			// Admin session helpers
 			AdminSession*	_FindAdminSession(const uint8* prefix);
 			bool			_IsLoggedInto(const uint8* prefix);

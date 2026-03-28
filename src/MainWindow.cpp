@@ -49,6 +49,7 @@
 #include <stdlib.h>
 
 #include "AddChannelWindow.h"
+#include "LoSAnalysis.h"
 #include "Smaz.h"
 #include "ChatHeaderView.h"
 #include "ChatView.h"
@@ -5127,6 +5128,7 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 	fOldContacts.MakeEmpty();
 
 	_UpdateContactList();
+	_UpdateNearestRepeater();
 	_LogMessage("OK", BString().SetToFormat("Received %d contacts",
 		(int)fContacts.CountItems()));
 
@@ -6090,6 +6092,13 @@ MainWindow::_HandleStats(const uint8* data, size_t length)
 				fLastSnr = (int8)data[kStatsRadioSnrOffset];
 				fTopBar->SetRadioStats(fLastRssi, fLastSnr, fTxPackets, fRxPackets);
 
+				// Parse airtime if available
+				if (length >= 14) {
+					uint32 txAir = ReadLE32(data + 6);
+					uint32 rxAir = ReadLE32(data + 10);
+					fTopBar->SetAirtime(txAir, rxAir);
+				}
+
 				// Forward radio stats to TelemetryWindow as sensor data
 				if (fTelemetryWindow != NULL) {
 					if (fTelemetryWindow->LockLooper()) {
@@ -6849,6 +6858,39 @@ MainWindow::_CheckDeliveryTimeouts()
 	// Stop timer if queue is empty
 	if (fPendingMessages.CountItems() == 0)
 		_StopDeliveryTimer();
+}
+
+
+void
+MainWindow::_UpdateNearestRepeater()
+{
+	// Need own GPS position
+	if (fMqttSettings.latitude == 0.0 && fMqttSettings.longitude == 0.0)
+		return;
+
+	double selfLat = fMqttSettings.latitude;
+	double selfLon = fMqttSettings.longitude;
+	double minDist = 1e9;
+	const char* nearestName = NULL;
+
+	for (int32 i = 0; i < fContacts.CountItems(); i++) {
+		ContactInfo* contact = fContacts.ItemAt(i);
+		if (contact == NULL || contact->type != 2)
+			continue;  // Only repeaters
+		if (!contact->HasGPS())
+			continue;
+
+		double lat = contact->latitude / 1e6;
+		double lon = contact->longitude / 1e6;
+		double dist = HaversineDistance(selfLat, selfLon, lat, lon);
+		if (dist < minDist) {
+			minDist = dist;
+			nearestName = contact->name;
+		}
+	}
+
+	if (nearestName != NULL)
+		fTopBar->SetNearestRepeater(nearestName, (float)minDist);
 }
 
 

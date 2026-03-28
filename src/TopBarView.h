@@ -32,6 +32,9 @@ public:
 		void			SetBatteryType(uint8 type);
 		void			SetRadioStats(int8 rssi, int8 snr,
 						uint32 txPkts, uint32 rxPkts);
+		void			SetAirtime(uint32 txSecs, uint32 rxSecs);
+		void			SetNearestRepeater(const char* name,
+						float distanceKm);
 		void			SetUptime(uint32 seconds);
 		void			SetMqttStatus(bool connected);
 		void			SetMqttEnabled(bool enabled);
@@ -61,6 +64,10 @@ private:
 		uint32			fTxPackets;
 		uint32			fRxPackets;
 		uint32			fUptime;
+		uint32			fTxAirtime;
+		uint32			fRxAirtime;
+		BString			fNearestRepeaterName;
+		float			fNearestRepeaterDist;
 		bool			fMqttConnected;
 		bool			fMqttEnabled;
 
@@ -79,6 +86,8 @@ private:
 		BRect			fBatteryRect;
 		BRect			fRssiRect;
 		BRect			fTxRxRect;
+		BRect			fAirtimeRect;
+		BRect			fRepeaterRect;
 		BRect			fUptimeRect;
 
 		int32			fHoverArea;

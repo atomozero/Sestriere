@@ -47,6 +47,8 @@ enum {
 	kAreaBattery,
 	kAreaRssi,
 	kAreaTxRx,
+	kAreaAirtime,
+	kAreaRepeater,
 	kAreaUptime,
 };
 
@@ -83,6 +85,9 @@ TopBarView::TopBarView(const char* name)
 	fTxPackets(0),
 	fRxPackets(0),
 	fUptime(0),
+	fTxAirtime(0),
+	fRxAirtime(0),
+	fNearestRepeaterDist(-1.0f),
 	fMqttConnected(false),
 	fMqttEnabled(false),
 	fHoverArea(-1),
@@ -620,6 +625,49 @@ TopBarView::Draw(BRect updateRect)
 	StrokeLine(BPoint(rx, 4), BPoint(rx, bounds.bottom - 4));
 	rx -= kPadding;
 
+	// Nearest repeater — only if known and space permits
+	fRepeaterRect = BRect();
+	if (fConnected && fNearestRepeaterDist >= 0
+		&& rx > leftEdge + 120) {
+		char repStr[48];
+		if (fNearestRepeaterDist < 1.0f) {
+			snprintf(repStr, sizeof(repStr), "\xC2\xBB%s %dm",
+				fNearestRepeaterName.String(),
+				(int)(fNearestRepeaterDist * 1000));
+		} else {
+			snprintf(repStr, sizeof(repStr), "\xC2\xBB%s %.1fkm",
+				fNearestRepeaterName.String(),
+				fNearestRepeaterDist);
+		}
+		float w = StringWidth(repStr);
+		if (rx - w - kPadding > leftEdge) {
+			float rxStart = rx;
+			rx -= w;
+			SetHighColor(dimColor);
+			DrawString(repStr, BPoint(rx, textY));
+			fRepeaterRect.Set(rx - 2, 0, rxStart, bounds.bottom);
+			rx -= kPadding;
+		}
+	}
+
+	// Airtime — only if available and space permits
+	fAirtimeRect = BRect();
+	if (fConnected && (fTxAirtime > 0 || fRxAirtime > 0)
+		&& rx > leftEdge + 100) {
+		char atStr[32];
+		snprintf(atStr, sizeof(atStr), "AT:%us/%us",
+			(unsigned)fTxAirtime, (unsigned)fRxAirtime);
+		float w = StringWidth(atStr);
+		if (rx - w - kPadding > leftEdge) {
+			float rxStart = rx;
+			rx -= w;
+			SetHighColor(dimColor);
+			DrawString(atStr, BPoint(rx, textY));
+			fAirtimeRect.Set(rx - 2, 0, rxStart, bounds.bottom);
+			rx -= kPadding;
+		}
+	}
+
 	// TX/RX counts — only if space permits
 	if (fConnected && rx > leftEdge + 80) {
 		char pktStr[32];
@@ -742,6 +790,10 @@ TopBarView::SetConnected(bool connected, const char* port)
 		fTxPackets = 0;
 		fRxPackets = 0;
 		fUptime = 0;
+		fTxAirtime = 0;
+		fRxAirtime = 0;
+		fNearestRepeaterName = "";
+		fNearestRepeaterDist = -1.0f;
 	}
 	Invalidate();
 }
@@ -770,6 +822,24 @@ TopBarView::SetRadioStats(int8 rssi, int8 snr, uint32 txPkts, uint32 rxPkts)
 	fSnr = snr;
 	fTxPackets = txPkts;
 	fRxPackets = rxPkts;
+	Invalidate();
+}
+
+
+void
+TopBarView::SetAirtime(uint32 txSecs, uint32 rxSecs)
+{
+	fTxAirtime = txSecs;
+	fRxAirtime = rxSecs;
+	Invalidate();
+}
+
+
+void
+TopBarView::SetNearestRepeater(const char* name, float distanceKm)
+{
+	fNearestRepeaterName = name;
+	fNearestRepeaterDist = distanceKm;
 	Invalidate();
 }
 
@@ -883,6 +953,10 @@ TopBarView::_HitArea(BPoint where) const
 		return kAreaRssi;
 	if (fTxRxRect.IsValid() && fTxRxRect.Contains(where))
 		return kAreaTxRx;
+	if (fAirtimeRect.IsValid() && fAirtimeRect.Contains(where))
+		return kAreaAirtime;
+	if (fRepeaterRect.IsValid() && fRepeaterRect.Contains(where))
+		return kAreaRepeater;
 	if (fUptimeRect.IsValid() && fUptimeRect.Contains(where))
 		return kAreaUptime;
 	return kAreaNone;
@@ -959,6 +1033,32 @@ TopBarView::_ToolTipForArea(int32 area) const
 			fToolTipText.SetToFormat("Transmitted: %u packets\n"
 				"Received: %u packets",
 				(unsigned)fTxPackets, (unsigned)fRxPackets);
+			return fToolTipText.String();
+		}
+		case kAreaAirtime:
+		{
+			fToolTipText.SetToFormat(
+				"TX airtime: %u seconds\n"
+				"RX airtime: %u seconds",
+				(unsigned)fTxAirtime,
+				(unsigned)fRxAirtime);
+			return fToolTipText.String();
+		}
+		case kAreaRepeater:
+		{
+			if (fNearestRepeaterDist < 1.0f) {
+				fToolTipText.SetToFormat(
+					"Nearest repeater: %s\n"
+					"Distance: %d m",
+					fNearestRepeaterName.String(),
+					(int)(fNearestRepeaterDist * 1000));
+			} else {
+				fToolTipText.SetToFormat(
+					"Nearest repeater: %s\n"
+					"Distance: %.1f km",
+					fNearestRepeaterName.String(),
+					fNearestRepeaterDist);
+			}
 			return fToolTipText.String();
 		}
 		case kAreaUptime:
