@@ -347,6 +347,14 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	float metaHeight = lineHeight * 0.8f;  // Smaller font for time/info
 	float bubbleHeight = headerHeight + textHeight + metaHeight + kBubblePadding * 2;
 
+	// If actual bubble height exceeds the allocated frame, update height
+	// so BListView allocates enough space on next layout pass
+	float neededHeight = bubbleHeight + kBubbleMargin;
+	if (neededHeight > Height() + 1) {
+		SetHeight(neededHeight);
+		owner->Invalidate();
+	}
+
 	// Position bubble
 	BRect bubbleRect;
 	if (fOutgoing) {
@@ -649,39 +657,28 @@ MessageView::Update(BView* owner, const BFont* font)
 
 	int32 lineCount;
 
+	std::vector<BString> lines;
+
 	if (isSar) {
 		// SAR marker: title + coordinates + optional note = 2-3 lines
-		lineCount = 2;
+		int32 lineCount = 2;
 		if (fSarMarker.notes[0] != '\0')
 			lineCount = 3;
+		for (int32 i = 0; i < lineCount; i++)
+			lines.push_back("");
 	} else {
 		// For CLI messages, prepend "> " to outgoing commands
 		BString displayText = fText;
 		if (isCli && fOutgoing)
 			displayText.Prepend("> ");
 
-		// Estimate line count for height calculation.
-		// NOTE: Do NOT call owner->SetFont() here — it triggers
-		// BListView::_UpdateItems() → Update() infinite recursion.
-		// Use measureFont->StringWidth() directly for consistent results.
+		// Use real word-wrap to match DrawItem line count exactly.
 		float availWidth = maxBubbleWidth - kBubblePadding * 2;
 		float emojiH = (!isCli && !isSar)
 			? (fontHeight.ascent + fontHeight.descent) : 0;
-		float textWidth;
-		if (emojiH > 0)
-			textWidth = EmojiRenderer::MeasureLine(measureFont,
-				displayText.String(), emojiH);
-		else
-			textWidth = measureFont->StringWidth(displayText.String());
-		lineCount = (textWidth > availWidth)
-			? (int32)(textWidth / availWidth) + 1 : 1;
-		if (lineCount < 1)
-			lineCount = 1;
+		_WrapText(owner, isCli ? displayText : fText,
+			availWidth, lines, emojiH);
 	}
-
-	std::vector<BString> lines;
-	for (int32 i = 0; i < lineCount; i++)
-		lines.push_back("");
 
 	// Calculate total height
 	float textHeight = lines.size() * lineHeight;
