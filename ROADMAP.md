@@ -1,7 +1,7 @@
 # Sestriere — Roadmap
 
 Analisi dello stato attuale e piano di sviluppo futuro.
-Ultimo aggiornamento: marzo 2026 (v1.9.2)
+Ultimo aggiornamento: marzo 2026 (v2.0-dev)
 
 ---
 
@@ -326,10 +326,10 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 |----|------|-------------|------------|
 | P2 | Feature | Custom Variables UI | Media |
 | F4 | Feature | Download bulk tile mappa | Media |
-| U1 | UX | Persistere zoom/pan mappa | Bassa |
-| U2 | UX | Persistere larghezza sidebar | Bassa |
-| U3 | UX | VACUUM periodico DB | Bassa |
-| U4 | UX | Validazione tile cache | Bassa |
+| U1 | UX | Persistere zoom/pan mappa | ~~Bassa~~ GIÀ FATTO |
+| U2 | UX | Persistere larghezza sidebar | ~~Bassa~~ DONE |
+| U3 | UX | VACUUM periodico DB | ~~Bassa~~ GIÀ FATTO |
+| U4 | UX | Validazione tile cache | ~~Bassa~~ GIÀ FATTO |
 | U5 | UX | Admin multi-repeater | Media |
 
 ---
