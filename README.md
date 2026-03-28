@@ -55,6 +55,7 @@ Unified dashboard with device status, radio health, network health score arc, SN
 - **Auto-growing Input** -- Multi-line input (1-4 lines), Enter to send, Shift+Enter for newline
 - **Contact Management** -- Search, incremental sync, export/import, right-click context menu
 - **Contact Type Filters** -- Sidebar checkboxes to show/hide Chat, Repeater, and Room contacts (persistent)
+- **Message Reactions** -- Emoji reactions on messages, compatible with meshcore-open (`r:HASH:INDEX` format)
 - **@Mention Replies** -- Double-click a message to reply with @[nickname] mention highlighting
 - **Ping with Feedback** -- Round-trip time measurement with results shown directly in chat
 - **Channel Management** -- Create private channels with random PSK, join existing channels with custom PSK, add Public channel with well-known key
