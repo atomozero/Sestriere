@@ -242,9 +242,9 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 ### U4. Validazione tile cache corrotte — GIÀ IMPLEMENTATO
 - Già presente: `_LoadFromDisk()` verifica magic bytes PNG, elimina tile corrotte e aggiorna accounting. Nessuna modifica necessaria.
 
-### U5. Admin multi-repeater simultaneo
-- **Dove**: MainWindow — `fLoggedInKey` è globale
-- **Fix**: HashMap<pubkey, AdminSession> per sessioni parallele
+### U5. Admin multi-repeater simultaneo — COMPLETATO
+- **Fix**: sostituiti fLoggedIn/fLoggedInKey/fLoggedInAsAdmin con `OwningObjectList<AdminSession>` che traccia sessioni concorrenti. CLI invia al contatto selezionato, status accettati da qualsiasi sessione attiva, console mode per-contatto.
+- **Stato**: completato (commit a5f50ed)
 
 ---
 
@@ -329,7 +329,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 | U2 | UX | Persistere larghezza sidebar | ~~Bassa~~ DONE |
 | U3 | UX | VACUUM periodico DB | ~~Bassa~~ GIÀ FATTO |
 | U4 | UX | Validazione tile cache | ~~Bassa~~ GIÀ FATTO |
-| U5 | UX | Admin multi-repeater | Media |
+| U5 | UX | Admin multi-repeater | ~~Media~~ DONE |
 
 ---
 
