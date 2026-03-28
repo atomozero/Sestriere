@@ -116,12 +116,11 @@ ChatView::MouseDown(BPoint where)
 				saveMsg));
 		}
 
-		// React submenu with quick emoji
+		// React submenu with quick emoji (text labels for Haiku)
 		BMenu* reactMenu = new BMenu("React");
-		static const char* kQuickReactions[] = {
-			"\xF0\x9F\x91\x8D", "\xF0\x9F\x98\x82",
-			"\xF0\x9F\x98\x8D", "\xF0\x9F\x98\xA4",
-			"\xF0\x9F\x98\xA2", "\xF0\x9F\x91\x8E"
+		static const char* kQuickLabels[] = {
+			"Thumbs Up", "Laugh", "Love",
+			"Angry", "Sad", "Thumbs Down"
 		};
 		static const uint8 kQuickIndices[] = {
 			0x3f, 0x02, 0x00, 0x05, 0x2d, 0x40
@@ -131,7 +130,7 @@ ChatView::MouseDown(BPoint where)
 			reactMsg->AddInt32("index", index);
 			reactMsg->AddInt8("emoji_idx", kQuickIndices[r]);
 			reactMenu->AddItem(new BMenuItem(
-				kQuickReactions[r], reactMsg));
+				kQuickLabels[r], reactMsg));
 		}
 		reactMenu->SetTargetForItems(this);
 		menu->AddItem(reactMenu);
