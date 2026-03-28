@@ -146,9 +146,6 @@ MapView::Draw(BRect /*updateRect*/)
 	// 4. Grid (dimmed if tiles active)
 	_DrawGrid();
 
-	// 5. Connections
-	_DrawConnections();
-
 	// 6. Nodes
 	_DrawNodes();
 
@@ -590,6 +587,13 @@ MapView::LoadMapState()
 		}
 	}
 	fclose(fp);
+}
+
+
+void
+MapView::DownloadVisibleArea()
+{
+	_DownloadVisibleArea();
 }
 
 
@@ -1299,7 +1303,7 @@ MapWindow::MessageReceived(BMessage* message)
 				fTilesCheckBox->Value() == B_CONTROL_ON);
 			break;
 		case kMsgDownloadArea:
-			fMapView->_DownloadVisibleArea();
+			fMapView->DownloadVisibleArea();
 			break;
 		case MSG_SAR_MARKER:
 		{

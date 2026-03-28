@@ -88,6 +88,11 @@ public:
 	virtual bool			QuitRequested();
 
 private:
+			// Forward-declared for use as return type below
+			struct AdminSession {
+				uint8	key[6];
+				bool	isAdmin;
+			};
 			void			_BuildUI();
 			void			_BuildMenuBar();
 			void			_RefreshPorts();
@@ -338,10 +343,6 @@ private:
 			uint8			fLoginTargetKey[6];
 
 			// Admin sessions (multi-repeater login)
-			struct AdminSession {
-				uint8	key[6];
-				bool	isAdmin;
-			};
 			OwningObjectList<AdminSession>	fAdminSessions;
 
 			// Child windows

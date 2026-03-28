@@ -95,6 +95,7 @@ public:
 
 			void			SaveMapState();
 			void			LoadMapState();
+			void			DownloadVisibleArea();
 
 private:
 			// Mercator projection helpers
