@@ -110,6 +110,7 @@ MessageView::MessageView(const ChatMessage& message, const char* senderName)
 	fRetryCount(message.retryCount),
 	fHopsClickRect(),
 	fIsMention(false),
+	fIsReply(false),
 	fIsSarMarker(false),
 	fSarMarker(),
 	fIsVoiceMsg(false),
@@ -178,6 +179,24 @@ MessageView::MessageView(const ChatMessage& message, const char* senderName)
 		}
 	} else {
 		fIsSarMarker = ParseSarMarker(fText.String(), fSarMarker);
+	}
+
+	// Parse reply pattern: @[Name] actual text
+	if (!fIsGifMsg && !fIsVoiceMsg && !fIsImageMsg && !fIsSarMarker
+		&& fText.Length() > 3 && fText[0] == '@' && fText[1] == '[') {
+		int32 closeBracket = fText.FindFirst(']', 2);
+		if (closeBracket > 2) {
+			fText.CopyInto(fReplyToName, 2, closeBracket - 2);
+			fIsReply = true;
+			// Strip the @[Name] prefix from display text
+			int32 textStart = closeBracket + 1;
+			if (textStart < fText.Length() && fText[textStart] == ' ')
+				textStart++;
+			BString actualText;
+			fText.CopyInto(actualText, textStart,
+				fText.Length() - textStart);
+			fText = actualText;
+		}
 	}
 }
 
@@ -333,8 +352,21 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	if (showSnr)
 		metaWidth += metaFont.StringWidth(snrStr.String()) + 4;
 
-	// Bubble must fit text, header, AND meta
-	float bubbleContentWidth = std::max({maxLineWidth, headerWidth, metaWidth});
+	// Measure reply quote width if present
+	float replyWidth = 0;
+	if (fIsReply) {
+		BFont italicFont;
+		owner->GetFont(&italicFont);
+		italicFont.SetSize(italicFont.Size() * 0.9f);
+		BString replyLabel;
+		replyLabel.SetToFormat("Reply to %s", fReplyToName.String());
+		replyWidth = ceilf(italicFont.StringWidth(
+			replyLabel.String())) + 6;
+	}
+
+	// Bubble must fit text, header, reply, AND meta
+	float bubbleContentWidth = std::max(
+		{maxLineWidth, headerWidth, replyWidth, metaWidth});
 	float bubbleWidth = bubbleContentWidth + kBubblePadding * 2;
 
 	// For wrapped messages, use full max width to avoid word-boundary gaps
@@ -344,8 +376,10 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 	// Calculate bubble height
 	float textHeight = lines.size() * lineHeight;
 	float headerHeight = (!fOutgoing && fSenderName.Length() > 0) ? lineHeight : 0;
+	float replyHeight = fIsReply ? (lineHeight + 4) : 0;
 	float metaHeight = lineHeight * 0.8f;  // Smaller font for time/info
-	float bubbleHeight = headerHeight + textHeight + metaHeight + kBubblePadding * 2;
+	float bubbleHeight = headerHeight + replyHeight + textHeight
+		+ metaHeight + kBubblePadding * 2;
 
 	// If actual bubble height exceeds the allocated frame, update height
 	// so BListView allocates enough space on next layout pass
@@ -434,6 +468,32 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 
 		owner->SetFont(&savedFont);
 		yPos += lineHeight;
+	}
+
+	// Draw reply quote bar if this is a reply
+	if (fIsReply && fReplyToName.Length() > 0) {
+		// Colored left bar
+		rgb_color quoteBar = tint_color(SenderNameColor(), B_LIGHTEN_1_TINT);
+		owner->SetHighColor(quoteBar);
+		BRect bar(bubbleRect.left + kBubblePadding, yPos - fh.ascent,
+			bubbleRect.left + kBubblePadding + 3,
+			yPos + fh.descent + 2);
+		owner->FillRect(bar);
+
+		// Quoted name in italic
+		BFont savedFont;
+		owner->GetFont(&savedFont);
+		BFont italicFont(savedFont);
+		italicFont.SetFace(B_ITALIC_FACE);
+		italicFont.SetSize(italicFont.Size() * 0.9f);
+		owner->SetFont(&italicFont);
+		owner->SetHighColor(tint_color(MetaTextColor(), B_LIGHTEN_1_TINT));
+		BString replyLabel;
+		replyLabel.SetToFormat("Reply to %s", fReplyToName.String());
+		owner->DrawString(replyLabel.String(),
+			BPoint(bubbleRect.left + kBubblePadding + 6, yPos));
+		owner->SetFont(&savedFont);
+		yPos += lineHeight + 4;
 	}
 
 	// Draw message text

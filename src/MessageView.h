@@ -108,6 +108,8 @@ private:
 			BRect			fHopsClickRect;
 
 			bool			fIsMention;
+			bool			fIsReply;
+			BString			fReplyToName;
 
 			bool			fIsSarMarker;
 			SarMarker		fSarMarker;
