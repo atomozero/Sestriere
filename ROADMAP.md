@@ -114,13 +114,12 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 
 ## Bug aperti (segnalati da utenti)
 
-### S1. Doppio `#` nei nomi canali hashtag — [#2](https://github.com/atomozero/Sestriere/issues/2)
+### S1. Doppio `#` nei nomi canali hashtag — [#2](https://github.com/atomozero/Sestriere/issues/2) — COMPLETATO
 - **Segnalato da**: serwin2 (scotty3g)
-- **Dove**: `MainWindow.cpp` — `_FilterContacts()`, header display, log creazione
-- **Problema**: `label.SetToFormat("#%s", ch->name)` prepende `#` incondizionatamente. Se il device restituisce il nome già con `#` (es. `#test`), viene visualizzato `##test`. Anche l'header chat e il log di creazione hanno lo stesso pattern.
-- **Fix**: controllare se `ch->name[0] == '#'` prima di prependerlo. Applicare lo stesso fix in `_FilterContacts()`, header display (~riga 3665), e log creazione canale (~riga 2432).
-- **Difficoltà**: bassa
-- **File**: MainWindow.cpp
+- **Dove**: `MainWindow.cpp` — `_FilterContacts()`, header display
+- **Problema**: `label.SetToFormat("#%s", ch->name)` prepende `#` incondizionatamente. Se il device restituisce il nome già con `#` (es. `#test`), viene visualizzato `##test`.
+- **Fix**: check `ch->name[0] == '#'` prima di prependerlo, in `_FilterContacts()` e nell'header display.
+- **Stato**: completato (commit 65f37bf)
 
 ### S2. Public Channel duplicato e non funzionante — [#3](https://github.com/atomozero/Sestriere/issues/3)
 - **Segnalato da**: serwin2 (scotty3g)
@@ -199,12 +198,10 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 - **Difficoltà**: bassa
 - **File**: MainWindow.cpp (`_HandlePushLoginResult`)
 
-### G4. `ERR_CODE_*` — codici errore non decodificati
+### G4. `ERR_CODE_*` — codici errore non decodificati — COMPLETATO
 - **Wiki**: 6 codici errore definiti (UNSUPPORTED_CMD=1, NOT_FOUND=2, TABLE_FULL=3, BAD_STATE=4, FILE_IO_ERROR=5, ILLEGAL_ARG=6)
-- **Sestriere**: nessuna costante definita. Errori loggati come `"RSP_ERR (0x01)"` senza decodifica human-readable.
-- **Fix**: aggiungere costanti + funzione `ErrorCodeToString()`. Applicare nel debug log e negli alert utente.
-- **Difficoltà**: bassa
-- **File**: Constants.h, MainWindow.cpp
+- **Fix**: aggiunte costanti `ERR_CODE_*` + funzione `ErrorCodeToString()` in Constants.h. `_HandleCmdErr()` ora logga messaggi leggibili. Sostituito magic number `2` con `ERR_CODE_NOT_FOUND` nell'enumerazione canali.
+- **Stato**: completato (commit cae2e7b)
 
 ### G5. `PUSH_RAW_RADIO_PACKET` (0x88) — non nella wiki
 - **Sestriere**: implementa e gestisce `PUSH_RAW_RADIO_PACKET = 0x88` nel PacketAnalyzer e MainWindow
@@ -329,7 +326,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 | G1 | repeat_mode mancante in SET_RADIO_PARAMS | Media | Da fare |
 | G2 | TXT_TYPE_SIGNED_PLAIN non gestito | Media | Da fare |
 | G3 | Login success campi non parsati | Media | Da fare |
-| G4 | ERR_CODE non decodificati | Bassa | Da fare |
+| G4 | ERR_CODE non decodificati | Bassa | Completato |
 | G5 | 0x88 non documentato nella wiki | Bassa | Da verificare |
 | G6 | Channel commands non documentati | Bassa | Monitorare |
 | G7 | attempt sempre 0 | Media | Legato a F2 |
@@ -343,10 +340,10 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 
 | ID | Issue | Tipo | Descrizione | Difficoltà |
 |----|-------|------|-------------|------------|
-| S1 | [#2](https://github.com/atomozero/Sestriere/issues/2) | Bug | Doppio `#` nei nomi canali hashtag | Bassa |
+| S1 | [#2](https://github.com/atomozero/Sestriere/issues/2) | Bug | Doppio `#` nei nomi canali hashtag | ~~Bassa~~ DONE |
 | S2 | [#3](https://github.com/atomozero/Sestriere/issues/3) | Bug | Public Channel duplicato/non funzionante | Media |
 | S5 | [#6](https://github.com/atomozero/Sestriere/issues/6) | Bug | Registrazione audio non funzionante | Media |
-| G4 | — | Proto | ERR_CODE decodifica human-readable | Bassa |
+| G4 | — | Proto | ERR_CODE decodifica human-readable | ~~Bassa~~ DONE |
 | G3 | — | Proto | Login success parsing completo | Bassa |
 
 ### Sprint 2 — Feature utenti + conformità (v2.1)
