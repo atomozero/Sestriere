@@ -201,10 +201,9 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 
 ## Feature esistenti dalla roadmap precedente (non completate)
 
-### P2. Custom Variables UI (GET/SET_CUSTOM_VARS)
-- **Dove**: protocollo implementato, risposta loggata, nessuna interfaccia
-- **Cosa fare**: tab "Custom Variables" in SettingsWindow con lista chiave/valore
-- **Sforzo**: medio
+### P2. Custom Variables UI (GET/SET_CUSTOM_VARS) — COMPLETATO
+- **Fix**: tab "Variables" in SettingsWindow con lista key:value, campi edit Name/Value, pulsanti Set e Refresh. Variables caricate automaticamente all'apertura. MSG_GET_CUSTOM_VARS e MSG_SET_CUSTOM_VAR con forward alla SettingsWindow.
+- **Stato**: completato (commit d690969)
 
 ### F1. Compressione SMAZ per messaggi — COMPLETATO
 - **Cosa**: compressione dizionario per testo chat (30-50% risparmio)
@@ -324,7 +323,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 
 | ID | Tipo | Descrizione | Difficoltà |
 |----|------|-------------|------------|
-| P2 | Feature | Custom Variables UI | Media |
+| P2 | Feature | Custom Variables UI | ~~Media~~ DONE |
 | F4 | Feature | Download bulk tile mappa | Media |
 | U1 | UX | Persistere zoom/pan mappa | ~~Bassa~~ GIÀ FATTO |
 | U2 | UX | Persistere larghezza sidebar | ~~Bassa~~ DONE |
