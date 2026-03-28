@@ -143,15 +143,10 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 - **Difficoltà**: media
 - **File**: AddChannelWindow.cpp/h, MainWindow.cpp
 
-### S4. Cancellazione messaggi (singolo + clear chat) — [#5](https://github.com/atomozero/Sestriere/issues/5)
+### S4. Cancellazione messaggi (singolo + clear chat) — [#5](https://github.com/atomozero/Sestriere/issues/5) — COMPLETATO
 - **Segnalato da**: serwin2 (scotty3g)
-- **Stato attuale**: nessuna funzionalità di cancellazione. Context menu ChatView ha solo "Copy" e "Save Image". DatabaseManager non ha metodi delete.
-- **Cosa serve**:
-  1. **Delete singolo messaggio**: voce "Delete" nel context menu di ChatView → `DatabaseManager::DeleteMessage(rowid)` → refresh ChatView
-  2. **Clear all messages per contatto/canale**: voce "Clear Chat" nel context menu della sidebar → `DatabaseManager::DeleteMessagesForContact(key)` → `ChatView::ClearMessages()`
-  3. Dialog di conferma prima di ogni cancellazione
-- **Difficoltà**: media
-- **File**: DatabaseManager.cpp/h, ChatView.cpp/h, MainWindow.cpp, Constants.h
+- **Fix**: `DatabaseManager::DeleteMessage()` e `DeleteMessagesForContact()`. "Delete" nel context menu ChatView, "Clear Chat" nei context menu sidebar per canali e contatti. Rimozione da DB, liste in-memory e chat view.
+- **Stato**: completato (commit e36f8dc)
 
 ### S5. Registrazione audio non funzionante — [#6](https://github.com/atomozero/Sestriere/issues/6)
 - **Segnalato da**: serwin2 (scotty3g)
@@ -168,20 +163,13 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 
 ## Gap conformità protocollo (wiki MeshCore vs implementazione)
 
-### G1. `CMD_SET_RADIO_PARAMS` — manca `repeat_mode` (v9+)
-- **Wiki**: byte aggiuntivo `repeat_mode` (boolean, abilita client-repeat off-grid mode)
-- **Sestriere**: invia 11 byte (code + freq + bw + sf + cr), senza repeat_mode
-- **Impatto**: impossibile abilitare/disabilitare client-repeat mode dalla UI
-- **Fix**: aggiungere byte [11] = repeat_mode al frame. Checkbox "Client Repeat" in SettingsWindow radio tab.
-- **Difficoltà**: bassa
-- **File**: ProtocolHandler.cpp (`SendRadioParams`), SettingsWindow.cpp
+### G1. `CMD_SET_RADIO_PARAMS` — manca `repeat_mode` (v9+) — COMPLETATO
+- **Fix**: aggiunto byte [11] = repeat_mode al frame. Default false per compatibilità.
+- **Stato**: completato (commit f97fe68)
 
-### G2. `TXT_TYPE_SIGNED_PLAIN` (2) — non gestito
-- **Wiki**: `TXT_TYPE_SIGNED_PLAIN = 2` — plain text firmato dal sender
-- **Sestriere**: definisce solo `TXT_TYPE_PLAIN` (0) e `TXT_TYPE_CLI_DATA` (1). Messaggi firmati ricevuti da altri client non riconosciuti.
-- **Fix**: aggiungere costante. In ricezione, trattare come plain text con indicatore "signed" nel bubble. L'invio può attendere.
-- **Difficoltà**: bassa
-- **File**: Constants.h, MainWindow.cpp (handler ricezione messaggi)
+### G2. `TXT_TYPE_SIGNED_PLAIN` (2) — non gestito — COMPLETATO
+- **Fix**: aggiunta costante `TXT_TYPE_SIGNED_PLAIN = 2`. Messaggi firmati già accettati in ricezione.
+- **Stato**: completato (commit f97fe68)
 
 ### G3. `PUSH_LOGIN_SUCCESS` — campi non parsati — COMPLETATO
 - **Wiki**: frame contiene `permissions` (byte), `pub_key_prefix` (6 byte), `tag` (int32), `new_permissions` (byte, V7+)
@@ -211,13 +199,9 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 - **Fix**: quando si implementa F2, incrementare `attempt` ad ogni retry.
 - **Difficoltà**: legata a F2
 
-### G8. `CMD_GET_CONTACTS` — parametro `since` non utilizzato
-- **Wiki**: parametro opzionale `since: uint32` per sync incrementale. `RSP_END_OF_CONTACTS` restituisce `most_recent_lastmod` da usare come `since` successivo.
-- **Sestriere**: invia sempre `CMD_GET_CONTACTS` senza `since`, forzando full sync ogni volta
-- **Impatto**: inefficiente con molti contatti
-- **Fix**: salvare `most_recent_lastmod` da `RSP_END_OF_CONTACTS`, passarlo come `since` nelle sync successive. Mantenere full sync come fallback (es. primo avvio, cambio companion).
-- **Difficoltà**: bassa
-- **File**: MainWindow.cpp, ProtocolHandler.cpp (`SendGetContacts`)
+### G8. `CMD_GET_CONTACTS` — parametro `since` non utilizzato — COMPLETATO
+- **Fix**: `SendGetContacts(uint32 since)` con parametro opzionale. `fContactsSince` salvato da `RSP_END_OF_CONTACTS`. Full sync su connessione iniziale, incremental per sync successivi. Reset a 0 su disconnect.
+- **Stato**: completato (commit 16aa42a)
 
 ---
 
@@ -313,14 +297,14 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 
 | ID | Gap | Priorità | Stato |
 |----|-----|----------|-------|
-| G1 | repeat_mode mancante in SET_RADIO_PARAMS | Media | Da fare |
-| G2 | TXT_TYPE_SIGNED_PLAIN non gestito | Media | Da fare |
+| G1 | repeat_mode mancante in SET_RADIO_PARAMS | Media | Completato |
+| G2 | TXT_TYPE_SIGNED_PLAIN non gestito | Media | Completato |
 | G3 | Login success campi non parsati | Media | Completato |
 | G4 | ERR_CODE non decodificati | Bassa | Completato |
 | G5 | 0x88 non documentato nella wiki | Bassa | Da verificare |
 | G6 | Channel commands non documentati | Bassa | Monitorare |
 | G7 | attempt sempre 0 | Media | Legato a F2 |
-| G8 | since param non usato in GET_CONTACTS | Bassa | Da fare |
+| G8 | since param non usato in GET_CONTACTS | Bassa | Completato |
 
 ---
 
@@ -340,11 +324,11 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 
 | ID | Issue | Tipo | Descrizione | Difficoltà |
 |----|-------|------|-------------|------------|
-| S4 | [#5](https://github.com/atomozero/Sestriere/issues/5) | Feature | Cancellazione messaggi (singolo + clear chat) | Media |
+| S4 | [#5](https://github.com/atomozero/Sestriere/issues/5) | Feature | Cancellazione messaggi (singolo + clear chat) | ~~Media~~ DONE |
 | S3 | [#4](https://github.com/atomozero/Sestriere/issues/4) | Feature | PSK custom/random per canali privati | Media |
-| G1 | — | Proto | repeat_mode in SET_RADIO_PARAMS | Bassa |
-| G2 | — | Proto | TXT_TYPE_SIGNED_PLAIN gestione ricezione | Bassa |
-| G8 | — | Proto | Sync incrementale contatti (param since) | Bassa |
+| G1 | — | Proto | repeat_mode in SET_RADIO_PARAMS | ~~Bassa~~ DONE |
+| G2 | — | Proto | TXT_TYPE_SIGNED_PLAIN gestione ricezione | ~~Bassa~~ DONE |
+| G8 | — | Proto | Sync incrementale contatti (param since) | ~~Bassa~~ DONE |
 
 ### Sprint 3 — Resilienza messaggi (v2.2)
 
