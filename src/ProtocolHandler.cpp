@@ -214,7 +214,8 @@ ProtocolHandler::SendFactoryReset()
 
 
 status_t
-ProtocolHandler::SendRadioParams(uint32 freqHz, uint32 bwHz, uint8 sf, uint8 cr)
+ProtocolHandler::SendRadioParams(uint32 freqHz, uint32 bwHz, uint8 sf,
+	uint8 cr, bool repeatMode)
 {
 	if (!IsConnected())
 		return B_NOT_INITIALIZED;
@@ -222,7 +223,7 @@ ProtocolHandler::SendRadioParams(uint32 freqHz, uint32 bwHz, uint8 sf, uint8 cr)
 	// Protocol wire format: frequency in kHz, bandwidth in Hz
 	uint32 freqKHz = freqHz / 1000;
 
-	uint8 payload[11];
+	uint8 payload[12];
 	payload[0] = CMD_SET_RADIO_PARAMS;
 	payload[1] = freqKHz & 0xFF;
 	payload[2] = (freqKHz >> 8) & 0xFF;
@@ -234,6 +235,7 @@ ProtocolHandler::SendRadioParams(uint32 freqHz, uint32 bwHz, uint8 sf, uint8 cr)
 	payload[8] = (bwHz >> 24) & 0xFF;
 	payload[9] = sf;
 	payload[10] = cr;
+	payload[11] = repeatMode ? 1 : 0;	// v9+: client-repeat (off-grid) mode
 	return fSerial->SendFrame(payload, sizeof(payload));
 }
 

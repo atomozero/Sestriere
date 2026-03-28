@@ -148,6 +148,7 @@ ErrorCodeToString(uint8 code)
 // Text message types
 const uint8 TXT_TYPE_PLAIN = 0;
 const uint8 TXT_TYPE_CLI_DATA = 1;
+const uint8 TXT_TYPE_SIGNED_PLAIN = 2;
 
 // =============================================================================
 // Protocol Frame Field Offsets

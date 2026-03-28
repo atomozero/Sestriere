@@ -41,7 +41,8 @@ public:
 
 		// Radio configuration
 		status_t		SendRadioParams(uint32 freqHz, uint32 bwHz,
-							uint8 sf, uint8 cr);
+							uint8 sf, uint8 cr,
+							bool repeatMode = false);
 		status_t		SendSetTxPower(uint8 power);
 		status_t		SendGetTuningParams();
 		status_t		SendSetTuningParams(uint32 rxDelayBase,
