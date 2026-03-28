@@ -7447,6 +7447,10 @@ MainWindow::_RetryMessage(PendingMessage* pending)
 		}
 	}
 
+	// Path diversity: reset path before retry to force route recalculation
+	if (pending->attemptCount > 1)
+		fProtocol->SendResetPath(pending->pubKey);
+
 	// Re-send via protocol with attempt number (0-based on wire)
 	size_t textLen = strlen(pending->text);
 	uint8 wireAttempt = (pending->attemptCount > 1)
