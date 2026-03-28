@@ -208,6 +208,7 @@ private:
 			void			_StartDeliveryTimer();
 			void			_StopDeliveryTimer();
 			void			_CheckDeliveryTimeouts();
+			void			_DrainOutbox();
 			void			_RetryMessage(PendingMessage* pending);
 			void			_FailMessage(PendingMessage* pending);
 

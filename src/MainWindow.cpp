@@ -4004,12 +4004,11 @@ MainWindow::_SendCliCommand(const char* command)
 void
 MainWindow::_SendTextMessage(const char* text)
 {
-	if (!fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not connected");
-		return;
-	}
-
 	if (fSendingToChannel) {
+		if (!fSerialHandler->IsConnected()) {
+			_LogMessage("ERROR", "Not connected");
+			return;
+		}
 		_SendChannelMessage(text);
 		return;
 	}
@@ -4087,15 +4086,8 @@ MainWindow::_SendTextMessage(const char* text)
 	}
 
 	uint32 timestamp = (uint32)time(NULL);
-	status_t sendResult = fProtocol->SendDM(contact->publicKey, txtType,
-		timestamp, wireText, wireLen);
-	if (sendResult != B_OK) {
-		_LogMessage("ERROR", "Failed to send message — not connected");
-		return;
-	}
-	fTopBar->FlashTx();
 
-	// Add to chat view as outgoing message (pending delivery)
+	// Always store message (pending delivery) even if offline
 	ChatMessage outMsg;
 	memcpy(outMsg.pubKeyPrefix, contact->publicKey, kPubKeyPrefixSize);
 	strlcpy(outMsg.text, text, sizeof(outMsg.text));
@@ -4110,31 +4102,51 @@ MainWindow::_SendTextMessage(const char* text)
 
 	int32 chatViewIdx = fChatView->CountItems() - 1;
 
-	// Store message in contact's history
+	// Store in contact's history and database
 	ChatMessage* stored = new ChatMessage(outMsg);
 	contact->messages.AddItem(stored);
 
-	// Persist to database
 	char contactHex[kContactHexSize];
 	FormatContactKey(contactHex, contact->publicKey);
 	DatabaseManager::Instance()->InsertMessage(contactHex, outMsg);
 
-	// Add to pending message queue for delivery tracking
+	// Add to pending message queue
 	PendingMessage* pending = new PendingMessage();
 	strlcpy(pending->contactKey, contactHex, sizeof(pending->contactKey));
 	memcpy(pending->pubKey, contact->publicKey, kPubKeySize);
 	pending->timestamp = timestamp;
 	strlcpy(pending->text, text, sizeof(pending->text));
 	pending->txtType = txtType;
-	pending->attemptCount = 1;
-	pending->sentTime = system_time();
-	pending->gotRspSent = false;
 	pending->chatViewIndex = chatViewIdx;
+
+	// Try to send immediately if connected
+	if (fSerialHandler->IsConnected()) {
+		status_t sendResult = fProtocol->SendDM(contact->publicKey,
+			txtType, timestamp, wireText, wireLen);
+		if (sendResult == B_OK) {
+			fTopBar->FlashTx();
+			pending->attemptCount = 1;
+			pending->sentTime = system_time();
+			pending->gotRspSent = false;
+		} else {
+			// Send failed — stays queued for retry/reconnect
+			pending->attemptCount = 0;
+			pending->sentTime = system_time();
+			_LogMessage("WARN", "Send failed — queued for retry");
+		}
+	} else {
+		// Offline — queued for delivery on reconnect
+		pending->attemptCount = 0;
+		pending->sentTime = 0;
+		_LogMessage("INFO", "Offline — message queued for delivery");
+	}
+
 	fPendingMessages.AddItem(pending);
 	_StartDeliveryTimer();
 
 	// Update contact item preview
-	ContactItem* item = dynamic_cast<ContactItem*>(fContactList->ItemAt(fSelectedContact));
+	ContactItem* item = dynamic_cast<ContactItem*>(
+		fContactList->ItemAt(fSelectedContact));
 	if (item != NULL) {
 		item->SetLastMessage(text, timestamp);
 		fContactList->InvalidateItem(fSelectedContact);
@@ -5100,6 +5112,9 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 			}
 		}
 	}
+
+	// Drain outbox: send any queued messages from offline period
+	_DrainOutbox();
 
 	// Start offline message sync to drain any queued messages
 	fProtocol->SendSyncNextMessage();
@@ -6762,6 +6777,10 @@ MainWindow::_CheckDeliveryTimeouts()
 		if (pending == NULL)
 			continue;
 
+		// Skip messages not yet sent (queued offline)
+		if (pending->attemptCount == 0)
+			continue;
+
 		bigtime_t elapsed = now - pending->sentTime;
 
 		int32 timeoutIdx = pending->attemptCount - 1;
@@ -6790,6 +6809,39 @@ MainWindow::_CheckDeliveryTimeouts()
 	// Stop timer if queue is empty
 	if (fPendingMessages.CountItems() == 0)
 		_StopDeliveryTimer();
+}
+
+
+void
+MainWindow::_DrainOutbox()
+{
+	if (!fSerialHandler->IsConnected())
+		return;
+
+	int32 sent = 0;
+	for (int32 i = 0; i < fPendingMessages.CountItems(); i++) {
+		PendingMessage* pending = fPendingMessages.ItemAt(i);
+		if (pending == NULL || pending->attemptCount > 0)
+			continue;  // Already attempted — skip
+
+		size_t textLen = strlen(pending->text);
+		status_t result = fProtocol->SendDM(pending->pubKey,
+			pending->txtType, pending->timestamp,
+			pending->text, textLen);
+		if (result == B_OK) {
+			pending->attemptCount = 1;
+			pending->sentTime = system_time();
+			pending->gotRspSent = false;
+			fTopBar->FlashTx();
+			sent++;
+		}
+	}
+
+	if (sent > 0) {
+		_LogMessage("INFO", BString().SetToFormat(
+			"Outbox: sent %d queued message(s)", sent));
+		_StartDeliveryTimer();
+	}
 }
 
 
@@ -6945,12 +6997,23 @@ MainWindow::_OnDisconnected()
 	fSyncingMessages = false;
 	fEnumeratingChannels = false;
 
-	// Mark all pending messages as FAILED on disconnect
-	while (fPendingMessages.CountItems() > 0) {
-		PendingMessage* pending = fPendingMessages.ItemAt(0);
-		if (pending != NULL)
-			_FailMessage(pending);
-		fPendingMessages.RemoveItemAt(0);
+	// Preserve queued messages for reconnect delivery.
+	// Messages that already got RSP_SENT are cleaned up (status stays SENT).
+	// Messages still PENDING are kept in queue with reset attempt count.
+	for (int32 i = fPendingMessages.CountItems() - 1; i >= 0; i--) {
+		PendingMessage* pending = fPendingMessages.ItemAt(i);
+		if (pending == NULL) {
+			fPendingMessages.RemoveItemAt(i);
+			continue;
+		}
+		if (pending->gotRspSent) {
+			// Already transmitted — remove from queue, keep SENT status
+			fPendingMessages.RemoveItemAt(i);
+		} else {
+			// Not yet transmitted — reset for reconnect delivery
+			pending->attemptCount = 0;
+			pending->sentTime = 0;
+		}
 	}
 	_StopDeliveryTimer();
 
