@@ -211,13 +211,9 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 - **Fix**: Smaz.h header-only con algoritmo SMAZ portato da antirez/smaz. Compressione automatica in invio DM e canale quando il risultato è più corto, prefisso `s:` per compatibilità meshcore-open. Decompressione trasparente in ricezione. Messaggi speciali (GIF, voice, image, CLI) esclusi.
 - **Stato**: completato (commit efdd5b6)
 
-### F2. Retry messaggi con backoff esponenziale
-- **Cosa**: auto-retry quando `PUSH_SEND_CONFIRMED` non arriva entro timeout
-- **Logica**: 3 tentativi con backoff (5s → 15s → 30s), poi fallimento
-- **UI**: indicatore "tentativo 2/3" nel bubble del messaggio
-- **Correlato**: G7 (campo `attempt` nel protocollo)
-- **Difficoltà**: media-alta
-- **File**: MainWindow.cpp (timer management), Types.h (delivery status), ProtocolHandler.cpp
+### F2. Retry messaggi con backoff esponenziale — COMPLETATO
+- **Fix**: timeout backoff esponenziale 15s→30s→60s (era fisso 60s). Campo `attempt` (0-3) ora inviato nel frame CMD_SEND_TXT_MSG per deduplicazione lato radio. Il sistema di retry (3 tentativi, indicatore RETRYING nel bubble, FAILED dopo esaurimento) era già implementato.
+- **Stato**: completato (commit b050af4)
 
 ### F3. Coda messaggi offline
 - **Cosa**: accodare messaggi quando disconnessi, inviarli alla riconnessione
@@ -291,7 +287,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 | G4 | ERR_CODE non decodificati | Bassa | Completato |
 | G5 | 0x88 non documentato nella wiki | Bassa | Da verificare |
 | G6 | Channel commands non documentati | Bassa | Monitorare |
-| G7 | attempt sempre 0 | Media | Legato a F2 |
+| G7 | attempt sempre 0 | Media | Completato |
 | G8 | since param non usato in GET_CONTACTS | Bassa | Completato |
 
 ---
@@ -322,7 +318,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 
 | ID | Tipo | Descrizione | Difficoltà |
 |----|------|-------------|------------|
-| F2+G7 | Feature | Retry messaggi con backoff + campo attempt | Media-Alta |
+| F2+G7 | Feature | Retry messaggi con backoff + campo attempt | ~~Media-Alta~~ DONE |
 | F3 | Feature | Coda messaggi offline | Media |
 | F1 | Feature | Compressione SMAZ | ~~Media~~ DONE |
 
