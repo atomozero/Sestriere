@@ -5132,8 +5132,19 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 	_LogMessage("OK", BString().SetToFormat("Received %d contacts",
 		(int)fContacts.CountItems()));
 
-	// Load saved messages after contacts are available
-	_LoadMessages();
+	// Load saved messages after contacts are available.
+	// On re-sync, messages were already transferred from fOldContacts —
+	// skip DB load to avoid duplicates.
+	bool hasExistingMessages = false;
+	for (int32 i = 0; i < fContacts.CountItems(); i++) {
+		ContactInfo* c = fContacts.ItemAt(i);
+		if (c != NULL && c->messages.CountItems() > 0) {
+			hasExistingMessages = true;
+			break;
+		}
+	}
+	if (!hasExistingMessages)
+		_LoadMessages();
 
 	// Re-select a logged-in contact after list rebuild if any session active
 	if (fAdminSessions.CountItems() > 0) {
