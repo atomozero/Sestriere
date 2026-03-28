@@ -190,13 +190,10 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 - **Difficoltà**: bassa
 - **File**: Constants.h, MainWindow.cpp (handler ricezione messaggi)
 
-### G3. `PUSH_LOGIN_SUCCESS` — campi non parsati
+### G3. `PUSH_LOGIN_SUCCESS` — campi non parsati — COMPLETATO
 - **Wiki**: frame contiene `permissions` (byte), `pub_key_prefix` (6 byte), `tag` (int32), `new_permissions` (byte, V7+)
-- **Sestriere**: handler logga solo il code e mostra "Login successful" senza estrarre nessun campo del frame
-- **Impatto**: permessi admin non distinti, informazioni perse
-- **Fix**: parsare tutti i campi. Usare `permissions` bit 0 per determinare admin. Esporre info nella UI admin.
-- **Difficoltà**: bassa
-- **File**: MainWindow.cpp (`_HandlePushLoginResult`)
+- **Fix**: handler ora parsa tutti i campi. `permissions` bit 0 → `fLoggedInAsAdmin`. Log mostra admin/guest, prefix, new_permissions (V7+). Short frame gestiti con fallback.
+- **Stato**: completato (commit edc2d27)
 
 ### G4. `ERR_CODE_*` — codici errore non decodificati — COMPLETATO
 - **Wiki**: 6 codici errore definiti (UNSUPPORTED_CMD=1, NOT_FOUND=2, TABLE_FULL=3, BAD_STATE=4, FILE_IO_ERROR=5, ILLEGAL_ARG=6)
@@ -325,7 +322,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 |----|-----|----------|-------|
 | G1 | repeat_mode mancante in SET_RADIO_PARAMS | Media | Da fare |
 | G2 | TXT_TYPE_SIGNED_PLAIN non gestito | Media | Da fare |
-| G3 | Login success campi non parsati | Media | Da fare |
+| G3 | Login success campi non parsati | Media | Completato |
 | G4 | ERR_CODE non decodificati | Bassa | Completato |
 | G5 | 0x88 non documentato nella wiki | Bassa | Da verificare |
 | G6 | Channel commands non documentati | Bassa | Monitorare |
@@ -344,7 +341,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 | S2 | [#3](https://github.com/atomozero/Sestriere/issues/3) | Bug | Public Channel duplicato/non funzionante | Media |
 | S5 | [#6](https://github.com/atomozero/Sestriere/issues/6) | Bug | Registrazione audio non funzionante | Media |
 | G4 | — | Proto | ERR_CODE decodifica human-readable | ~~Bassa~~ DONE |
-| G3 | — | Proto | Login success parsing completo | Bassa |
+| G3 | — | Proto | Login success parsing completo | ~~Bassa~~ DONE |
 
 ### Sprint 2 — Feature utenti + conformità (v2.1)
 
