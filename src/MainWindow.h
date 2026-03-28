@@ -263,8 +263,6 @@ private:
 			BCheckBox*		fShowRooms;
 			BListView*		fContactList;
 			BScrollView*	fContactScroll;
-			// fChannelItem removed — all channels (including Public at index 0)
-			// are now managed uniformly via fChannels
 			BStringView*	fSidebarDeviceLabel;
 
 			// UI elements - Chat area
@@ -313,11 +311,7 @@ private:
 			bool			fSyncingContacts;
 			bool			fSyncingMessages;
 
-			// Channel messages (public channel history)
-			// fChannelMessages removed — public channel messages now stored
-			// in fChannels[index=0].messages like all other channels
-
-			// Private channels
+			// Channels (all channels including Public at index 0)
 			OwningObjectList<ChannelInfo>	fChannels;
 			uint8			fMaxChannels;
 			uint8			fChannelEnumIndex;   // Current index during enumeration

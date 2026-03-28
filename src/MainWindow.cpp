@@ -324,7 +324,6 @@ MainWindow::MainWindow()
 	fShowRooms(NULL),
 	fContactList(NULL),
 	fContactScroll(NULL),
-	// fChannelItem removed
 	fSidebarDeviceLabel(NULL),
 	fChatHeader(NULL),
 	fChatView(NULL),
@@ -358,7 +357,6 @@ MainWindow::MainWindow()
 	fOldContacts(20),
 	fSyncingContacts(false),
 	fSyncingMessages(false),
-	// fChannelMessages removed
 	fChannels(10),
 	fMaxChannels(0),
 	fChannelEnumIndex(0),
@@ -727,9 +725,6 @@ MainWindow::_BuildUI()
 
 	fContactList = new ContactListView("contacts");
 	fContactList->SetSelectionMessage(new BMessage(MSG_CONTACT_SELECTED));
-
-	// Channels are added dynamically from device enumeration
-	// (no hardcoded "Public Channel" — see _FilterContacts)
 
 	fContactScroll = new BScrollView("contact_scroll", fContactList,
 		B_WILL_DRAW | B_FRAME_EVENTS, false, true, B_PLAIN_BORDER);
