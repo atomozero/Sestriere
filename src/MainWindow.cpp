@@ -49,6 +49,7 @@
 #include <stdlib.h>
 
 #include "AddChannelWindow.h"
+#include "Smaz.h"
 #include "ChatHeaderView.h"
 #include "ChatView.h"
 #include "Constants.h"
@@ -4058,9 +4059,33 @@ MainWindow::_SendTextMessage(const char* text)
 		memcmp(contact->publicKey, fLoggedInKey, kPubKeyPrefixSize) == 0);
 	uint8 txtType = isCli ? TXT_TYPE_CLI_DATA : TXT_TYPE_PLAIN;
 
+	// Try SMAZ compression for plain text messages
+	char smazBuf[256];
+	const char* wireText = text;
+	size_t wireLen = textLen;
+
+	if (!isCli && textLen > 4
+		&& !GiphyClient::IsGifMessage(text)
+		&& !VoiceSessionManager::IsVoiceEnvelope(text)
+		&& !ImageSessionManager::IsImageEnvelope(text)) {
+		int compressed = SmazCompress(text, (int)textLen,
+			smazBuf + kSmazPrefixLen,
+			(int)(sizeof(smazBuf) - kSmazPrefixLen));
+		if (compressed > 0
+			&& (size_t)compressed + kSmazPrefixLen < textLen) {
+			memcpy(smazBuf, kSmazPrefix, kSmazPrefixLen);
+			wireText = smazBuf;
+			wireLen = (size_t)compressed + kSmazPrefixLen;
+			_LogMessage("DEBUG", BString().SetToFormat(
+				"SMAZ: %zu -> %zu bytes (%.0f%% saved)",
+				textLen, wireLen,
+				(1.0 - (double)wireLen / textLen) * 100.0));
+		}
+	}
+
 	uint32 timestamp = (uint32)time(NULL);
 	status_t sendResult = fProtocol->SendDM(contact->publicKey, txtType,
-		timestamp, text, textLen);
+		timestamp, wireText, wireLen);
 	if (sendResult != B_OK) {
 		_LogMessage("ERROR", "Failed to send message — not connected");
 		return;
@@ -4130,10 +4155,34 @@ MainWindow::_SendChannelMessage(const char* text)
 
 	_LogMessage("INFO", BString("Sending to channel: ") << text);
 
+	// Try SMAZ compression for plain text channel messages
+	char smazBuf[256];
+	const char* wireText = text;
+	size_t wireLen = textLen;
+
+	if (textLen > 4
+		&& !GiphyClient::IsGifMessage(text)
+		&& !VoiceSessionManager::IsVoiceEnvelope(text)
+		&& !ImageSessionManager::IsImageEnvelope(text)) {
+		int compressed = SmazCompress(text, (int)textLen,
+			smazBuf + kSmazPrefixLen,
+			(int)(sizeof(smazBuf) - kSmazPrefixLen));
+		if (compressed > 0
+			&& (size_t)compressed + kSmazPrefixLen < textLen) {
+			memcpy(smazBuf, kSmazPrefix, kSmazPrefixLen);
+			wireText = smazBuf;
+			wireLen = (size_t)compressed + kSmazPrefixLen;
+			_LogMessage("DEBUG", BString().SetToFormat(
+				"SMAZ: %zu -> %zu bytes (%.0f%% saved)",
+				textLen, wireLen,
+				(1.0 - (double)wireLen / textLen) * 100.0));
+		}
+	}
+
 	uint8 wireChannelIdx = (uint8)fSelectedChannelIdx;
 	uint32 timestamp = (uint32)time(NULL);
 	status_t sendResult = fProtocol->SendChannelMsg(wireChannelIdx,
-		timestamp, text, textLen);
+		timestamp, wireText, wireLen);
 	if (sendResult != B_OK) {
 		_LogMessage("ERROR", "Failed to send channel message — not connected");
 		return;
@@ -5357,6 +5406,19 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 	if (textLen > 0) memcpy(text, data + textOffset, textLen);
 	text[textLen] = '\0';
 
+	// Decompress SMAZ if message starts with "s:" prefix
+	if (SmazIsCompressed(text) && textLen > kSmazPrefixLen) {
+		char decoded[256];
+		int decompLen = SmazDecompress(text + kSmazPrefixLen,
+			(int)(textLen - kSmazPrefixLen), decoded,
+			(int)(sizeof(decoded) - 1));
+		if (decompLen > 0 && decompLen < (int)sizeof(decoded)) {
+			decoded[decompLen] = '\0';
+			strlcpy(text, decoded, sizeof(text));
+			textLen = (size_t)decompLen;
+		}
+	}
+
 	// Skip self-echo: radio sometimes echoes our own sent messages back
 	// as incoming DMs. Ignore to prevent duplicate display and
 	// self-fetching of IE2/VE2 media envelopes.
@@ -5656,6 +5718,24 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 
 		// Extract message (after ": ")
 		strlcpy(messageText, colonPos + 2, sizeof(messageText));
+	}
+
+	// Decompress SMAZ if message starts with "s:" prefix
+	if (SmazIsCompressed(messageText)) {
+		size_t msgLen = strlen(messageText);
+		if (msgLen > kSmazPrefixLen) {
+			char decoded[256];
+			int decompLen = SmazDecompress(
+				messageText + kSmazPrefixLen,
+				(int)(msgLen - kSmazPrefixLen), decoded,
+				(int)(sizeof(decoded) - 1));
+			if (decompLen > 0
+				&& decompLen < (int)sizeof(decoded)) {
+				decoded[decompLen] = '\0';
+				strlcpy(messageText, decoded,
+					sizeof(messageText));
+			}
+		}
 	}
 
 	// Sanitize timestamp from sender's clock
