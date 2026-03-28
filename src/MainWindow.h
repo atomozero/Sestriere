@@ -134,7 +134,8 @@ private:
 			void			_HandlePushAdvert(const uint8* data, size_t length);
 			void			_HandlePushTraceData(const uint8* data, size_t length);
 			void			_HandlePushTelemetry(const uint8* data, size_t length);
-			void			_HandlePushLoginResult(uint8 code);
+			void			_HandlePushLoginResult(const uint8* data,
+								size_t length);
 			void			_HandlePushStatusResponse(const uint8* data,
 								size_t length);
 			void			_HandleRawPacket(const uint8* data, size_t length);
@@ -330,6 +331,7 @@ private:
 			bool			fLoginPending;
 			uint8			fLoginTargetKey[6];
 			bool			fLoggedIn;
+			bool			fLoggedInAsAdmin;
 			uint8			fLoggedInKey[6];
 
 			// Child windows

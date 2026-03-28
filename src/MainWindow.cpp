@@ -4362,10 +4362,10 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			_HandlePushTelemetry(data, length);
 			break;
 		case PUSH_LOGIN_SUCCESS:
-			_HandlePushLoginResult(PUSH_LOGIN_SUCCESS);
+			_HandlePushLoginResult(data, length);
 			break;
 		case PUSH_LOGIN_FAIL:
-			_HandlePushLoginResult(PUSH_LOGIN_FAIL);
+			_HandlePushLoginResult(data, length);
 			break;
 		case PUSH_RAW_RADIO_PACKET:
 			_HandleRawPacket(data, length);
@@ -6286,16 +6286,46 @@ MainWindow::_HandlePushTelemetry(const uint8* data, size_t length)
 
 
 void
-MainWindow::_HandlePushLoginResult(uint8 code)
+MainWindow::_HandlePushLoginResult(const uint8* data, size_t length)
 {
 	fLoginPending = false;
+
+	uint8 code = data[0];
 	bool success = (code == PUSH_LOGIN_SUCCESS);
 
-	if (success) {
+	if (success && length >= 8) {
+		// PUSH_LOGIN_SUCCESS frame layout:
+		// [0] = code (0x85)
+		// [1] = permissions (bit 0 = is_admin)
+		// [2-7] = pub_key_prefix (6 bytes)
+		// [8-11] = tag (int32, optional)
+		// [12] = new_permissions (V7+, optional)
+		uint8 permissions = data[1];
+		bool isAdmin = (permissions & 0x01) != 0;
+		fLoggedInAsAdmin = isAdmin;
+
+		char hex[kContactHexSize];
+		FormatPubKeyPrefix(hex, data + 2);
+
+		BString logMsg;
+		logMsg.SetToFormat("Login successful — %s, prefix=%s",
+			isAdmin ? "admin" : "guest", hex);
+
+		if (length >= 13) {
+			uint8 newPerms = data[12];
+			logMsg.Append(BString().SetToFormat(
+				", new_permissions=0x%02X", newPerms));
+		}
+
+		_LogMessage("OK", logMsg);
+	} else if (success) {
+		// Short frame — parse what we can
+		fLoggedInAsAdmin = false;
 		char hex[kContactHexSize];
 		FormatPubKeyPrefix(hex, fLoginTargetKey);
 		_LogMessage("OK", BString().SetToFormat(
-			"Login successful! (0x%02X) target=%s", code, hex));
+			"Login successful (short frame, %zu bytes) target=%s",
+			length, hex));
 	} else {
 		_LogMessage("ERROR", BString().SetToFormat(
 			"Login failed (0x%02X)", code));
@@ -6719,6 +6749,7 @@ MainWindow::_OnDisconnected()
 	_StopDeliveryTimer();
 
 	fLoggedIn = false;
+	fLoggedInAsAdmin = false;
 	memset(fLoggedInKey, 0, kPubKeyPrefixSize);
 	fChatHeader->SetConsoleMode(false);
 
