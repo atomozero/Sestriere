@@ -132,16 +132,10 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 
 ## Feature richieste da utenti
 
-### S3. PSK custom/random per canali privati — [#4](https://github.com/atomozero/Sestriere/issues/4)
+### S3. PSK custom/random per canali privati — [#4](https://github.com/atomozero/Sestriere/issues/4) — COMPLETATO
 - **Segnalato da**: serwin2 (scotty3g)
-- **Dove**: `AddChannelWindow.cpp/h`
-- **Stato attuale**: solo campo "Name", PSK generata automaticamente con SHA-256 del nome. Nessuna possibilità di inserire PSK manuale o generarne una random.
-- **Cosa serve**: Due modalità nel dialog, come su Android MeshCore:
-  - **"Join Private Channel"**: nome + campo PSK manuale (hex, 16 byte)
-  - **"Create Private Channel"**: nome + PSK random generata automaticamente
-  - Il protocollo `CMD_SET_CHANNEL` (32) già supporta PSK arbitrarie (offset +34, 16 byte)
-- **Difficoltà**: media
-- **File**: AddChannelWindow.cpp/h, MainWindow.cpp
+- **Fix**: AddChannelWindow ridisegnata con radio buttons "Create new channel" (PSK random) e "Join existing channel" (PSK hex manuale). MSG_CREATE_CHANNEL supporta tre sorgenti PSK: hex utente, random, o fallback SHA-256.
+- **Stato**: completato (commit 2fb0e6b)
 
 ### S4. Cancellazione messaggi (singolo + clear chat) — [#5](https://github.com/atomozero/Sestriere/issues/5) — COMPLETATO
 - **Segnalato da**: serwin2 (scotty3g)
@@ -325,7 +319,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 | ID | Issue | Tipo | Descrizione | Difficoltà |
 |----|-------|------|-------------|------------|
 | S4 | [#5](https://github.com/atomozero/Sestriere/issues/5) | Feature | Cancellazione messaggi (singolo + clear chat) | ~~Media~~ DONE |
-| S3 | [#4](https://github.com/atomozero/Sestriere/issues/4) | Feature | PSK custom/random per canali privati | Media |
+| S3 | [#4](https://github.com/atomozero/Sestriere/issues/4) | Feature | PSK custom/random per canali privati | ~~Media~~ DONE |
 | G1 | — | Proto | repeat_mode in SET_RADIO_PARAMS | ~~Bassa~~ DONE |
 | G2 | — | Proto | TXT_TYPE_SIGNED_PLAIN gestione ricezione | ~~Bassa~~ DONE |
 | G8 | — | Proto | Sync incrementale contatti (param since) | ~~Bassa~~ DONE |
