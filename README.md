@@ -258,6 +258,7 @@ Sestriere/
 │   ├── VoiceSession.cpp/h          # Voice message session management
 │   ├── VoiceCodec.cpp/h            # Codec2 encode/decode wrapper
 │   ├── AudioEngine.cpp/h           # Audio recording and playback (BSoundPlayer)
+│   ├── Reactions.h                  # Message reactions (meshcore-open compatible, header-only)
 │   ├── Smaz.h                      # SMAZ short string compression (header-only)
 │   ├── SarMarker.cpp/h             # SAR marker parsing (meshcore-sar protocol)
 │   ├── ElevationService.cpp/h      # Open-Meteo elevation API client

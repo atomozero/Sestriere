@@ -62,6 +62,12 @@ TX/RX airtime (secondi) parsato da radio stats e mostrato nella top bar (`AT:Xs/
 Nearest repeater calcolato con distanza haversine GPS e mostrato come `>>Nome X.Xkm`.
 Tooltip con dettagli al hover. Ricalcolato dopo ogni contact sync.
 
+### 16. Message Reactions
+Emoji reactions sui messaggi, compatibili con meshcore-open (formato `r:HASH:INDEX`).
+Hash calcolato con algoritmo Dart VM (Jenkins-like) su `timestamp+senderName+first5chars`.
+Context menu "React" con 6 quick emoji. Reactions ricevute matchate ai messaggi per hash
+e visualizzate come contatori emoji. Reactions.h header-only con tabella 69 emoji.
+
 ---
 
 ## Bug fix completati
