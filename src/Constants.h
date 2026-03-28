@@ -394,6 +394,10 @@ enum {
 	// Line-of-Sight analysis
 	MSG_SHOW_LOS = 'slos',
 
+	// Custom variables
+	MSG_GET_CUSTOM_VARS = 'gcvr',
+	MSG_SET_CUSTOM_VAR = 'scvr',
+
 	// Channel management
 	MSG_ADD_CHANNEL = 'achn',
 	MSG_ADD_PUBLIC_CHANNEL = 'apch',

@@ -1363,6 +1363,9 @@ MainWindow::MessageReceived(BMessage* message)
 				fSettingsWindow->SetDevicePin(fDevicePin);
 				fSettingsWindow->SetChannels(fChannels, fMaxChannels);
 				fSettingsWindow->Show();
+				// Request custom vars from device
+				if (fConnected)
+					fProtocol->SendGetCustomVars();
 			} else {
 				if (fSettingsWindow->LockLooper()) {
 					if (fHasRadioParams) {
@@ -2343,6 +2346,28 @@ MainWindow::MessageReceived(BMessage* message)
 					fSettingsWindow->SetChannels(fChannels,
 						fMaxChannels);
 					fSettingsWindow->UnlockLooper();
+				}
+			}
+			break;
+		}
+
+		case MSG_GET_CUSTOM_VARS:
+			if (fConnected)
+				fProtocol->SendGetCustomVars();
+			break;
+
+		case MSG_SET_CUSTOM_VAR:
+		{
+			const char* nameValue;
+			if (message->FindString("name_value", &nameValue) == B_OK
+				&& fConnected) {
+				if (fProtocol->SendSetCustomVar(nameValue) == B_OK) {
+					_LogMessage("OK", BString().SetToFormat(
+						"Set custom var: %s", nameValue));
+					// Refresh the list after setting
+					fProtocol->SendGetCustomVars();
+				} else {
+					_LogMessage("ERROR", "Failed to set custom variable");
 				}
 			}
 			break;
@@ -4635,6 +4660,12 @@ MainWindow::_HandleCustomVars(const uint8* data, size_t length)
 	size_t textLen = strnlen((const char*)data + 1, length - 1);
 	BString vars((const char*)data + 1, textLen);
 	_LogMessage("INFO", BString("Custom variables: ") << vars);
+
+	// Forward to SettingsWindow if visible
+	if (fSettingsWindow != NULL && fSettingsWindow->LockLooper()) {
+		fSettingsWindow->SetCustomVars(vars.String());
+		fSettingsWindow->UnlockLooper();
+	}
 }
 
 

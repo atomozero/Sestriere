@@ -50,12 +50,14 @@ public:
 			void			SetChannels(
 								const OwningObjectList<ChannelInfo>& channels,
 								uint8 maxChannels);
+			void			SetCustomVars(const char* varsText);
 
 private:
 			void			_BuildDeviceTab(BView* parent);
 			void			_BuildRadioTab(BView* parent);
 			void			_BuildMqttTab(BView* parent);
 			void			_BuildChannelsTab(BView* parent);
+			void			_BuildVariablesTab(BView* parent);
 
 			void			_OnApply();
 			void			_OnPresetSelected(int32 preset);
@@ -102,6 +104,13 @@ private:
 			SettingsChannelEntry fChannelEntries[16];
 			int32			fChannelEntryCount;
 			uint8			fMaxChannels;
+
+			// Variables tab
+			BListView*		fVarListView;
+			BTextControl*	fVarNameControl;
+			BTextControl*	fVarValueControl;
+			BButton*		fVarSetButton;
+			BButton*		fVarRefreshButton;
 
 			// Buttons
 			BButton*		fApplyButton;

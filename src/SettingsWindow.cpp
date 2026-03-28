@@ -46,6 +46,9 @@ static const uint32 kMsgChannelSelected = 'chsl';
 static const uint32 kMsgCopyChannelPsk = 'cpsk';
 static const uint32 kMsgChannelAdd = 'chad';
 static const uint32 kMsgChannelRemove = 'chrm';
+static const uint32 kMsgVarSelected = 'vrsl';
+static const uint32 kMsgVarSet = 'vrst';
+static const uint32 kMsgVarRefresh = 'vrrf';
 
 
 SettingsWindow::SettingsWindow(BWindow* parent)
@@ -88,6 +91,12 @@ SettingsWindow::SettingsWindow(BWindow* parent)
 	fSelectedPreset(PRESET_CUSTOM)
 {
 	memset(fChannelEntries, 0, sizeof(fChannelEntries));
+	fVarListView = NULL;
+	fVarNameControl = NULL;
+	fVarValueControl = NULL;
+	fVarSetButton = NULL;
+	fVarRefreshButton = NULL;
+
 	BTabView* tabView = new BTabView("settings_tabs", B_WIDTH_FROM_WIDEST);
 
 	// Device tab
@@ -117,6 +126,13 @@ SettingsWindow::SettingsWindow(BWindow* parent)
 	_BuildChannelsTab(channelsTab);
 	tabView->AddTab(channelsTab, new BTab());
 	tabView->TabAt(3)->SetLabel("Channels");
+
+	// Variables tab
+	BView* varsTab = new BView("vars_tab", 0);
+	varsTab->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	_BuildVariablesTab(varsTab);
+	tabView->AddTab(varsTab, new BTab());
+	tabView->TabAt(4)->SetLabel("Variables");
 
 	// Buttons
 	fApplyButton = new BButton("apply_button", "Apply",
@@ -258,6 +274,55 @@ SettingsWindow::MessageReceived(BMessage* message)
 				break;
 			BMessage addMsg(MSG_ADD_CHANNEL);
 			fParent->PostMessage(&addMsg);
+			break;
+		}
+
+		case kMsgVarSelected:
+		{
+			if (fVarListView == NULL)
+				break;
+			int32 sel = fVarListView->CurrentSelection();
+			if (sel < 0)
+				break;
+			BStringItem* item = dynamic_cast<BStringItem*>(
+				fVarListView->ItemAt(sel));
+			if (item == NULL)
+				break;
+			// Parse "name:value" from the list item text
+			const char* text = item->Text();
+			const char* colon = strchr(text, ':');
+			if (colon != NULL) {
+				BString name(text, colon - text);
+				BString value(colon + 1);
+				if (fVarNameControl != NULL)
+					fVarNameControl->SetText(name.String());
+				if (fVarValueControl != NULL)
+					fVarValueControl->SetText(value.String());
+			}
+			break;
+		}
+
+		case kMsgVarSet:
+		{
+			if (fParent == NULL || fVarNameControl == NULL
+				|| fVarValueControl == NULL)
+				break;
+			const char* name = fVarNameControl->Text();
+			const char* value = fVarValueControl->Text();
+			if (name == NULL || name[0] == '\0')
+				break;
+			BString nameValue;
+			nameValue.SetToFormat("%s:%s", name, value);
+			BMessage setMsg(MSG_SET_CUSTOM_VAR);
+			setMsg.AddString("name_value", nameValue.String());
+			fParent->PostMessage(&setMsg);
+			break;
+		}
+
+		case kMsgVarRefresh:
+		{
+			if (fParent != NULL)
+				fParent->PostMessage(new BMessage(MSG_GET_CUSTOM_VARS));
 			break;
 		}
 
@@ -930,5 +995,74 @@ SettingsWindow::_OnCopyChannelPsk()
 			be_clipboard->Commit();
 		}
 		be_clipboard->Unlock();
+	}
+}
+
+
+void
+SettingsWindow::_BuildVariablesTab(BView* parent)
+{
+	fVarListView = new BListView("var_list", B_SINGLE_SELECTION_LIST);
+	fVarListView->SetSelectionMessage(new BMessage(kMsgVarSelected));
+
+	BScrollView* scroll = new BScrollView("var_scroll", fVarListView,
+		B_WILL_DRAW | B_FRAME_EVENTS, false, true, B_PLAIN_BORDER);
+
+	fVarNameControl = new BTextControl("var_name", "Name:", "", NULL);
+	fVarValueControl = new BTextControl("var_value", "Value:", "", NULL);
+
+	fVarSetButton = new BButton("var_set", "Set",
+		new BMessage(kMsgVarSet));
+	fVarRefreshButton = new BButton("var_refresh", "Refresh",
+		new BMessage(kMsgVarRefresh));
+
+	BLayoutBuilder::Group<>(parent, B_VERTICAL)
+		.SetInsets(B_USE_DEFAULT_SPACING)
+		.Add(scroll, 3.0)
+		.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
+			.Add(fVarNameControl->CreateLabelLayoutItem(), 0, 0)
+			.Add(fVarNameControl->CreateTextViewLayoutItem(), 1, 0)
+			.Add(fVarValueControl->CreateLabelLayoutItem(), 0, 1)
+			.Add(fVarValueControl->CreateTextViewLayoutItem(), 1, 1)
+		.End()
+		.AddGroup(B_HORIZONTAL)
+			.AddGlue()
+			.Add(fVarRefreshButton)
+			.Add(fVarSetButton)
+		.End()
+	.End();
+}
+
+
+void
+SettingsWindow::SetCustomVars(const char* varsText)
+{
+	if (fVarListView == NULL)
+		return;
+
+	// Clear existing items
+	while (fVarListView->CountItems() > 0) {
+		BListItem* item = fVarListView->RemoveItem(
+			fVarListView->CountItems() - 1);
+		delete item;
+	}
+
+	if (varsText == NULL || varsText[0] == '\0')
+		return;
+
+	// Parse comma-separated "name:value" pairs
+	BString text(varsText);
+	int32 start = 0;
+	int32 comma;
+	while (start < text.Length()) {
+		comma = text.FindFirst(',', start);
+		if (comma < 0)
+			comma = text.Length();
+		BString pair;
+		text.CopyInto(pair, start, comma - start);
+		pair.Trim();
+		if (pair.Length() > 0)
+			fVarListView->AddItem(new BStringItem(pair.String()));
+		start = comma + 1;
 	}
 }
