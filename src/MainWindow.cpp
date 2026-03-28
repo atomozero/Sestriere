@@ -1911,6 +1911,11 @@ MainWindow::MessageReceived(BMessage* message)
 					ctxItem->GetContact().publicKey, kPubKeySize);
 				menu->AddItem(new BMenuItem("Trace Route", traceMsg));
 
+				BMessage* anonMsg = new BMessage(MSG_ANON_REQUEST);
+				anonMsg->AddData("pubkey", B_RAW_TYPE,
+					ctxItem->GetContact().publicKey, kPubKeySize);
+				menu->AddItem(new BMenuItem("Anonymous Ping", anonMsg));
+
 				BMessage* resetMsg = new BMessage(MSG_CONTACT_RESET_PATH);
 				resetMsg->AddData("pubkey", B_RAW_TYPE,
 					ctxItem->GetContact().publicKey, kPubKeySize);
@@ -2413,6 +2418,27 @@ MainWindow::MessageReceived(BMessage* message)
 					_LogMessage("ERROR",
 						"Failed to set path hash mode");
 			}
+			break;
+		}
+
+		case MSG_ANON_REQUEST:
+		{
+			const void* pubkeyData;
+			ssize_t pubkeySize;
+			if (message->FindData("pubkey", B_RAW_TYPE,
+					&pubkeyData, &pubkeySize) != B_OK
+				|| pubkeySize != kPubKeySize || !fConnected)
+				break;
+
+			// Send a status request anonymously (ephemeral key)
+			const uint8 kStatusReqCode = 0x01;
+			status_t result = fProtocol->SendAnonRequest(
+				(const uint8*)pubkeyData, &kStatusReqCode, 1);
+			if (result == B_OK)
+				_LogMessage("OK", "Anonymous request sent");
+			else
+				_LogMessage("ERROR",
+					"Failed to send anonymous request");
 			break;
 		}
 

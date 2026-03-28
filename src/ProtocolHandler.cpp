@@ -801,6 +801,26 @@ ProtocolHandler::SendControlData(uint8 subType, const uint8* ctrlPayload,
 
 
 status_t
+ProtocolHandler::SendAnonRequest(const uint8* pubkey,
+	const uint8* reqData, size_t reqLength)
+{
+	if (!IsConnected())
+		return B_NOT_INITIALIZED;
+
+	if (reqLength > kMaxFramePayload - 33)
+		return B_BAD_VALUE;
+
+	// Same frame layout as CMD_SEND_BINARY_REQ but uses ephemeral key
+	uint8 payload[kMaxFramePayload];
+	payload[0] = CMD_SEND_ANON_REQ;
+	memcpy(payload + 1, pubkey, kPubKeySize);
+	if (reqLength > 0)
+		memcpy(payload + 33, reqData, reqLength);
+	return fSerial->SendFrame(payload, 33 + reqLength);
+}
+
+
+status_t
 ProtocolHandler::SendGetAutoAddConfig()
 {
 	if (!IsConnected())

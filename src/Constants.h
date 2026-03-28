@@ -420,6 +420,9 @@ enum {
 	MSG_CREATE_COMMUNITY = 'ccom',
 	MSG_JOIN_COMMUNITY = 'jcom',
 
+	// Anonymous request
+	MSG_ANON_REQUEST = 'anrq',
+
 	// Channel management
 	MSG_ADD_CHANNEL = 'achn',
 	MSG_ADD_PUBLIC_CHANNEL = 'apch',
