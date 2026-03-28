@@ -15,6 +15,7 @@ class BFilePanel;
 
 #include "ImageSession.h"
 #include "MqttClient.h"
+#include "TimeoutPredictor.h"
 #include "SarMarker.h"
 #include "Types.h"
 #include "VoiceSession.h"
@@ -343,6 +344,7 @@ private:
 			// Delivery tracking — FIFO queue of pending outgoing messages
 			OwningObjectList<PendingMessage>	fPendingMessages;
 			BMessageRunner*	fDeliveryCheckTimer;
+			TimeoutPredictor fTimeoutPredictor;
 
 			// Mode flags
 			bool			fSendingToChannel;

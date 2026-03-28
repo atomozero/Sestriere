@@ -49,6 +49,7 @@
 #include <stdlib.h>
 
 #include "AddChannelWindow.h"
+#include "TimeoutPredictor.h"
 #include "Community.h"
 #include "LoSAnalysis.h"
 #include "Reactions.h"
@@ -4839,6 +4840,16 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 					}
 				}
 
+				// Feed timeout predictor with observation
+				if (roundTripMs > 0) {
+					ContactInfo* c = _FindContactByPrefix(
+						pending->pubKey, kPubKeyPrefixSize);
+					uint8 pathLen = (c != NULL) ? c->outPathLen : 0;
+					uint16 msgBytes = (uint16)strlen(pending->text);
+					fTimeoutPredictor.AddObservation(
+						pathLen, msgBytes, roundTripMs);
+				}
+
 				// Persist to database
 				DatabaseManager::Instance()->UpdateMessageDeliveryStatus(
 					pending->contactKey, pending->timestamp,
@@ -7220,12 +7231,22 @@ MainWindow::_CheckDeliveryTimeouts()
 
 		bigtime_t elapsed = now - pending->sentTime;
 
-		int32 timeoutIdx = pending->attemptCount - 1;
-		if (timeoutIdx < 0)
-			timeoutIdx = 0;
-		if (timeoutIdx > 2)
-			timeoutIdx = 2;
-		bigtime_t timeout = kSendTimeouts[timeoutIdx];
+		bigtime_t timeout;
+		if (fTimeoutPredictor.IsTrained()) {
+			ContactInfo* c = _FindContactByPrefix(
+				pending->pubKey, kPubKeyPrefixSize);
+			uint8 pathLen = (c != NULL) ? c->outPathLen : 0;
+			uint16 msgBytes = (uint16)strlen(pending->text);
+			timeout = fTimeoutPredictor.PredictTimeout(
+				pathLen, msgBytes);
+		} else {
+			int32 timeoutIdx = pending->attemptCount - 1;
+			if (timeoutIdx < 0)
+				timeoutIdx = 0;
+			if (timeoutIdx > 2)
+				timeoutIdx = 2;
+			timeout = kSendTimeouts[timeoutIdx];
+		}
 
 		// Grace period: wait for late ACK after all retries exhausted
 		if (pending->inGracePeriod) {
