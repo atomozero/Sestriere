@@ -50,7 +50,7 @@ Unified dashboard with device status, radio health, network health score arc, SN
 - **SMAZ Compression** -- Automatic dictionary compression for text messages (30-50% smaller), compatible with meshcore-open (`s:` prefix)
 - **Offline Message Queue** -- Compose messages while disconnected, automatic delivery on reconnect
 - **Message Deletion** -- Delete individual messages or clear entire chat history per contact/channel
-- **Delivery Retry** -- Exponential backoff retry (15s/30s/60s) with protocol-level attempt deduplication
+- **Delivery Retry** -- Exponential backoff retry (15s/30s/60s) with protocol-level attempt deduplication and 30-second late-ACK grace period
 - **Message Search** -- Full-text search across chat history (Cmd+F)
 - **Auto-growing Input** -- Multi-line input (1-4 lines), Enter to send, Shift+Enter for newline
 - **Contact Management** -- Search, incremental sync, export/import, right-click context menu
