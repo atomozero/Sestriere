@@ -121,19 +121,12 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 - **Fix**: check `ch->name[0] == '#'` prima di prependerlo, in `_FilterContacts()` e nell'header display.
 - **Stato**: completato (commit 65f37bf)
 
-### S2. Public Channel duplicato e non funzionante — [#3](https://github.com/atomozero/Sestriere/issues/3)
+### S2. Public Channel duplicato e non funzionante — [#3](https://github.com/atomozero/Sestriere/issues/3) — COMPLETATO
 - **Segnalato da**: serwin2 (scotty3g)
-- **Dove**: `MainWindow.cpp` — `fChannelItem` hardcoded + enumerazione canali dal device
-- **Problema**: "Public Channel" è creato in codice all'indice 0 della contact list (riga 727) con `fSelectedChannelIdx = -1`. Ma se il device ha un canale "Public" nel suo elenco, viene anche aggiunto a `fChannels`, creando un duplicato. I messaggi ricevuti finiscono nel canale enumerato dal device, ma l'invio dal "Public Channel" hardcoded usa un indice diverso. L'utente deve aggiungere manualmente un canale "Public" con la PSK corretta per farlo funzionare.
-- **PSK well-known Public Channel**: `8b3387e9c5cdea6ac9e5edbaa115cd72` (16 byte, da issue #3)
-- **Fix proposto**:
-  1. Rimuovere il "Public Channel" hardcoded (`fChannelItem`)
-  2. Mostrare **solo** i canali caricati dal device nella contact list
-  3. Aggiungere un pulsante/voce menu "Add Public Channel" che crea il canale con PSK well-known `kPublicChannelPSK` se non già presente
-  4. Se il Public è già nella lista, mostrare alert "Already exists"
-  5. Mostrare il canale Public per primo nella lista se presente
-- **Difficoltà**: media — tocca logica selezione canali, invio/ricezione messaggi, UI contact list
-- **File**: MainWindow.cpp, MainWindow.h, Constants.h
+- **Problema**: "Public Channel" hardcoded duplicava il canale enumerato dal device
+- **PSK well-known**: `8b3387e9c5cdea6ac9e5edbaa115cd72` → `kPublicChannelPSK` in Constants.h
+- **Fix**: rimossi `fChannelItem` e `fChannelMessages`. Tutti i canali (incluso Public a index 0) gestiti uniformemente via `fChannels`. Aggiunta voce menu "Add Public Channel" con PSK well-known e check duplicato. Migrazione messaggi dal vecchio DB key `"channel"` al nuovo `"channel_0"`. Mute key unificata a `"ch_0"`.
+- **Stato**: completato (commit bca43f1)
 
 ---
 
@@ -338,7 +331,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 | ID | Issue | Tipo | Descrizione | Difficoltà |
 |----|-------|------|-------------|------------|
 | S1 | [#2](https://github.com/atomozero/Sestriere/issues/2) | Bug | Doppio `#` nei nomi canali hashtag | ~~Bassa~~ DONE |
-| S2 | [#3](https://github.com/atomozero/Sestriere/issues/3) | Bug | Public Channel duplicato/non funzionante | Media |
+| S2 | [#3](https://github.com/atomozero/Sestriere/issues/3) | Bug | Public Channel duplicato/non funzionante | ~~Media~~ DONE |
 | S5 | [#6](https://github.com/atomozero/Sestriere/issues/6) | Bug | Registrazione audio non funzionante | Media |
 | G4 | — | Proto | ERR_CODE decodifica human-readable | ~~Bassa~~ DONE |
 | G3 | — | Proto | Login success parsing completo | ~~Bassa~~ DONE |
