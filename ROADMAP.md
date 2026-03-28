@@ -215,11 +215,9 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 - **Fix**: timeout backoff esponenziale 15s→30s→60s (era fisso 60s). Campo `attempt` (0-3) ora inviato nel frame CMD_SEND_TXT_MSG per deduplicazione lato radio. Il sistema di retry (3 tentativi, indicatore RETRYING nel bubble, FAILED dopo esaurimento) era già implementato.
 - **Stato**: completato (commit b050af4)
 
-### F3. Coda messaggi offline
-- **Cosa**: accodare messaggi quando disconnessi, inviarli alla riconnessione
-- **Dove**: DatabaseManager — tabella `outbox` con stato pending/sent/failed
-- **UI**: badge "in coda" sui messaggi non ancora inviati
-- **Difficoltà**: media
+### F3. Coda messaggi offline — COMPLETATO
+- **Fix**: messaggi DM inviabili anche offline, salvati con status PENDING in DB e in-memory queue. `_DrainOutbox()` invia i messaggi in coda dopo la riconnessione e il sync contatti. Messaggi PENDING preservati alla disconnessione (non più marcati FAILED). Il delivery timer ignora i messaggi con attemptCount=0 (non ancora inviati). Canali richiedono ancora connessione attiva.
+- **Stato**: completato (commit 2608e48)
 
 ### F4. Download bulk tile mappa
 - **Cosa**: pre-cache aree geografiche per uso offline
@@ -319,7 +317,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 | ID | Tipo | Descrizione | Difficoltà |
 |----|------|-------------|------------|
 | F2+G7 | Feature | Retry messaggi con backoff + campo attempt | ~~Media-Alta~~ DONE |
-| F3 | Feature | Coda messaggi offline | Media |
+| F3 | Feature | Coda messaggi offline | ~~Media~~ DONE |
 | F1 | Feature | Compressione SMAZ | ~~Media~~ DONE |
 
 ### Sprint 4 — Polish e completamento (v2.3+)
