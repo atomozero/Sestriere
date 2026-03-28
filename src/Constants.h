@@ -117,6 +117,28 @@ const uint8 PUSH_TELEMETRY_RESPONSE = 0x8B;
 const uint8 PUSH_BINARY_RESPONSE = 0x8C;
 const uint8 PUSH_CONTROL_DATA = 0x8E;
 
+// Error codes (RSP_ERR byte[1])
+const uint8 ERR_CODE_UNSUPPORTED_CMD = 1;
+const uint8 ERR_CODE_NOT_FOUND = 2;
+const uint8 ERR_CODE_TABLE_FULL = 3;
+const uint8 ERR_CODE_BAD_STATE = 4;
+const uint8 ERR_CODE_FILE_IO_ERROR = 5;
+const uint8 ERR_CODE_ILLEGAL_ARG = 6;
+
+inline const char*
+ErrorCodeToString(uint8 code)
+{
+	switch (code) {
+		case ERR_CODE_UNSUPPORTED_CMD:	return "Unsupported command";
+		case ERR_CODE_NOT_FOUND:		return "Not found";
+		case ERR_CODE_TABLE_FULL:		return "Table full";
+		case ERR_CODE_BAD_STATE:		return "Bad state";
+		case ERR_CODE_FILE_IO_ERROR:	return "File I/O error";
+		case ERR_CODE_ILLEGAL_ARG:		return "Illegal argument";
+		default:						return "Unknown error";
+	}
+}
+
 // Text message types
 const uint8 TXT_TYPE_PLAIN = 0;
 const uint8 TXT_TYPE_CLI_DATA = 1;

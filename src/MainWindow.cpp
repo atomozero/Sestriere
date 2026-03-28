@@ -4144,7 +4144,8 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			_LogMessage("OK", "Command successful");
 			break;
 		case RSP_ERR:
-			if (fEnumeratingChannels && length >= 2 && data[1] == 2) {
+			if (fEnumeratingChannels && length >= 2
+				&& data[1] == ERR_CODE_NOT_FOUND) {
 				// ERR_CODE_NOT_FOUND during channel enumeration = done
 				fEnumeratingChannels = false;
 				_LogMessage("OK", BString().SetToFormat(
@@ -6482,7 +6483,8 @@ MainWindow::_HandleCmdErr(const uint8* data, size_t length)
 {
 	BString msg("Command error");
 	if (length > 1) {
-		msg.SetToFormat("Command error: code %d", data[1]);
+		msg.SetToFormat("Command error: %s (code %d)",
+			ErrorCodeToString(data[1]), data[1]);
 	}
 	_LogMessage("ERROR", msg);
 
