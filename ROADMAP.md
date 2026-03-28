@@ -1,7 +1,7 @@
 # Sestriere — Roadmap
 
 Analisi dello stato attuale e piano di sviluppo futuro.
-Ultimo aggiornamento: marzo 2026 (v1.8.0-beta)
+Ultimo aggiornamento: marzo 2026 (v1.9.2)
 
 ---
 
@@ -59,113 +59,187 @@ timeline sessione, activity feed, footer last-update con stale detection.
 
 ---
 
-## Bug fix / Robustezza (alta priorità)
+## Bug fix completati
 
-### B1. Errori silenziosi su invio voice/immagini — COMPLETATO
-- **Dove**: MainWindow.cpp — chiamate a `fProtocol->SendRawData()` e `SendDM()`
-- **Problema**: il return status non viene controllato. L'utente vede "inviato" ma il messaggio potrebbe non partire
-- **Fix**: controllato `status_t` di ritorno su SendDM (3 call site), SendChannelMsg (1), SendRawData (6 image + voice), SendRemoveContact, SendResetPath, SendSetChannel (2), SendRemoveChannel, SendAddUpdateContact. Image/voice transfer abortiti con stato FAILED e cleanup timer.
-- **Stato**: completato v1.8.0-beta
+### B1. Errori silenziosi su invio voice/immagini — v1.8.0-beta
+Controllato `status_t` di ritorno su SendDM, SendChannelMsg, SendRawData, etc.
+Image/voice transfer abortiti con stato FAILED e cleanup timer.
 
-### B2. Timeout connessione seriale — COMPLETATO
-- **Dove**: SerialHandler::_ReadLoop()
-- **Problema**: se il device si spegne, il read loop resta bloccato per sempre
-- **Fix**: `select()` con timeout 1s prima di ogni `read()`. Se `select()` ritorna errore (fd invalido), notifica disconnessione e termina. Sul timeout, verifica fd con `ioctl(TIOCMGET)`. Contatore zero-read consecutivi: dopo `kMaxZeroReads` (30, ~3s) zero-read, dichiara disconnessione. Costante `kMaxZeroReads` in Constants.h.
-- **Stato**: completato v1.8.0-beta
+### B2. Timeout connessione seriale — v1.8.0-beta
+`select()` con timeout 1s, verifica fd con `ioctl(TIOCMGET)`, contatore zero-read.
 
-### B3. PUSH_CONTROL_DATA (0x8E) non gestito — COMPLETATO
-- **Dove**: MainWindow::_ParseFrame() — manca il case per 0x8E
-- **Problema**: unico push V3 ignorato. Messaggi di controllo dal device droppati silenziosamente
-- **Fix**: aggiunto `case PUSH_CONTROL_DATA` in `_ParseFrame()` con `_HandlePushControlData()`. Parser: SNR (data[1]/4.0), RSSI (data[2]), path_len (data[3]), path, payload. Log nel debug log con categoria "CTRL" e hex dump (fino a 32 byte). Forward a MissionControl activity feed. Protezione frame corti. Copertura PUSH_* ora 15/15.
-- **Stato**: completato v1.8.0-beta
+### B3. PUSH_CONTROL_DATA (0x8E) non gestito — v1.8.0-beta
+Aggiunto handler con parser SNR/RSSI/path/payload. Copertura PUSH_* 15/15.
 
-### B4. Strip rimuove le risorse ELF
-- **Dove**: processo di build release
-- **Problema**: `strip` rimuove sezioni `.rsrc`, icone TopBar mancanti nei pacchetti distribuiti
-- **Fix**: ri-applicare `xres -o binary binary.rsrc` dopo `strip`
-- **Stato**: risolto in 1.8.0-beta
+### B4. Strip rimuove le risorse ELF — v1.8.0-beta
+Ri-applicare `xres -o binary binary.rsrc` dopo `strip`.
 
-### B5. Null dereference, timer leak, sqlite3_close — COMPLETATO
-- **Dove**: ChatView.cpp, TopBarView.cpp, GrowingTextView.cpp, MainWindow.cpp, DatabaseManager.cpp
-- **Problema**: Window() poteva restituire NULL se la view era detached, crash su MouseDown/KeyDown. TopBarView allocava `new BMessage` in PostMessage che leakava se PostMessage falliva. fAdminRefreshTimer e fTelemetryPollTimer non erano eliminati nel distruttore di MainWindow (leak se quit durante la connessione). DatabaseManager usava sqlite3_close() invece di sqlite3_close_v2() nei percorsi di errore.
-- **Fix**: guardie Window()==NULL con return anticipato in ChatView::MouseDown, TopBarView::MouseDown, GrowingTextView::KeyDown. TopBarView usa puntatore window locale con message code diretto (no new BMessage). Aggiunto delete fAdminRefreshTimer/fTelemetryPollTimer nel distruttore. sqlite3_close_v2 consistente.
-- **Stato**: completato v1.9.1
+### B5. Null dereference, timer leak, sqlite3_close — v1.9.1
+Guardie Window()==NULL, TopBarView no leak, delete timer nel distruttore, sqlite3_close_v2.
 
-### B6. Serial Monitor forward frame binari — COMPLETATO
-- **Dove**: MainWindow.cpp — Serial Monitor Window mostrava solo output testuale
-- **Problema**: _NotifyRawLine() trasmetteva solo byte non-frame (testo). I frame binari del protocollo andavano solo al debug log, non al Serial Monitor
-- **Fix**: aggiunto _ForwardFrameToSerialMonitor() chiamato da _LogTx/_LogRx. Mostra direzione (TX/RX), lunghezza e hex dump (fino a 32 byte)
-- **Stato**: completato v1.9.1
+### B6. Serial Monitor forward frame binari — v1.9.1
+Aggiunto `_ForwardFrameToSerialMonitor()` per frame TX/RX.
 
-### B7. BBitmap InitCheck mancante in drag & drop — COMPLETATO
-- **Dove**: ChatView.cpp — InitiateDrag() non verificava il successo dell'allocazione bitmap
-- **Problema**: BBitmap copy constructor e thumb bitmap creati senza InitCheck(). Se l'allocazione falliva, crash su BBitmapStream o BView::AddChild con bitmap invalido
-- **Fix**: aggiunto InitCheck() + delete + early return sia per il copy bitmap sia per il thumbnail bitmap. Documentata ownership BBitmapStream nei commenti
-- **Stato**: completato v1.9.2
+### B7. BBitmap InitCheck mancante in drag & drop — v1.9.2
+InitCheck() + delete + early return per copy e thumbnail bitmap.
 
-### B8. VLA stack overflow in SNRChartView — COMPLETATO
-- **Dove**: SNRChartView.cpp — _DrawLine() usava `BPoint points[fPointCount + 2]` (VLA)
-- **Problema**: con molti punti dati, l'array sullo stack poteva causare stack overflow
-- **Fix**: sostituito con `new BPoint[fPointCount + 2]` + `delete[]` dopo FillPolygon
-- **Stato**: completato v1.9.2
+### B8. VLA stack overflow in SNRChartView — v1.9.2
+Sostituito VLA con `new BPoint[]` + `delete[]`.
 
-### B9. WindowLocker RAII e _ShowWindow null-safe — COMPLETATO
-- **Dove**: MainWindow.cpp — 30+ chiamate LockLooper/UnlockLooper ripetitive, _ShowWindow senza null check
-- **Problema**: pattern `if (ptr != NULL && ptr->LockLooper()) { ...; ptr->UnlockLooper(); }` duplicato, soggetto a errori di unlock dimenticato. _ShowWindow(NULL) crashava
-- **Fix**: introdotta classe WindowLocker RAII (null-safe, auto-unlock). Applicata a SettingsWindow, MqttLogWindow, NetworkMapWindow, SerialMonitorWindow, TelemetryWindow. Aggiunto null check a _ShowWindow
-- **Stato**: completato v1.9.2
+### B9. WindowLocker RAII e _ShowWindow null-safe — v1.9.2
+Classe WindowLocker RAII applicata a 5 finestre. Null check su _ShowWindow.
 
-### B10. Divide-by-zero in LoS Analysis — COMPLETATO
-- **Dove**: LoSAnalysis.h — `AnalyzeLineOfSight()`, LoSWindow.cpp — `_DrawFresnelZone()`
-- **Problema**: `d1 / totalDist` senza guardia. Se start e end hanno le stesse coordinate, `totalDist = 0` → divisione per zero (NaN/Inf nei calcoli Fresnel e nel rendering)
-- **Fix**: aggiunto `if (totalDist <= 0) return` in entrambe le funzioni prima del loop
-- **Stato**: completato v1.9.2
+### B10. Divide-by-zero in LoS Analysis — v1.9.2
+Guardia `totalDist <= 0` prima dei loop Fresnel.
 
-### B11. strncpy in MissionControlWindow — COMPLETATO
-- **Dove**: MissionControlWindow.cpp — troncamento label nodi topologia
-- **Problema**: `strncpy(shortName, fNodes[i].name, 11)` non garantisce null-termination se la sorgente è >= 11 byte. Pattern fragile con null-termination manuale successiva
-- **Fix**: sostituito con `strlcpy(shortName, fNodes[i].name, sizeof(shortName))` — idiomatico su Haiku, sempre null-terminato
-- **Stato**: completato v1.9.2
+### B11. strncpy in MissionControlWindow — v1.9.2
+Sostituito con `strlcpy()`.
 
-### B12. Thread leak in GifPickerWindow — COMPLETATO
-- **Dove**: GifPickerWindow.cpp — `_Search()` e `_LoadTrending()`
-- **Problema**: `fSearchThread` era resettato a -1 incondizionatamente dopo `spawn_thread()`, rendendo impossibile `wait_for_thread()` nel distruttore. `_LoadTrending()` usava variabile locale `tid` mai salvata in `fSearchThread`. Thread leak su ogni ricerca/trending.
-- **Fix**: rimosso reset prematuro di `fSearchThread`, `_LoadTrending()` salva thread_id in `fSearchThread`, `kMsgSearchDone` resetta a -1 quando il thread termina
-- **Stato**: completato v1.9.2
+### B12. Thread leak in GifPickerWindow — v1.9.2
+Fix lifecycle fSearchThread.
 
-### B13. getenv("HOME") senza null check in MapView — COMPLETATO
-- **Dove**: MapView.cpp — costruttore, path cache tile
-- **Problema**: `getenv("HOME")` può restituire NULL → undefined behavior in `BString::SetToFormat("%s/...", NULL)`. Pattern non idiomatico su Haiku.
-- **Fix**: sostituito con `find_directory(B_USER_SETTINGS_DIRECTORY)` + `BPath::Append()`, API nativa Haiku null-safe
-- **Stato**: completato v1.9.2
+### B13. getenv("HOME") senza null check in MapView — v1.9.2
+Sostituito con `find_directory(B_USER_SETTINGS_DIRECTORY)`.
+
+### P1. Share Contact UI — v1.8.0-beta
+Context menu "Share Contact" nella sidebar.
+
+### P3. Tuning Parameters UI — v1.8.0-beta
+Sezione "Tuning" nel tab Device di SettingsWindow.
+
+### P4. Device PIN UI — v1.8.0-beta
+Campo "BLE PIN" nel tab Device di SettingsWindow.
 
 ---
 
-## Feature mancanti dal protocollo (media priorità)
+## Bug aperti (segnalati da utenti)
 
-### P1. Share Contact (CMD_SHARE_CONTACT) — COMPLETATO
-- **Dove**: `SendShareContact()` esiste ma nessuna UI lo chiama
-- **Fix**: aggiunta voce "Share Contact" nel context menu sidebar (right-click). Handler `MSG_CONTACT_SHARE` chiama `fProtocol->SendShareContact()` con check return value. Log successo/errore. Alert su fallimento. Solo per contatti non-canale.
-- **Stato**: completato v1.8.0-beta
+### S1. Doppio `#` nei nomi canali hashtag — [#2](https://github.com/atomozero/Sestriere/issues/2)
+- **Segnalato da**: serwin2 (scotty3g)
+- **Dove**: `MainWindow.cpp` — `_FilterContacts()`, header display, log creazione
+- **Problema**: `label.SetToFormat("#%s", ch->name)` prepende `#` incondizionatamente. Se il device restituisce il nome già con `#` (es. `#test`), viene visualizzato `##test`. Anche l'header chat e il log di creazione hanno lo stesso pattern.
+- **Fix**: controllare se `ch->name[0] == '#'` prima di prependerlo. Applicare lo stesso fix in `_FilterContacts()`, header display (~riga 3665), e log creazione canale (~riga 2432).
+- **Difficoltà**: bassa
+- **File**: MainWindow.cpp
+
+### S2. Public Channel duplicato e non funzionante — [#3](https://github.com/atomozero/Sestriere/issues/3)
+- **Segnalato da**: serwin2 (scotty3g)
+- **Dove**: `MainWindow.cpp` — `fChannelItem` hardcoded + enumerazione canali dal device
+- **Problema**: "Public Channel" è creato in codice all'indice 0 della contact list (riga 727) con `fSelectedChannelIdx = -1`. Ma se il device ha un canale "Public" nel suo elenco, viene anche aggiunto a `fChannels`, creando un duplicato. I messaggi ricevuti finiscono nel canale enumerato dal device, ma l'invio dal "Public Channel" hardcoded usa un indice diverso. L'utente deve aggiungere manualmente un canale "Public" con la PSK corretta per farlo funzionare.
+- **PSK well-known Public Channel**: `8b3387e9c5cdea6ac9e5edbaa115cd72` (16 byte, da issue #3)
+- **Fix proposto**:
+  1. Rimuovere il "Public Channel" hardcoded (`fChannelItem`)
+  2. Mostrare **solo** i canali caricati dal device nella contact list
+  3. Aggiungere un pulsante/voce menu "Add Public Channel" che crea il canale con PSK well-known `kPublicChannelPSK` se non già presente
+  4. Se il Public è già nella lista, mostrare alert "Already exists"
+  5. Mostrare il canale Public per primo nella lista se presente
+- **Difficoltà**: media — tocca logica selezione canali, invio/ricezione messaggi, UI contact list
+- **File**: MainWindow.cpp, MainWindow.h, Constants.h
+
+---
+
+## Feature richieste da utenti
+
+### S3. PSK custom/random per canali privati — [#4](https://github.com/atomozero/Sestriere/issues/4)
+- **Segnalato da**: serwin2 (scotty3g)
+- **Dove**: `AddChannelWindow.cpp/h`
+- **Stato attuale**: solo campo "Name", PSK generata automaticamente con SHA-256 del nome. Nessuna possibilità di inserire PSK manuale o generarne una random.
+- **Cosa serve**: Due modalità nel dialog, come su Android MeshCore:
+  - **"Join Private Channel"**: nome + campo PSK manuale (hex, 16 byte)
+  - **"Create Private Channel"**: nome + PSK random generata automaticamente
+  - Il protocollo `CMD_SET_CHANNEL` (32) già supporta PSK arbitrarie (offset +34, 16 byte)
+- **Difficoltà**: media
+- **File**: AddChannelWindow.cpp/h, MainWindow.cpp
+
+### S4. Cancellazione messaggi (singolo + clear chat) — [#5](https://github.com/atomozero/Sestriere/issues/5)
+- **Segnalato da**: serwin2 (scotty3g)
+- **Stato attuale**: nessuna funzionalità di cancellazione. Context menu ChatView ha solo "Copy" e "Save Image". DatabaseManager non ha metodi delete.
+- **Cosa serve**:
+  1. **Delete singolo messaggio**: voce "Delete" nel context menu di ChatView → `DatabaseManager::DeleteMessage(rowid)` → refresh ChatView
+  2. **Clear all messages per contatto/canale**: voce "Clear Chat" nel context menu della sidebar → `DatabaseManager::DeleteMessagesForContact(key)` → `ChatView::ClearMessages()`
+  3. Dialog di conferma prima di ogni cancellazione
+- **Difficoltà**: media
+- **File**: DatabaseManager.cpp/h, ChatView.cpp/h, MainWindow.cpp, Constants.h
+
+### S5. Registrazione audio non funzionante — [#6](https://github.com/atomozero/Sestriere/issues/6)
+- **Segnalato da**: serwin2 (scotty3g)
+- **Problema**: click sul microfono mostra BAlert "Could not start recording. Check that a microphone is connected." nonostante SoundRecorder funzioni correttamente sullo stesso sistema. Non è solo un problema di feedback — è un **bug reale** nell'AudioEngine.
+- **Analisi**: `AudioEngine` usa `BMediaRecorder` con auto-connect al system audio input. Se l'auto-connect fallisce (nodo non trovato, formato non compatibile), `StartRecording()` ritorna errore. SoundRecorder probabilmente usa un approccio diverso per agganciare l'input audio. Possibili cause:
+  1. `BMediaRecorder::Connect()` non trova il nodo input corretto
+  2. Il formato richiesto (8kHz mono 16-bit) non è supportato dal nodo sorgente senza conversione
+  3. Il media_server ha il nodo input bloccato da un altro consumer
+- **Fix**: investigare il flusso di connessione in `AudioEngine::StartRecording()`. Provare approccio alternativo: usare `BMediaRoster::GetAudioInput()` per ottenere il nodo di sistema, oppure accettare il formato nativo del nodo e fare resampling in software (il resampling nel callback esiste già).
+- **Difficoltà**: media — richiede debug su Haiku con media_server attivo
+- **File**: AudioEngine.cpp/h, MainWindow.cpp
+
+---
+
+## Gap conformità protocollo (wiki MeshCore vs implementazione)
+
+### G1. `CMD_SET_RADIO_PARAMS` — manca `repeat_mode` (v9+)
+- **Wiki**: byte aggiuntivo `repeat_mode` (boolean, abilita client-repeat off-grid mode)
+- **Sestriere**: invia 11 byte (code + freq + bw + sf + cr), senza repeat_mode
+- **Impatto**: impossibile abilitare/disabilitare client-repeat mode dalla UI
+- **Fix**: aggiungere byte [11] = repeat_mode al frame. Checkbox "Client Repeat" in SettingsWindow radio tab.
+- **Difficoltà**: bassa
+- **File**: ProtocolHandler.cpp (`SendRadioParams`), SettingsWindow.cpp
+
+### G2. `TXT_TYPE_SIGNED_PLAIN` (2) — non gestito
+- **Wiki**: `TXT_TYPE_SIGNED_PLAIN = 2` — plain text firmato dal sender
+- **Sestriere**: definisce solo `TXT_TYPE_PLAIN` (0) e `TXT_TYPE_CLI_DATA` (1). Messaggi firmati ricevuti da altri client non riconosciuti.
+- **Fix**: aggiungere costante. In ricezione, trattare come plain text con indicatore "signed" nel bubble. L'invio può attendere.
+- **Difficoltà**: bassa
+- **File**: Constants.h, MainWindow.cpp (handler ricezione messaggi)
+
+### G3. `PUSH_LOGIN_SUCCESS` — campi non parsati
+- **Wiki**: frame contiene `permissions` (byte), `pub_key_prefix` (6 byte), `tag` (int32), `new_permissions` (byte, V7+)
+- **Sestriere**: handler logga solo il code e mostra "Login successful" senza estrarre nessun campo del frame
+- **Impatto**: permessi admin non distinti, informazioni perse
+- **Fix**: parsare tutti i campi. Usare `permissions` bit 0 per determinare admin. Esporre info nella UI admin.
+- **Difficoltà**: bassa
+- **File**: MainWindow.cpp (`_HandlePushLoginResult`)
+
+### G4. `ERR_CODE_*` — codici errore non decodificati
+- **Wiki**: 6 codici errore definiti (UNSUPPORTED_CMD=1, NOT_FOUND=2, TABLE_FULL=3, BAD_STATE=4, FILE_IO_ERROR=5, ILLEGAL_ARG=6)
+- **Sestriere**: nessuna costante definita. Errori loggati come `"RSP_ERR (0x01)"` senza decodifica human-readable.
+- **Fix**: aggiungere costanti + funzione `ErrorCodeToString()`. Applicare nel debug log e negli alert utente.
+- **Difficoltà**: bassa
+- **File**: Constants.h, MainWindow.cpp
+
+### G5. `PUSH_RAW_RADIO_PACKET` (0x88) — non nella wiki
+- **Sestriere**: implementa e gestisce `PUSH_RAW_RADIO_PACKET = 0x88` nel PacketAnalyzer e MainWindow
+- **Wiki**: codice 0x88 non documentato. Potrebbe essere un'estensione custom o rimosso dalla spec.
+- **Azione**: verificare con il firmware attuale se è ancora supportato. Se deprecato, segnare come legacy.
+- **Difficoltà**: nessuna (solo verifica)
+
+### G6. `CMD_GET_CHANNEL` (31) / `CMD_SET_CHANNEL` (32) / `RSP_CHANNEL_INFO` (18) — non nella wiki
+- **Sestriere**: usa questi comandi per enumerazione e gestione canali. Funzionano correttamente.
+- **Wiki**: non documentati. Protocollo canali potrebbe cambiare senza preavviso.
+- **Azione**: segnalare alla community MeshCore per aggiornamento wiki. Monitorare release firmware.
+
+### G7. Campo `attempt` in `CMD_SEND_TXT_MSG` — sempre 0
+- **Wiki**: `attempt: byte, values: 0..3` per retry a livello protocollo
+- **Sestriere**: invia sempre `attempt = 0`
+- **Impatto**: nessun retry protocol-level. Correlato a feature F2 (retry con backoff).
+- **Fix**: quando si implementa F2, incrementare `attempt` ad ogni retry.
+- **Difficoltà**: legata a F2
+
+### G8. `CMD_GET_CONTACTS` — parametro `since` non utilizzato
+- **Wiki**: parametro opzionale `since: uint32` per sync incrementale. `RSP_END_OF_CONTACTS` restituisce `most_recent_lastmod` da usare come `since` successivo.
+- **Sestriere**: invia sempre `CMD_GET_CONTACTS` senza `since`, forzando full sync ogni volta
+- **Impatto**: inefficiente con molti contatti
+- **Fix**: salvare `most_recent_lastmod` da `RSP_END_OF_CONTACTS`, passarlo come `since` nelle sync successive. Mantenere full sync come fallback (es. primo avvio, cambio companion).
+- **Difficoltà**: bassa
+- **File**: MainWindow.cpp, ProtocolHandler.cpp (`SendGetContacts`)
+
+---
+
+## Feature esistenti dalla roadmap precedente (non completate)
 
 ### P2. Custom Variables UI (GET/SET_CUSTOM_VARS)
 - **Dove**: protocollo implementato, risposta loggata, nessuna interfaccia
 - **Cosa fare**: tab "Custom Variables" in SettingsWindow con lista chiave/valore
 - **Sforzo**: medio
-
-### P3. Tuning Parameters UI (GET/SET_TUNING_PARAMS) — COMPLETATO
-- **Dove**: comandi definiti, metodi in ProtocolHandler, mai esposti
-- **Fix**: aggiunta sezione "Tuning" nel tab Device di SettingsWindow con campi RX Delay Base e Airtime Factor + pulsante "Apply Tuning". Message routing `MSG_SET_TUNING_PARAMS` → MainWindow → `ProtocolHandler::SendSetTuningParams()`. Check return value con log errore.
-- **Stato**: completato v1.8.0-beta
-
-### P4. Device PIN (SET_DEVICE_PIN) — COMPLETATO
-- **Dove**: comando implementato, nessuna UI
-- **Fix**: aggiunto campo "BLE PIN" con pulsante "Set PIN" nel tab Device di SettingsWindow. PIN corrente letto da RSP_DEVICE_INFO bytes [4-7] e pre-compilato. Message routing `MSG_SET_DEVICE_PIN` → MainWindow → `ProtocolHandler::SendSetDevicePin()`. Check return value con log errore. PIN 0 = disabilitato.
-- **Stato**: completato v1.8.0-beta
-
----
-
-## Feature nuove (media priorità)
 
 ### F1. Compressione SMAZ per messaggi
 - **Cosa**: compressione dizionario per testo chat (30-50% risparmio)
@@ -179,9 +253,9 @@ timeline sessione, activity feed, footer last-update con stale detection.
 - **Cosa**: auto-retry quando `PUSH_SEND_CONFIRMED` non arriva entro timeout
 - **Logica**: 3 tentativi con backoff (5s → 15s → 30s), poi fallimento
 - **UI**: indicatore "tentativo 2/3" nel bubble del messaggio
-- **Deduplicazione**: hash troncato per evitare duplicati lato ricevente
+- **Correlato**: G7 (campo `attempt` nel protocollo)
 - **Difficoltà**: media-alta
-- **File**: MainWindow.cpp (timer management), Types.h (delivery status)
+- **File**: MainWindow.cpp (timer management), Types.h (delivery status), ProtocolHandler.cpp
 
 ### F3. Coda messaggi offline
 - **Cosa**: accodare messaggi quando disconnessi, inviarli alla riconnessione
@@ -196,17 +270,9 @@ timeline sessione, activity feed, footer last-update con stale detection.
 - **Difficoltà**: media
 - **File**: MapView.cpp/h, TileCache.cpp/h
 
-### F5. Line-of-Sight Analysis ✓ COMPLETATO
-- **Cosa**: profilo elevazione terreno tra due punti per verifica linea di vista
-- **API**: Open-Meteo Elevation per campioni terreno
-- **Calcoli**: curvatura terrestre (k-factor 4/3), zona di Fresnel
-- **UI**: grafico profilo con terreno, LoS, zona Fresnel (verde=sgombro, rosso=ostruito)
-- **Difficoltà**: alta
-- **File**: LoSAnalysis.h, ElevationService.cpp/h, LoSWindow.cpp/h
-
 ---
 
-## UX / Persistenza (bassa priorità)
+## UX / Persistenza
 
 ### U1. Persistere zoom/pan della mappa
 - **Dove**: MapView.cpp — zoom level e centro in RAM
@@ -246,19 +312,72 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 
 ---
 
-## Copertura protocollo V3
+## Copertura protocollo
 
-| Categoria | Implementati | Totale | Note |
-|-----------|-------------|--------|------|
-| CMD_* (inbound) | 40 | 40 | Tutti con UI, +CMD_GET_ALLOWED_REPEAT_FREQ |
-| RSP_* (outbound) | 20 | 20 | +RSP_TUNING_PARAMS, +RSP_ALLOWED_REPEAT_FREQ |
-| PUSH_* (notifiche) | 15 | 15 | Tutti gestiti |
+### Comandi e risposte
 
-### Conformità completata (v1.9)
-- **SNR ×4 fix**: V3 DM/Channel SNR ora diviso per 4 (formato Q6.2 come da spec)
-- **RSP_TUNING_PARAMS (23)**: handler aggiunto, forward a SettingsWindow
-- **CMD_GET_ALLOWED_REPEAT_FREQ (60)**: comando + handler RSP (26) per bande repeater
-- **Cleanup**: rimosse costanti V3 inutilizzate (kV3DmRssiOffset, kV3DmPathLenOffsetB)
+| Categoria | Implementati | Wiki | Note |
+|-----------|-------------|------|------|
+| CMD_* (inbound) | 40 | 35 documentati | +5 canali non documentati (GET/SET_CHANNEL, etc.) |
+| RSP_* (outbound) | 22 | ~20 documentati | +RSP_CHANNEL_INFO (18) non documentato |
+| PUSH_* (notifiche) | 15 | 13 documentati | +0x88 RAW_RADIO_PACKET non documentato |
+
+### Gap conformità attivi
+
+| ID | Gap | Priorità | Stato |
+|----|-----|----------|-------|
+| G1 | repeat_mode mancante in SET_RADIO_PARAMS | Media | Da fare |
+| G2 | TXT_TYPE_SIGNED_PLAIN non gestito | Media | Da fare |
+| G3 | Login success campi non parsati | Media | Da fare |
+| G4 | ERR_CODE non decodificati | Bassa | Da fare |
+| G5 | 0x88 non documentato nella wiki | Bassa | Da verificare |
+| G6 | Channel commands non documentati | Bassa | Monitorare |
+| G7 | attempt sempre 0 | Media | Legato a F2 |
+| G8 | since param non usato in GET_CONTACTS | Bassa | Da fare |
+
+---
+
+## Priorità complessiva e ordine di implementazione
+
+### Sprint 1 — Bug critici UX (v2.0)
+
+| ID | Issue | Tipo | Descrizione | Difficoltà |
+|----|-------|------|-------------|------------|
+| S1 | [#2](https://github.com/atomozero/Sestriere/issues/2) | Bug | Doppio `#` nei nomi canali hashtag | Bassa |
+| S2 | [#3](https://github.com/atomozero/Sestriere/issues/3) | Bug | Public Channel duplicato/non funzionante | Media |
+| S5 | [#6](https://github.com/atomozero/Sestriere/issues/6) | Bug | Registrazione audio non funzionante | Media |
+| G4 | — | Proto | ERR_CODE decodifica human-readable | Bassa |
+| G3 | — | Proto | Login success parsing completo | Bassa |
+
+### Sprint 2 — Feature utenti + conformità (v2.1)
+
+| ID | Issue | Tipo | Descrizione | Difficoltà |
+|----|-------|------|-------------|------------|
+| S4 | [#5](https://github.com/atomozero/Sestriere/issues/5) | Feature | Cancellazione messaggi (singolo + clear chat) | Media |
+| S3 | [#4](https://github.com/atomozero/Sestriere/issues/4) | Feature | PSK custom/random per canali privati | Media |
+| G1 | — | Proto | repeat_mode in SET_RADIO_PARAMS | Bassa |
+| G2 | — | Proto | TXT_TYPE_SIGNED_PLAIN gestione ricezione | Bassa |
+| G8 | — | Proto | Sync incrementale contatti (param since) | Bassa |
+
+### Sprint 3 — Resilienza messaggi (v2.2)
+
+| ID | Tipo | Descrizione | Difficoltà |
+|----|------|-------------|------------|
+| F2+G7 | Feature | Retry messaggi con backoff + campo attempt | Media-Alta |
+| F3 | Feature | Coda messaggi offline | Media |
+| F1 | Feature | Compressione SMAZ | Media |
+
+### Sprint 4 — Polish e completamento (v2.3+)
+
+| ID | Tipo | Descrizione | Difficoltà |
+|----|------|-------------|------------|
+| P2 | Feature | Custom Variables UI | Media |
+| F4 | Feature | Download bulk tile mappa | Media |
+| U1 | UX | Persistere zoom/pan mappa | Bassa |
+| U2 | UX | Persistere larghezza sidebar | Bassa |
+| U3 | UX | VACUUM periodico DB | Bassa |
+| U4 | UX | Validazione tile cache | Bassa |
+| U5 | UX | Admin multi-repeater | Media |
 
 ---
 
@@ -272,34 +391,16 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 | Finestra SNR chart | 24 ore | SNRChartView.cpp |
 | WebP quality | 50 | ImageCodec.h |
 | Immagine max dim | 192 px | ImageCodec.h |
-| Media display max | 250×300 px | ChatView |
+| Media display max | 250x300 px | ChatView |
 | MQTT publish interval | ~10 secondi | MqttClient.cpp |
 | Memory tile cache | 32 tiles | TileCache.h |
 | Pruning SNR history | 30 giorni | DatabaseManager.cpp |
 
 ---
 
-## Priorità suggerita
-
-| Priorità | ID | Feature | Difficoltà |
-|----------|----|---------|-----------|
-| **Alta** | B1 | Fix errori silenziosi voice/image | Bassa |
-| **Alta** | B2 | Timeout connessione seriale | Bassa |
-| **Alta** | B3 | Handler PUSH_CONTROL_DATA | Bassa |
-| **Media** | P1 | Share Contact UI | Bassa |
-| **Media** | F1 | Compressione SMAZ | Media |
-| **Media** | F2 | Retry messaggi | Media-Alta |
-| **Media** | P2 | Custom Variables UI | Media |
-| **Media** | F3 | Coda messaggi offline | Media |
-| **Bassa** | U1 | Persistere zoom mappa | Bassa |
-| **Bassa** | U2 | Persistere larghezza sidebar | Bassa |
-| **Bassa** | F4 | Download bulk tile | Media |
-| **Bassa** | F5 | Line-of-Sight Analysis ✓ | Alta |
-
----
-
 ## Riferimenti
 
+- MeshCore Companion Protocol Wiki: https://github.com/ripplebiz/MeshCore/wiki/Companion-Radio-Protocol
 - meshcore-open: https://github.com/zjs81/meshcore-open
 - SMAZ algorithm: https://github.com/antirez/smaz
 - Open-Meteo Elevation API: https://open-meteo.com/en/docs/elevation-api
