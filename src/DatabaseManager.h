@@ -53,6 +53,11 @@ public:
 			int32			LoadChannelMessages(
 								OwningObjectList<ChatMessage>& outMessages);
 
+			bool			DeleteMessage(const char* contactKeyHex,
+								uint32 timestamp, const char* text);
+			int32			DeleteMessagesForContact(
+								const char* contactKeyHex);
+
 			// SNR history
 			bool			InsertSNRDataPoint(const char* contactKeyHex,
 								uint32 timestamp, int8 snr, int8 rssi,

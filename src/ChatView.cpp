@@ -116,6 +116,11 @@ ChatView::MouseDown(BPoint where)
 				saveMsg));
 		}
 
+		menu->AddSeparatorItem();
+		BMessage* deleteMsg = new BMessage(MSG_DELETE_MESSAGE);
+		deleteMsg->AddInt32("index", index);
+		menu->AddItem(new BMenuItem("Delete", deleteMsg));
+
 		menu->SetTargetForItems(this);
 
 		ConvertToScreen(&where);
@@ -300,6 +305,23 @@ ChatView::MessageReceived(BMessage* message)
 				break;
 			BMessage fwd(MSG_IMAGE_SAVE_REQ);
 			fwd.AddPointer("bitmap", item->ImageBitmap());
+			Window()->PostMessage(&fwd);
+			break;
+		}
+
+		case MSG_DELETE_MESSAGE:
+		{
+			int32 index;
+			if (message->FindInt32("index", &index) != B_OK)
+				break;
+			MessageView* item = dynamic_cast<MessageView*>(ItemAt(index));
+			if (item == NULL)
+				break;
+			// Forward to MainWindow with message identity
+			BMessage fwd(MSG_DELETE_MESSAGE);
+			fwd.AddUInt32("timestamp", item->Timestamp());
+			fwd.AddString("text", item->Text());
+			fwd.AddInt32("index", index);
 			Window()->PostMessage(&fwd);
 			break;
 		}

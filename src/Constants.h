@@ -398,6 +398,10 @@ enum {
 	MSG_ADD_CHANNEL = 'achn',
 	MSG_ADD_PUBLIC_CHANNEL = 'apch',
 	MSG_REMOVE_CHANNEL = 'rmch',
+
+	// Message management
+	MSG_DELETE_MESSAGE = 'dlms',
+	MSG_CLEAR_CHAT = 'clch',
 };
 
 // =============================================================================

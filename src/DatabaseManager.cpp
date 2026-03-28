@@ -359,6 +359,59 @@ DatabaseManager::LoadChannelMessages(OwningObjectList<ChatMessage>& outMessages)
 
 
 bool
+DatabaseManager::DeleteMessage(const char* contactKeyHex,
+	uint32 timestamp, const char* text)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL)
+		return false;
+
+	const char* sql =
+		"DELETE FROM messages WHERE contact_key = ? AND companion_key = ? "
+		"AND timestamp = ? AND text = ? LIMIT 1";
+
+	sqlite3_stmt* stmt = NULL;
+	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) != SQLITE_OK)
+		return false;
+
+	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_text(stmt, 2, fCompanionKey.String(), -1, SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 3, (int)timestamp);
+	sqlite3_bind_text(stmt, 4, text, -1, SQLITE_TRANSIENT);
+
+	bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
+	sqlite3_finalize(stmt);
+	return ok;
+}
+
+
+int32
+DatabaseManager::DeleteMessagesForContact(const char* contactKeyHex)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL)
+		return 0;
+
+	const char* sql =
+		"DELETE FROM messages WHERE contact_key = ? AND companion_key = ?";
+
+	sqlite3_stmt* stmt = NULL;
+	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) != SQLITE_OK)
+		return 0;
+
+	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_text(stmt, 2, fCompanionKey.String(), -1, SQLITE_TRANSIENT);
+
+	int32 deleted = 0;
+	if (sqlite3_step(stmt) == SQLITE_DONE)
+		deleted = (int32)sqlite3_changes(fDB);
+
+	sqlite3_finalize(stmt);
+	return deleted;
+}
+
+
+bool
 DatabaseManager::InsertSNRDataPoint(const char* contactKeyHex,
 	uint32 timestamp, int8 snr, int8 rssi, uint8 pathLen)
 {

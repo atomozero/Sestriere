@@ -1863,6 +1863,10 @@ MainWindow::MessageReceived(BMessage* message)
 				BMessage* removeMsg = new BMessage(MSG_REMOVE_CHANNEL);
 				removeMsg->AddInt32("channel_idx", ctxItem->ChannelIndex());
 				menu->AddItem(new BMenuItem("Remove Channel", removeMsg));
+
+				BMessage* clearMsg = new BMessage(MSG_CLEAR_CHAT);
+				clearMsg->AddInt32("channel_idx", ctxItem->ChannelIndex());
+				menu->AddItem(new BMenuItem("Clear Chat", clearMsg));
 				menu->AddSeparatorItem();
 				char chKey[16];
 				snprintf(chKey, sizeof(chKey), "ch_%d",
@@ -1891,6 +1895,10 @@ MainWindow::MessageReceived(BMessage* message)
 				resetMsg->AddData("pubkey", B_RAW_TYPE,
 					ctxItem->GetContact().publicKey, kPubKeySize);
 				menu->AddItem(new BMenuItem("Reset Path", resetMsg));
+
+				BMessage* clearMsg = new BMessage(MSG_CLEAR_CHAT);
+				clearMsg->AddString("contact_key", contactHex);
+				menu->AddItem(new BMenuItem("Clear Chat", clearMsg));
 				menu->AddSeparatorItem();
 
 				// Mute/Unmute contact
@@ -2401,6 +2409,109 @@ MainWindow::MessageReceived(BMessage* message)
 				fSettingsWindow->UnlockLooper();
 			}
 			_LogMessage("OK", "Public channel added (slot 0)");
+			break;
+		}
+
+		case MSG_DELETE_MESSAGE:
+		{
+			uint32 timestamp;
+			const char* text;
+			int32 index;
+			if (message->FindUInt32("timestamp", &timestamp) != B_OK
+				|| message->FindString("text", &text) != B_OK
+				|| message->FindInt32("index", &index) != B_OK)
+				break;
+
+			// Determine DB contact key from current selection
+			BString contactKey;
+			if (fSendingToChannel && fSelectedChannelIdx >= 0) {
+				contactKey.SetToFormat("channel_%d", fSelectedChannelIdx);
+			} else {
+				ContactItem* selItem = dynamic_cast<ContactItem*>(
+					fContactList->ItemAt(fSelectedContact));
+				if (selItem != NULL && !selItem->IsChannel()) {
+					char hex[kContactHexSize];
+					FormatContactKey(hex,
+						selItem->GetContact().publicKey);
+					contactKey = hex;
+				}
+			}
+			if (contactKey.IsEmpty())
+				break;
+
+			DatabaseManager::Instance()->DeleteMessage(
+				contactKey.String(), timestamp, text);
+
+			// Remove from in-memory list and chat view
+			if (fSendingToChannel) {
+				for (int32 i = 0; i < fChannels.CountItems(); i++) {
+					ChannelInfo* ch = fChannels.ItemAt(i);
+					if (ch != NULL
+						&& ch->index == (uint8)fSelectedChannelIdx
+						&& index < ch->messages.CountItems()) {
+						ch->messages.RemoveItemAt(index);
+						break;
+					}
+				}
+			} else {
+				ContactInfo* contact = NULL;
+				ContactItem* selItem = dynamic_cast<ContactItem*>(
+					fContactList->ItemAt(fSelectedContact));
+				if (selItem != NULL)
+					contact = _FindContactByPrefix(
+						selItem->GetContact().publicKey,
+						kPubKeyPrefixSize);
+				if (contact != NULL && index < contact->messages.CountItems())
+					contact->messages.RemoveItemAt(index);
+			}
+
+			BListItem* item = fChatView->RemoveItem(index);
+			delete item;
+			fChatView->Invalidate();
+			break;
+		}
+
+		case MSG_CLEAR_CHAT:
+		{
+			BString contactKey;
+			int32 channelIdx;
+			const char* key;
+
+			if (message->FindInt32("channel_idx", &channelIdx) == B_OK) {
+				contactKey.SetToFormat("channel_%d", channelIdx);
+				// Clear in-memory channel messages
+				for (int32 i = 0; i < fChannels.CountItems(); i++) {
+					ChannelInfo* ch = fChannels.ItemAt(i);
+					if (ch != NULL && ch->index == (uint8)channelIdx) {
+						ch->messages.MakeEmpty();
+						break;
+					}
+				}
+			} else if (message->FindString("contact_key", &key) == B_OK) {
+				contactKey = key;
+				// Clear in-memory contact messages
+				for (int32 i = 0; i < fContacts.CountItems(); i++) {
+					ContactInfo* c = fContacts.ItemAt(i);
+					if (c == NULL)
+						continue;
+					char hex[kContactHexSize];
+					FormatContactKey(hex, c->publicKey);
+					if (contactKey == hex) {
+						c->messages.MakeEmpty();
+						break;
+					}
+				}
+			}
+
+			if (contactKey.IsEmpty())
+				break;
+
+			int32 deleted = DatabaseManager::Instance()
+				->DeleteMessagesForContact(contactKey.String());
+			_LogMessage("INFO", BString().SetToFormat(
+				"Cleared %d messages for %s", deleted,
+				contactKey.String()));
+			fChatView->ClearMessages();
 			break;
 		}
 
