@@ -2392,6 +2392,22 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_SET_PATH_HASH_MODE:
+		{
+			uint8 mode;
+			if (message->FindUInt8("mode", &mode) == B_OK
+				&& fConnected) {
+				if (fProtocol->SendSetPathHashMode(mode) == B_OK)
+					_LogMessage("OK", BString().SetToFormat(
+						"Path hash mode set to %d byte(s)",
+						(int)mode + 1));
+				else
+					_LogMessage("ERROR",
+						"Failed to set path hash mode");
+			}
+			break;
+		}
+
 		case MSG_ADD_CHANNEL:
 		{
 			if (!fConnected) {

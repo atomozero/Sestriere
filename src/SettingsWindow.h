@@ -106,6 +106,9 @@ private:
 			int32			fChannelEntryCount;
 			uint8			fMaxChannels;
 
+			// Path hash mode (in Device tab)
+			BMenuField*		fPathHashMenu;
+
 			// Auto-add checkboxes (in Device tab)
 			BCheckBox*		fAutoAddChat;
 			BCheckBox*		fAutoAddRepeater;

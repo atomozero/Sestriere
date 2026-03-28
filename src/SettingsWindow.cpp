@@ -47,6 +47,7 @@ static const uint32 kMsgCopyChannelPsk = 'cpsk';
 static const uint32 kMsgChannelAdd = 'chad';
 static const uint32 kMsgChannelRemove = 'chrm';
 static const uint32 kMsgAutoAddChanged = 'aach';
+static const uint32 kMsgPathHashSelected = 'phsl';
 static const uint32 kMsgVarSelected = 'vrsl';
 static const uint32 kMsgVarSet = 'vrst';
 static const uint32 kMsgVarRefresh = 'vrrf';
@@ -92,6 +93,7 @@ SettingsWindow::SettingsWindow(BWindow* parent)
 	fSelectedPreset(PRESET_CUSTOM)
 {
 	memset(fChannelEntries, 0, sizeof(fChannelEntries));
+	fPathHashMenu = NULL;
 	fAutoAddChat = NULL;
 	fAutoAddRepeater = NULL;
 	fAutoAddRoom = NULL;
@@ -280,6 +282,19 @@ SettingsWindow::MessageReceived(BMessage* message)
 				break;
 			BMessage addMsg(MSG_ADD_CHANNEL);
 			fParent->PostMessage(&addMsg);
+			break;
+		}
+
+		case kMsgPathHashSelected:
+		{
+			if (fParent == NULL)
+				break;
+			uint8 mode;
+			if (message->FindUInt8("mode", &mode) == B_OK) {
+				BMessage setMsg(MSG_SET_PATH_HASH_MODE);
+				setMsg.AddUInt8("mode", mode);
+				fParent->PostMessage(&setMsg);
+			}
 			break;
 		}
 
@@ -507,6 +522,20 @@ SettingsWindow::_BuildDeviceTab(BView* parent)
 	BButton* setPinButton = new BButton("set_pin",
 		"Set PIN", new BMessage(kMsgSetDevicePin));
 
+	// Path hash mode dropdown
+	BPopUpMenu* pathHashPopUp = new BPopUpMenu("path_hash_popup");
+	static const char* kPathHashModes[] = {
+		"1 byte (default)", "2 bytes", "3 bytes"
+	};
+	for (int i = 0; i < 3; i++) {
+		BMessage* phMsg = new BMessage(kMsgPathHashSelected);
+		phMsg->AddUInt8("mode", (uint8)i);
+		pathHashPopUp->AddItem(new BMenuItem(kPathHashModes[i], phMsg));
+	}
+	fPathHashMenu = new BMenuField("path_hash", "Path Hash:",
+		pathHashPopUp);
+	pathHashPopUp->ItemAt(0)->SetMarked(true);
+
 	// Auto-add contact configuration
 	fAutoAddChat = new BCheckBox("aa_chat", "Chat",
 		new BMessage(kMsgAutoAddChanged));
@@ -550,6 +579,7 @@ SettingsWindow::_BuildDeviceTab(BView* parent)
 			.Add(fDevicePinControl)
 			.Add(setPinButton)
 		.End()
+		.Add(fPathHashMenu)
 		.Add(new BSeparatorView(B_HORIZONTAL))
 		.AddGroup(B_VERTICAL, B_USE_SMALL_SPACING)
 			.Add(new BStringView("aa_label", "Auto-Add Contacts:"))

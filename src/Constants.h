@@ -81,6 +81,7 @@ const uint8 CMD_SEND_ANON_REQ = 57;
 const uint8 CMD_SET_AUTO_ADD_CONFIG = 58;
 const uint8 CMD_GET_AUTO_ADD_CONFIG = 59;
 const uint8 CMD_GET_ALLOWED_REPEAT_FREQ = 60;
+const uint8 CMD_SET_PATH_HASH_MODE = 61;
 
 // =============================================================================
 // MeshCore Companion Protocol - Outbound Responses (Radio -> App)
@@ -411,6 +412,9 @@ enum {
 
 	// Auto-add config
 	MSG_SET_AUTO_ADD_CONFIG = 'saac',
+
+	// Path hash mode
+	MSG_SET_PATH_HASH_MODE = 'sphm',
 
 	// Channel management
 	MSG_ADD_CHANNEL = 'achn',

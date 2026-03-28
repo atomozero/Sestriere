@@ -826,6 +826,19 @@ ProtocolHandler::SendSetAutoAddConfig(uint8 flags)
 
 
 status_t
+ProtocolHandler::SendSetPathHashMode(uint8 mode)
+{
+	if (!IsConnected())
+		return B_NOT_INITIALIZED;
+
+	uint8 payload[2];
+	payload[0] = CMD_SET_PATH_HASH_MODE;
+	payload[1] = mode;  // 0=1-byte, 1=2-byte, 2=3-byte hashes per hop
+	return fSerial->SendFrame(payload, 2);
+}
+
+
+status_t
 ProtocolHandler::SendGetAllowedRepeatFreq()
 {
 	if (!IsConnected())

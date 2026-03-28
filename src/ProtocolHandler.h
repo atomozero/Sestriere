@@ -96,6 +96,7 @@ public:
 							const uint8* payload, size_t length);
 		status_t		SendGetAutoAddConfig();
 		status_t		SendSetAutoAddConfig(uint8 flags);
+		status_t		SendSetPathHashMode(uint8 mode);
 		status_t		SendGetAllowedRepeatFreq();
 
 private:
