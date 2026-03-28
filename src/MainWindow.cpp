@@ -3911,7 +3911,7 @@ MainWindow::_SelectContact(int32 index)
 		}
 
 		BString headerName;
-		if (ch != NULL && ch->name[0] == '#')
+		if (ch != NULL && (ch->name[0] == '#' || ch->index == 0))
 			headerName.SetTo(ch->name);
 		else
 			headerName.SetToFormat("#%s", ch ? ch->name : "Channel");
@@ -5603,7 +5603,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 	const char* reactionEmoji = ParseReaction(text, &reactionHash);
 	if (reactionEmoji != NULL) {
 		// Find target message by hash and apply reaction
-		ContactInfo* sender = _FindContactByPrefix(pubKeyPrefix,
+		ContactInfo* sender = _FindContactByPrefix(senderPrefix,
 			kPubKeyPrefixSize);
 		if (sender != NULL) {
 			for (int32 i = sender->messages.CountItems() - 1;
@@ -7570,7 +7570,7 @@ MainWindow::_FilterContacts(const char* filter)
 		}
 
 		BString label;
-		if (ch->name[0] == '#')
+		if (ch->name[0] == '#' || ch->index == 0)
 			label.SetTo(ch->name);
 		else
 			label.SetToFormat("#%s", ch->name);
