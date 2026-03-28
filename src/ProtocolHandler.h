@@ -94,6 +94,8 @@ public:
 							const uint8* data, size_t length);
 		status_t		SendControlData(uint8 subType,
 							const uint8* payload, size_t length);
+		status_t		SendGetAutoAddConfig();
+		status_t		SendSetAutoAddConfig(uint8 flags);
 		status_t		SendGetAllowedRepeatFreq();
 
 private:

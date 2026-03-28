@@ -1364,9 +1364,11 @@ MainWindow::MessageReceived(BMessage* message)
 				fSettingsWindow->SetDevicePin(fDevicePin);
 				fSettingsWindow->SetChannels(fChannels, fMaxChannels);
 				fSettingsWindow->Show();
-				// Request custom vars from device
-				if (fConnected)
+				// Request custom vars and auto-add config
+				if (fConnected) {
 					fProtocol->SendGetCustomVars();
+					fProtocol->SendGetAutoAddConfig();
+				}
 			} else {
 				if (fSettingsWindow->LockLooper()) {
 					if (fHasRadioParams) {
@@ -2370,6 +2372,21 @@ MainWindow::MessageReceived(BMessage* message)
 				} else {
 					_LogMessage("ERROR", "Failed to set custom variable");
 				}
+			}
+			break;
+		}
+
+		case MSG_SET_AUTO_ADD_CONFIG:
+		{
+			uint8 flags;
+			if (message->FindUInt8("flags", &flags) == B_OK
+				&& fConnected) {
+				if (fProtocol->SendSetAutoAddConfig(flags) == B_OK)
+					_LogMessage("OK", BString().SetToFormat(
+						"Auto-add config set: 0x%02X", flags));
+				else
+					_LogMessage("ERROR",
+						"Failed to set auto-add config");
 			}
 			break;
 		}
@@ -4517,6 +4534,18 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			break;
 		case RSP_STATS:
 			_HandleStats(data, length);
+			break;
+		case RSP_AUTO_ADD_CONFIG:
+			if (length >= 2) {
+				uint8 flags = data[1];
+				_LogMessage("INFO", BString().SetToFormat(
+					"Auto-add config: 0x%02X", flags));
+				if (fSettingsWindow != NULL
+					&& fSettingsWindow->LockLooper()) {
+					fSettingsWindow->SetAutoAddConfig(flags);
+					fSettingsWindow->UnlockLooper();
+				}
+			}
 			break;
 		case RSP_CHANNEL_INFO:
 			_HandleChannelInfo(data, length);

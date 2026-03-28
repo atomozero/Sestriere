@@ -51,6 +51,7 @@ public:
 								const OwningObjectList<ChannelInfo>& channels,
 								uint8 maxChannels);
 			void			SetCustomVars(const char* varsText);
+			void			SetAutoAddConfig(uint8 flags);
 
 private:
 			void			_BuildDeviceTab(BView* parent);
@@ -104,6 +105,13 @@ private:
 			SettingsChannelEntry fChannelEntries[16];
 			int32			fChannelEntryCount;
 			uint8			fMaxChannels;
+
+			// Auto-add checkboxes (in Device tab)
+			BCheckBox*		fAutoAddChat;
+			BCheckBox*		fAutoAddRepeater;
+			BCheckBox*		fAutoAddRoom;
+			BCheckBox*		fAutoAddSensor;
+			BCheckBox*		fAutoAddOverwrite;
 
 			// Variables tab
 			BListView*		fVarListView;

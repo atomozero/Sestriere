@@ -46,6 +46,7 @@ static const uint32 kMsgChannelSelected = 'chsl';
 static const uint32 kMsgCopyChannelPsk = 'cpsk';
 static const uint32 kMsgChannelAdd = 'chad';
 static const uint32 kMsgChannelRemove = 'chrm';
+static const uint32 kMsgAutoAddChanged = 'aach';
 static const uint32 kMsgVarSelected = 'vrsl';
 static const uint32 kMsgVarSet = 'vrst';
 static const uint32 kMsgVarRefresh = 'vrrf';
@@ -91,6 +92,11 @@ SettingsWindow::SettingsWindow(BWindow* parent)
 	fSelectedPreset(PRESET_CUSTOM)
 {
 	memset(fChannelEntries, 0, sizeof(fChannelEntries));
+	fAutoAddChat = NULL;
+	fAutoAddRepeater = NULL;
+	fAutoAddRoom = NULL;
+	fAutoAddSensor = NULL;
+	fAutoAddOverwrite = NULL;
 	fVarListView = NULL;
 	fVarNameControl = NULL;
 	fVarValueControl = NULL;
@@ -274,6 +280,32 @@ SettingsWindow::MessageReceived(BMessage* message)
 				break;
 			BMessage addMsg(MSG_ADD_CHANNEL);
 			fParent->PostMessage(&addMsg);
+			break;
+		}
+
+		case kMsgAutoAddChanged:
+		{
+			if (fParent == NULL)
+				break;
+			uint8 flags = 0;
+			if (fAutoAddChat != NULL
+				&& fAutoAddChat->Value() == B_CONTROL_ON)
+				flags |= AUTO_ADD_CHAT;
+			if (fAutoAddRepeater != NULL
+				&& fAutoAddRepeater->Value() == B_CONTROL_ON)
+				flags |= AUTO_ADD_REPEATER;
+			if (fAutoAddRoom != NULL
+				&& fAutoAddRoom->Value() == B_CONTROL_ON)
+				flags |= AUTO_ADD_ROOM;
+			if (fAutoAddSensor != NULL
+				&& fAutoAddSensor->Value() == B_CONTROL_ON)
+				flags |= AUTO_ADD_SENSOR;
+			if (fAutoAddOverwrite != NULL
+				&& fAutoAddOverwrite->Value() == B_CONTROL_ON)
+				flags |= AUTO_ADD_OVERWRITE_OLDEST;
+			BMessage setMsg(MSG_SET_AUTO_ADD_CONFIG);
+			setMsg.AddUInt8("flags", flags);
+			fParent->PostMessage(&setMsg);
 			break;
 		}
 
@@ -475,6 +507,18 @@ SettingsWindow::_BuildDeviceTab(BView* parent)
 	BButton* setPinButton = new BButton("set_pin",
 		"Set PIN", new BMessage(kMsgSetDevicePin));
 
+	// Auto-add contact configuration
+	fAutoAddChat = new BCheckBox("aa_chat", "Chat",
+		new BMessage(kMsgAutoAddChanged));
+	fAutoAddRepeater = new BCheckBox("aa_rep", "Repeater",
+		new BMessage(kMsgAutoAddChanged));
+	fAutoAddRoom = new BCheckBox("aa_room", "Room",
+		new BMessage(kMsgAutoAddChanged));
+	fAutoAddSensor = new BCheckBox("aa_sensor", "Sensor",
+		new BMessage(kMsgAutoAddChanged));
+	fAutoAddOverwrite = new BCheckBox("aa_overwrite",
+		"Overwrite oldest", new BMessage(kMsgAutoAddChanged));
+
 	BStringView* infoLabel = new BStringView("info",
 		"Changes will be sent to the connected device.");
 	infoLabel->SetHighColor(kStatusOffline);
@@ -505,6 +549,17 @@ SettingsWindow::_BuildDeviceTab(BView* parent)
 		.AddGroup(B_HORIZONTAL, B_USE_DEFAULT_SPACING)
 			.Add(fDevicePinControl)
 			.Add(setPinButton)
+		.End()
+		.Add(new BSeparatorView(B_HORIZONTAL))
+		.AddGroup(B_VERTICAL, B_USE_SMALL_SPACING)
+			.Add(new BStringView("aa_label", "Auto-Add Contacts:"))
+			.AddGroup(B_HORIZONTAL, B_USE_SMALL_SPACING)
+				.Add(fAutoAddChat)
+				.Add(fAutoAddRepeater)
+				.Add(fAutoAddRoom)
+				.Add(fAutoAddSensor)
+			.End()
+			.Add(fAutoAddOverwrite)
 		.End()
 		.AddStrut(B_USE_HALF_ITEM_SPACING)
 		.Add(infoLabel)
@@ -1065,4 +1120,28 @@ SettingsWindow::SetCustomVars(const char* varsText)
 			fVarListView->AddItem(new BStringItem(pair.String()));
 		start = comma + 1;
 	}
+}
+
+
+void
+SettingsWindow::SetAutoAddConfig(uint8 flags)
+{
+	if (fAutoAddChat != NULL)
+		fAutoAddChat->SetValue(
+			(flags & AUTO_ADD_CHAT) != 0 ? B_CONTROL_ON : B_CONTROL_OFF);
+	if (fAutoAddRepeater != NULL)
+		fAutoAddRepeater->SetValue(
+			(flags & AUTO_ADD_REPEATER) != 0
+				? B_CONTROL_ON : B_CONTROL_OFF);
+	if (fAutoAddRoom != NULL)
+		fAutoAddRoom->SetValue(
+			(flags & AUTO_ADD_ROOM) != 0 ? B_CONTROL_ON : B_CONTROL_OFF);
+	if (fAutoAddSensor != NULL)
+		fAutoAddSensor->SetValue(
+			(flags & AUTO_ADD_SENSOR) != 0
+				? B_CONTROL_ON : B_CONTROL_OFF);
+	if (fAutoAddOverwrite != NULL)
+		fAutoAddOverwrite->SetValue(
+			(flags & AUTO_ADD_OVERWRITE_OLDEST) != 0
+				? B_CONTROL_ON : B_CONTROL_OFF);
 }

@@ -77,6 +77,9 @@ const uint8 CMD_SEND_BINARY_REQ = 50;
 const uint8 CMD_FACTORY_RESET = 51;
 const uint8 CMD_SEND_CONTROL_DATA = 55;
 const uint8 CMD_GET_STATS = 56;
+const uint8 CMD_SEND_ANON_REQ = 57;
+const uint8 CMD_SET_AUTO_ADD_CONFIG = 58;
+const uint8 CMD_GET_AUTO_ADD_CONFIG = 59;
 const uint8 CMD_GET_ALLOWED_REPEAT_FREQ = 60;
 
 // =============================================================================
@@ -103,7 +106,15 @@ const uint8 RSP_CUSTOM_VARS = 21;
 const uint8 RSP_ADVERT_PATH = 22;
 const uint8 RSP_TUNING_PARAMS = 23;
 const uint8 RSP_STATS = 24;
+const uint8 RSP_AUTO_ADD_CONFIG = 25;
 const uint8 RSP_ALLOWED_REPEAT_FREQ = 26;
+
+// Auto-add config flags (bitfield for CMD_SET/GET_AUTO_ADD_CONFIG)
+const uint8 AUTO_ADD_OVERWRITE_OLDEST = 0x01;
+const uint8 AUTO_ADD_CHAT = 0x02;
+const uint8 AUTO_ADD_REPEATER = 0x04;
+const uint8 AUTO_ADD_ROOM = 0x08;
+const uint8 AUTO_ADD_SENSOR = 0x10;
 
 // =============================================================================
 // MeshCore Companion Protocol - Push Notifications (Radio -> App, unsolicited)
@@ -397,6 +408,9 @@ enum {
 	// Custom variables
 	MSG_GET_CUSTOM_VARS = 'gcvr',
 	MSG_SET_CUSTOM_VAR = 'scvr',
+
+	// Auto-add config
+	MSG_SET_AUTO_ADD_CONFIG = 'saac',
 
 	// Channel management
 	MSG_ADD_CHANNEL = 'achn',

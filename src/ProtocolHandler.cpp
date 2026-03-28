@@ -801,6 +801,31 @@ ProtocolHandler::SendControlData(uint8 subType, const uint8* ctrlPayload,
 
 
 status_t
+ProtocolHandler::SendGetAutoAddConfig()
+{
+	if (!IsConnected())
+		return B_NOT_INITIALIZED;
+
+	uint8 payload[1];
+	payload[0] = CMD_GET_AUTO_ADD_CONFIG;
+	return fSerial->SendFrame(payload, 1);
+}
+
+
+status_t
+ProtocolHandler::SendSetAutoAddConfig(uint8 flags)
+{
+	if (!IsConnected())
+		return B_NOT_INITIALIZED;
+
+	uint8 payload[2];
+	payload[0] = CMD_SET_AUTO_ADD_CONFIG;
+	payload[1] = flags;
+	return fSerial->SendFrame(payload, 2);
+}
+
+
+status_t
 ProtocolHandler::SendGetAllowedRepeatFreq()
 {
 	if (!IsConnected())
