@@ -224,6 +224,7 @@ static const bigtime_t kSendTimeouts[] = {
 	15000000, 30000000, 60000000
 };
 static const bigtime_t kConfirmCleanup = 120000000;      // 2 minutes: remove SENT from queue
+static const bigtime_t kLateAckGrace = 30000000;         // 30s: late ACK grace
 static const int kMaxRetryAttempts = 3;
 static const int kMaxSimultaneousPending = 3;
 
@@ -4573,12 +4574,14 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 					(unsigned long)roundTripMs);
 			_LogMessage("OK", logMsg.String());
 
-			// Find first pending message that has RSP_SENT (FIFO)
+			// Find first pending message eligible for confirmation
+			// (has RSP_SENT or is in late-ACK grace period)
 			PendingMessage* pending = NULL;
 			int32 pendingIdx = -1;
 			for (int32 i = 0; i < fPendingMessages.CountItems(); i++) {
 				PendingMessage* p = fPendingMessages.ItemAt(i);
-				if (p != NULL && p->gotRspSent) {
+				if (p != NULL
+					&& (p->gotRspSent || p->inGracePeriod)) {
 					pending = p;
 					pendingIdx = i;
 					break;
@@ -6943,9 +6946,11 @@ MainWindow::_HandleCmdErr(const uint8* data, size_t length)
 	_LogMessage("ERROR", msg);
 
 	// If there's a pending message waiting for RSP_SENT, this error is for it
+	// (skip messages in grace period — those are waiting for late ACK, not RSP_SENT)
 	for (int32 i = 0; i < fPendingMessages.CountItems(); i++) {
 		PendingMessage* pending = fPendingMessages.ItemAt(i);
-		if (pending != NULL && !pending->gotRspSent) {
+		if (pending != NULL && !pending->gotRspSent
+			&& !pending->inGracePeriod) {
 			if (pending->attemptCount < kMaxRetryAttempts) {
 				_RetryMessage(pending);
 			} else {
@@ -7003,13 +7008,26 @@ MainWindow::_CheckDeliveryTimeouts()
 			timeoutIdx = 2;
 		bigtime_t timeout = kSendTimeouts[timeoutIdx];
 
+		// Grace period: wait for late ACK after all retries exhausted
+		if (pending->inGracePeriod) {
+			bigtime_t graceElapsed = now - pending->graceStartTime;
+			if (graceElapsed > kLateAckGrace) {
+				_FailMessage(pending);
+				delete fPendingMessages.RemoveItemAt(i);
+			}
+			continue;
+		}
+
 		if (!pending->gotRspSent && elapsed > timeout) {
-			// No RSP_SENT after timeout — retry or fail
+			// No RSP_SENT after timeout — retry or enter grace
 			if (pending->attemptCount < kMaxRetryAttempts) {
 				_RetryMessage(pending);
 			} else {
-				_FailMessage(pending);
-				delete fPendingMessages.RemoveItemAt(i);
+				// Enter grace period instead of failing immediately
+				pending->inGracePeriod = true;
+				pending->graceStartTime = now;
+				_LogMessage("INFO", "Max retries reached — "
+					"waiting 30s for late ACK");
 			}
 		} else if (pending->gotRspSent && elapsed > kConfirmCleanup) {
 			// Got RSP_SENT but no CONFIRMED after 2 minutes

@@ -68,11 +68,14 @@ struct PendingMessage {
 	uint8		attemptCount;		// Current attempt (1-based)
 	bigtime_t	sentTime;			// system_time() when sent
 	bool		gotRspSent;			// True after RSP_SENT received
+	bool		inGracePeriod;		// True = waiting for late ACK after max retries
+	bigtime_t	graceStartTime;		// system_time() when grace period started
 	int32		chatViewIndex;		// Index in ChatView (-1 if not visible)
 
 	PendingMessage()
 		: timestamp(0), txtType(0), attemptCount(1), sentTime(0),
-		  gotRspSent(false), chatViewIndex(-1) {
+		  gotRspSent(false), inGracePeriod(false), graceStartTime(0),
+		  chatViewIndex(-1) {
 		memset(contactKey, 0, sizeof(contactKey));
 		memset(pubKey, 0, sizeof(pubKey));
 		memset(text, 0, sizeof(text));
