@@ -193,6 +193,8 @@ SmazDecompress(const char* in, int inlen, char* out, int outlen)
 
 	while (inlen > 0) {
 		if (*c == 254) {
+			if (inlen < 2)
+				return _outlen + 1;
 			if (outlen < 1)
 				return _outlen + 1;
 			*out = (char)*(c + 1);
@@ -201,7 +203,11 @@ SmazDecompress(const char* in, int inlen, char* out, int outlen)
 			c += 2;
 			inlen -= 2;
 		} else if (*c == 255) {
+			if (inlen < 2)
+				return _outlen + 1;
 			int len = (int)*(c + 1) + 1;
+			if (inlen < 2 + len)
+				return _outlen + 1;
 			if (outlen < len)
 				return _outlen + 1;
 			memcpy(out, c + 2, len);
