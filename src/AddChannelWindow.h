@@ -2,7 +2,7 @@
  * Copyright 2025, Sestriere Authors
  * All rights reserved. Distributed under the terms of the MIT license.
  *
- * AddChannelWindow.h — Dialog for adding a private channel
+ * AddChannelWindow.h — Dialog for adding/joining a channel
  */
 
 #ifndef ADDCHANNELWINDOW_H
@@ -11,6 +11,7 @@
 #include <Window.h>
 
 class BButton;
+class BRadioButton;
 class BTextControl;
 
 
@@ -24,11 +25,15 @@ public:
 
 private:
 			void			_OnAdd();
+			void			_UpdatePskField();
 
 			BWindow*		fParent;
 			BTextControl*	fNameControl;
+			BTextControl*	fPskControl;
+			BRadioButton*	fModeJoin;
+			BRadioButton*	fModeCreate;
 			BButton*		fAddButton;
 			BButton*		fCancelButton;
 };
 
-#endif // ADDCHANNELWINDOW_H
+#endif	// ADDCHANNELWINDOW_H

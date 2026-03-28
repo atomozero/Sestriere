@@ -46,6 +46,7 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <stdlib.h>
 
 #include "AddChannelWindow.h"
 #include "ChatHeaderView.h"
@@ -2545,9 +2546,32 @@ MainWindow::MessageReceived(BMessage* message)
 				break;
 			}
 
-			// Generate PSK by hashing the channel name with SHA-256
+			// Determine PSK based on mode
 			uint8 secret[16];
-			{
+			const char* pskHex;
+			bool randomPsk = false;
+			message->FindBool("random_psk", &randomPsk);
+
+			if (message->FindString("psk_hex", &pskHex) == B_OK
+				&& pskHex[0] != '\0') {
+				// Join mode: parse user-provided hex PSK
+				memset(secret, 0, sizeof(secret));
+				size_t hexLen = strlen(pskHex);
+				size_t byteCount = hexLen / 2;
+				if (byteCount > 16)
+					byteCount = 16;
+				for (size_t i = 0; i < byteCount; i++) {
+					unsigned int byte;
+					if (sscanf(pskHex + i * 2, "%2x", &byte) == 1)
+						secret[i] = (uint8)byte;
+				}
+			} else if (randomPsk) {
+				// Create mode: generate random 16-byte PSK
+				srand48(real_time_clock_usecs());
+				for (int32 i = 0; i < 16; i++)
+					secret[i] = (uint8)(lrand48() & 0xFF);
+			} else {
+				// Legacy fallback: hash channel name
 				SHA256 hash;
 				hash.Update(name, strlen(name));
 				const uint8* digest = hash.Digest();
