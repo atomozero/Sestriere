@@ -493,6 +493,10 @@ ChatView::AddMessage(const ChatMessage& message, const char* senderName)
 		Window()->PostMessage(&dlMsg);
 	}
 
+	// Start GIF animation timer if frames were loaded from cache
+	if (item->IsGifMessage() && item->GifFrameCount() > 1)
+		StartGifAnimation();
+
 	// Request emoji downloads for any emoji in the message text
 	if (!item->IsGifMessage() && !item->IsImageMessage())
 		EmojiRenderer::RequestEmoji(message.text, this);
