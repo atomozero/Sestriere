@@ -356,6 +356,7 @@ MainWindow::MainWindow()
 	fContacts(20),
 	fOldContacts(20),
 	fSyncingContacts(false),
+	fContactsSince(0),
 	fSyncingMessages(false),
 	fChannels(10),
 	fMaxChannels(0),
@@ -1108,7 +1109,7 @@ MainWindow::MessageReceived(BMessage* message)
 
 		case MSG_SYNC_CONTACTS:
 			fSyncingContacts = true;
-			fProtocol->SendGetContacts();
+			fProtocol->SendGetContacts(fContactsSince);
 			break;
 
 		case MSG_SEND_ADVERT:
@@ -1832,7 +1833,7 @@ MainWindow::MessageReceived(BMessage* message)
 			if (fConnected) {
 				_LogMessage("INFO", "Auto-syncing contacts after new node discovery");
 				fSyncingContacts = true;
-				fProtocol->SendGetContacts();
+				fProtocol->SendGetContacts(fContactsSince);
 			}
 			break;
 		}
@@ -4340,7 +4341,7 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			// Path changed: re-sync contacts to get fresh outPath data
 			if (fConnected && !fSyncingContacts) {
 				fSyncingContacts = true;
-				fProtocol->SendGetContacts();
+				fProtocol->SendGetContacts(fContactsSince);
 			}
 			break;
 		case PUSH_TRACE_DATA:
@@ -4879,6 +4880,14 @@ void
 MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 {
 	fSyncingContacts = false;
+
+	// Extract most_recent_lastmod for incremental sync
+	if (length >= 5) {
+		fContactsSince = (uint32)data[1]
+			| ((uint32)data[2] << 8)
+			| ((uint32)data[3] << 16)
+			| ((uint32)data[4] << 24);
+	}
 
 	// Clean up any remaining old contacts that weren't matched
 	fOldContacts.MakeEmpty();
@@ -6333,7 +6342,7 @@ MainWindow::_HandlePushLoginResult(const uint8* data, size_t length)
 		}
 
 		fSyncingContacts = true;
-		fProtocol->SendGetContacts();
+		fProtocol->SendGetContacts(fContactsSince);
 		fProtocol->SendGetBattery();
 		fProtocol->SendGetStats();
 
@@ -6753,6 +6762,7 @@ MainWindow::_OnDisconnected()
 	// --- Multi-companion: clear all state for clean reconnect ---
 	fContacts.MakeEmpty();
 	fOldContacts.MakeEmpty();
+	fContactsSince = 0;
 	_UpdateContactList();
 	fChatView->ClearMessages();
 	fInfoPanel->Clear();

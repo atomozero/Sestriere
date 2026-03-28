@@ -27,7 +27,7 @@ public:
 		status_t		SendAppStart();
 		status_t		SendDeviceQuery();
 		status_t		SendExportSelf();
-		status_t		SendGetContacts();
+		status_t		SendGetContacts(uint32 since = 0);
 		status_t		SendSelfAdvert();
 		status_t		SendSyncNextMessage();
 

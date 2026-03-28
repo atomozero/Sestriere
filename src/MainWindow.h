@@ -309,6 +309,7 @@ private:
 			OwningObjectList<ContactInfo>	fContacts;
 			OwningObjectList<ContactInfo>	fOldContacts;  // Temp storage during sync
 			bool			fSyncingContacts;
+			uint32			fContactsSince;
 			bool			fSyncingMessages;
 
 			// Channels (all channels including Public at index 0)

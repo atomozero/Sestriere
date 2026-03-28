@@ -85,10 +85,21 @@ ProtocolHandler::SendExportSelf()
 
 
 status_t
-ProtocolHandler::SendGetContacts()
+ProtocolHandler::SendGetContacts(uint32 since)
 {
 	if (!IsConnected())
 		return B_NOT_INITIALIZED;
+
+	if (since != 0) {
+		// Incremental sync: send 'since' timestamp
+		uint8 payload[5];
+		payload[0] = CMD_GET_CONTACTS;
+		payload[1] = since & 0xFF;
+		payload[2] = (since >> 8) & 0xFF;
+		payload[3] = (since >> 16) & 0xFF;
+		payload[4] = (since >> 24) & 0xFF;
+		return fSerial->SendFrame(payload, sizeof(payload));
+	}
 
 	uint8 payload[1];
 	payload[0] = CMD_GET_CONTACTS;
