@@ -34,6 +34,7 @@ public:
 			void			UpdateDeliveryStatus(int32 index, uint8 status,
 								uint32 rtt = 0, uint8 retryCount = 0);
 			void			ClearMessages();
+			void			InvalidateMessage(int32 index);
 
 			void			SetCurrentContact(ContactInfo* contact);
 			ContactInfo*	CurrentContact() const { return fCurrentContact; }

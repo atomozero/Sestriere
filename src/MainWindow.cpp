@@ -50,6 +50,7 @@
 
 #include "AddChannelWindow.h"
 #include "LoSAnalysis.h"
+#include "Reactions.h"
 #include "Smaz.h"
 #include "ChatHeaderView.h"
 #include "ChatView.h"
@@ -2439,6 +2440,67 @@ MainWindow::MessageReceived(BMessage* message)
 				fSettingsWindow->UnlockLooper();
 			}
 			_LogMessage("OK", "Public channel added (slot 0)");
+			break;
+		}
+
+		case MSG_SEND_REACTION:
+		{
+			uint32 timestamp;
+			const char* text;
+			int8 emojiIdx;
+			if (message->FindUInt32("timestamp", &timestamp) != B_OK
+				|| message->FindString("text", &text) != B_OK
+				|| message->FindInt8("emoji_idx", &emojiIdx) != B_OK)
+				break;
+
+			// Compute hash based on context (DM vs channel)
+			const char* senderName = NULL;
+			if (fSendingToChannel) {
+				// For channel, need original sender name
+				bool isOutgoing = false;
+				message->FindBool("is_outgoing", &isOutgoing);
+				if (isOutgoing) {
+					senderName = fDeviceName;
+				} else {
+					// Find sender from the message's pubkey
+					for (int32 ci = 0;
+						ci < fChannels.CountItems(); ci++) {
+						ChannelInfo* ch = fChannels.ItemAt(ci);
+						if (ch == NULL
+							|| ch->index
+								!= (uint8)fSelectedChannelIdx)
+							continue;
+						for (int32 mi =
+							ch->messages.CountItems() - 1;
+							mi >= 0; mi--) {
+							ChatMessage* msg =
+								ch->messages.ItemAt(mi);
+							if (msg != NULL
+								&& msg->timestamp == timestamp
+								&& strcmp(msg->text, text) == 0) {
+								ContactInfo* s =
+									_FindContactByPrefix(
+										msg->pubKeyPrefix,
+										kPubKeyPrefixSize);
+								if (s != NULL)
+									senderName = s->name;
+								break;
+							}
+						}
+						break;
+					}
+				}
+			}
+
+			uint16 hash = ComputeReactionHash(timestamp,
+				senderName, text);
+			char reactionMsg[10];
+			if (!FormatReaction(reactionMsg, sizeof(reactionMsg),
+					hash, (uint8)emojiIdx))
+				break;
+
+			// Send as a regular message
+			_SendTextMessage(reactionMsg);
 			break;
 		}
 
@@ -5488,6 +5550,32 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 		}
 	}
 
+	// Handle reaction messages (DM: senderName=NULL)
+	uint16 reactionHash;
+	const char* reactionEmoji = ParseReaction(text, &reactionHash);
+	if (reactionEmoji != NULL) {
+		// Find target message by hash and apply reaction
+		ContactInfo* sender = _FindContactByPrefix(pubKeyPrefix,
+			kPubKeyPrefixSize);
+		if (sender != NULL) {
+			for (int32 i = sender->messages.CountItems() - 1;
+				i >= 0; i--) {
+				ChatMessage* msg = sender->messages.ItemAt(i);
+				if (msg == NULL)
+					continue;
+				uint16 msgHash = ComputeReactionHash(
+					msg->timestamp, NULL, msg->text);
+				if (msgHash == reactionHash) {
+					_AddReactionToMessage(msg, reactionEmoji);
+					fChatView->InvalidateMessage(i);
+					break;
+				}
+			}
+		}
+		fProtocol->SendSyncNextMessage();
+		return;
+	}
+
 	// Skip self-echo: radio sometimes echoes our own sent messages back
 	// as incoming DMs. Ignore to prevent duplicate display and
 	// self-fetching of IE2/VE2 media envelopes.
@@ -5805,6 +5893,42 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 					sizeof(messageText));
 			}
 		}
+	}
+
+	// Handle reaction messages (channel: senderName included in hash)
+	uint16 reactionHash;
+	const char* reactionEmoji = ParseReaction(messageText, &reactionHash);
+	if (reactionEmoji != NULL) {
+		// Find target message in this channel
+		for (int32 ci = 0; ci < fChannels.CountItems(); ci++) {
+			ChannelInfo* ch = fChannels.ItemAt(ci);
+			if (ch == NULL || ch->index != channelIdx)
+				continue;
+			for (int32 mi = ch->messages.CountItems() - 1;
+				mi >= 0; mi--) {
+				ChatMessage* msg = ch->messages.ItemAt(mi);
+				if (msg == NULL)
+					continue;
+				// For channel msgs, we need the sender name
+				// from the original message
+				ContactInfo* origSender = _FindContactByPrefix(
+					msg->pubKeyPrefix, kPubKeyPrefixSize);
+				const char* origName = (origSender != NULL)
+					? origSender->name : NULL;
+				uint16 msgHash = ComputeReactionHash(
+					msg->timestamp, origName, msg->text);
+				if (msgHash == reactionHash) {
+					_AddReactionToMessage(msg, reactionEmoji);
+					if (fSendingToChannel
+						&& fSelectedChannelIdx == (int32)channelIdx)
+						fChatView->InvalidateMessage(mi);
+					break;
+				}
+			}
+			break;
+		}
+		fProtocol->SendSyncNextMessage();
+		return;
 	}
 
 	// Sanitize timestamp from sender's clock
@@ -6869,6 +6993,59 @@ MainWindow::_CheckDeliveryTimeouts()
 	// Stop timer if queue is empty
 	if (fPendingMessages.CountItems() == 0)
 		_StopDeliveryTimer();
+}
+
+
+void
+MainWindow::_AddReactionToMessage(ChatMessage* msg, const char* emoji)
+{
+	if (msg == NULL || emoji == NULL)
+		return;
+
+	// Parse existing reactions: "emoji:count,emoji:count,..."
+	// Increment count for this emoji, or add new entry
+	char newReactions[128];
+	bool found = false;
+
+	if (msg->reactions[0] != '\0') {
+		// Copy and modify existing reactions
+		char temp[128];
+		strlcpy(temp, msg->reactions, sizeof(temp));
+		newReactions[0] = '\0';
+
+		char* saveptr;
+		char* token = strtok_r(temp, ",", &saveptr);
+		while (token != NULL) {
+			char* colon = strrchr(token, ':');
+			if (colon != NULL) {
+				*colon = '\0';
+				int count = atoi(colon + 1);
+				if (strcmp(token, emoji) == 0) {
+					count++;
+					found = true;
+				}
+				char entry[32];
+				snprintf(entry, sizeof(entry), "%s%s:%d",
+					newReactions[0] != '\0' ? "," : "",
+					token, count);
+				strlcat(newReactions, entry,
+					sizeof(newReactions));
+				*colon = ':';  // restore
+			}
+			token = strtok_r(NULL, ",", &saveptr);
+		}
+	} else {
+		newReactions[0] = '\0';
+	}
+
+	if (!found) {
+		char entry[32];
+		snprintf(entry, sizeof(entry), "%s%s:1",
+			newReactions[0] != '\0' ? "," : "", emoji);
+		strlcat(newReactions, entry, sizeof(newReactions));
+	}
+
+	strlcpy(msg->reactions, newReactions, sizeof(msg->reactions));
 }
 
 

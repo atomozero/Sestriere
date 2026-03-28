@@ -406,6 +406,7 @@ enum {
 	// Message management
 	MSG_DELETE_MESSAGE = 'dlms',
 	MSG_CLEAR_CHAT = 'clch',
+	MSG_SEND_REACTION = 'srct',
 };
 
 // =============================================================================

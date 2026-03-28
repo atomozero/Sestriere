@@ -209,6 +209,10 @@ private:
 			void			_LoadContactGroups();
 			void			_RefreshContactList();
 
+			// Reactions
+			void			_AddReactionToMessage(ChatMessage* msg,
+								const char* emoji);
+
 			// Nearest repeater calculation
 			void			_UpdateNearestRepeater();
 

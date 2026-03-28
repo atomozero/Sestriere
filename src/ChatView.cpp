@@ -116,6 +116,26 @@ ChatView::MouseDown(BPoint where)
 				saveMsg));
 		}
 
+		// React submenu with quick emoji
+		BMenu* reactMenu = new BMenu("React");
+		static const char* kQuickReactions[] = {
+			"\xF0\x9F\x91\x8D", "\xF0\x9F\x98\x82",
+			"\xF0\x9F\x98\x8D", "\xF0\x9F\x98\xA4",
+			"\xF0\x9F\x98\xA2", "\xF0\x9F\x91\x8E"
+		};
+		static const uint8 kQuickIndices[] = {
+			0x3f, 0x02, 0x00, 0x05, 0x2d, 0x40
+		};
+		for (int r = 0; r < 6; r++) {
+			BMessage* reactMsg = new BMessage(MSG_SEND_REACTION);
+			reactMsg->AddInt32("index", index);
+			reactMsg->AddInt8("emoji_idx", kQuickIndices[r]);
+			reactMenu->AddItem(new BMenuItem(
+				kQuickReactions[r], reactMsg));
+		}
+		reactMenu->SetTargetForItems(this);
+		menu->AddItem(reactMenu);
+
 		menu->AddSeparatorItem();
 		BMessage* deleteMsg = new BMessage(MSG_DELETE_MESSAGE);
 		deleteMsg->AddInt32("index", index);
@@ -309,6 +329,26 @@ ChatView::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_SEND_REACTION:
+		{
+			int32 index;
+			int8 emojiIdx;
+			if (message->FindInt32("index", &index) != B_OK
+				|| message->FindInt8("emoji_idx", &emojiIdx) != B_OK)
+				break;
+			MessageView* item = dynamic_cast<MessageView*>(ItemAt(index));
+			if (item == NULL)
+				break;
+			// Forward to MainWindow
+			BMessage fwd(MSG_SEND_REACTION);
+			fwd.AddUInt32("timestamp", item->Timestamp());
+			fwd.AddString("text", item->Text());
+			fwd.AddInt8("emoji_idx", emojiIdx);
+			fwd.AddBool("is_outgoing", item->IsOutgoing());
+			Window()->PostMessage(&fwd);
+			break;
+		}
+
 		case MSG_DELETE_MESSAGE:
 		{
 			int32 index;
@@ -425,6 +465,14 @@ ChatView::UpdateDeliveryStatus(int32 index, uint8 status, uint32 rtt,
 
 	item->SetDeliveryStatus(status, rtt, retryCount);
 	InvalidateItem(index);
+}
+
+
+void
+ChatView::InvalidateMessage(int32 index)
+{
+	if (index >= 0 && index < CountItems())
+		InvalidateItem(index);
 }
 
 

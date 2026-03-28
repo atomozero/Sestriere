@@ -80,6 +80,7 @@ struct ChatMessage {
 	uint32	roundTripMs;		// Round-trip time from PUSH_SEND_CONFIRMED
 	uint8	txtType;			// 0=plain, 1=CLI data
 	uint8	retryCount;			// Number of retry attempts (0 = first try)
+	char	reactions[128];		// "emoji:count,emoji:count,..." or empty
 
 	ChatMessage() : pathLen(kPathLenDirect), snr(0), timestamp(0),
 					isOutgoing(false), isChannel(false),
@@ -87,6 +88,7 @@ struct ChatMessage {
 					txtType(0), retryCount(0) {
 		memset(pubKeyPrefix, 0, sizeof(pubKeyPrefix));
 		memset(text, 0, sizeof(text));
+		memset(reactions, 0, sizeof(reactions));
 	}
 };
 
