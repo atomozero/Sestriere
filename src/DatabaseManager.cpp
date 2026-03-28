@@ -367,8 +367,9 @@ DatabaseManager::DeleteMessage(const char* contactKeyHex,
 		return false;
 
 	const char* sql =
-		"DELETE FROM messages WHERE contact_key = ? AND companion_key = ? "
-		"AND timestamp = ? AND text = ? LIMIT 1";
+		"DELETE FROM messages WHERE rowid = ("
+		"SELECT rowid FROM messages WHERE contact_key = ? AND companion_key = ? "
+		"AND timestamp = ? AND text = ? LIMIT 1)";
 
 	sqlite3_stmt* stmt = NULL;
 	if (sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL) != SQLITE_OK)
