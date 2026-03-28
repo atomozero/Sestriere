@@ -45,6 +45,9 @@ ProtocolHandler::IsConnected() const
 status_t
 ProtocolHandler::SendAppStart()
 {
+	if (!IsConnected())
+		return B_NOT_INITIALIZED;
+
 	// CMD_APP_START: [0]=code [1]=app_ver [2-7]=reserved [8+]=app_name
 	uint8 payload[32];
 	memset(payload, 0, sizeof(payload));
