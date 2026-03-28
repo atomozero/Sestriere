@@ -375,7 +375,7 @@ DatabaseManager::DeleteMessage(const char* contactKeyHex,
 		return false;
 
 	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
-	sqlite3_bind_text(stmt, 2, fCompanionKey.String(), -1, SQLITE_TRANSIENT);
+	sqlite3_bind_text(stmt, 2, fCompanionKey, -1, SQLITE_TRANSIENT);
 	sqlite3_bind_int(stmt, 3, (int)timestamp);
 	sqlite3_bind_text(stmt, 4, text, -1, SQLITE_TRANSIENT);
 
@@ -400,7 +400,7 @@ DatabaseManager::DeleteMessagesForContact(const char* contactKeyHex)
 		return 0;
 
 	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
-	sqlite3_bind_text(stmt, 2, fCompanionKey.String(), -1, SQLITE_TRANSIENT);
+	sqlite3_bind_text(stmt, 2, fCompanionKey, -1, SQLITE_TRANSIENT);
 
 	int32 deleted = 0;
 	if (sqlite3_step(stmt) == SQLITE_DONE)
