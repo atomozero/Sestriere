@@ -324,7 +324,7 @@ MainWindow::MainWindow()
 	fShowRooms(NULL),
 	fContactList(NULL),
 	fContactScroll(NULL),
-	fChannelItem(NULL),
+	// fChannelItem removed
 	fSidebarDeviceLabel(NULL),
 	fChatHeader(NULL),
 	fChatView(NULL),
@@ -358,7 +358,7 @@ MainWindow::MainWindow()
 	fOldContacts(20),
 	fSyncingContacts(false),
 	fSyncingMessages(false),
-	fChannelMessages(50),
+	// fChannelMessages removed
 	fChannels(10),
 	fMaxChannels(0),
 	fChannelEnumIndex(0),
@@ -642,6 +642,11 @@ MainWindow::_BuildMenuBar()
 	contactMenu->AddItem(new BMenuItem("Import Contact" B_UTF8_ELLIPSIS,
 		new BMessage(MSG_SHOW_IMPORT_CONTACT)));
 	contactMenu->AddSeparatorItem();
+	contactMenu->AddItem(new BMenuItem("Add Public Channel",
+		new BMessage(MSG_ADD_PUBLIC_CHANNEL)));
+	contactMenu->AddItem(new BMenuItem("Add Channel" B_UTF8_ELLIPSIS,
+		new BMessage(MSG_ADD_CHANNEL)));
+	contactMenu->AddSeparatorItem();
 	contactMenu->AddItem(new BMenuItem("Export GPX" B_UTF8_ELLIPSIS,
 		new BMessage(MSG_EXPORT_GPX)));
 	contactMenu->AddSeparatorItem();
@@ -723,9 +728,8 @@ MainWindow::_BuildUI()
 	fContactList = new ContactListView("contacts");
 	fContactList->SetSelectionMessage(new BMessage(MSG_CONTACT_SELECTED));
 
-	// Add Public Channel as first item
-	fChannelItem = new ContactItem("Public Channel", true);
-	fContactList->AddItem(fChannelItem);
+	// Channels are added dynamically from device enumeration
+	// (no hardcoded "Public Channel" — see _FilterContacts)
 
 	fContactScroll = new BScrollView("contact_scroll", fContactList,
 		B_WILL_DRAW | B_FRAME_EVENTS, false, true, B_PLAIN_BORDER);
@@ -1858,23 +1862,11 @@ MainWindow::MessageReceived(BMessage* message)
 
 			BPopUpMenu* menu = new BPopUpMenu("context", false, false);
 
-			if (index == 0) {
-				// Public Channel context menu — offer "Add Channel"
-				menu->AddItem(new BMenuItem("Add Channel" B_UTF8_ELLIPSIS,
-					new BMessage(MSG_ADD_CHANNEL)));
-				// Mute/Unmute public channel
-				menu->AddSeparatorItem();
-				BMessage* muteMsg = new BMessage(MSG_CONTACT_MUTE_TOGGLE);
-				muteMsg->AddString("key_hex", "ch_public");
-				bool isMuted = _IsMuted("ch_public");
-				menu->AddItem(new BMenuItem(
-					isMuted ? "Unmute Channel" : "Mute Channel", muteMsg));
-			} else if (ctxItem->IsChannel() && ctxItem->ChannelIndex() >= 0) {
-				// Private channel context menu
+			if (ctxItem->IsChannel() && ctxItem->ChannelIndex() >= 0) {
+				// Channel context menu (all channels, including Public)
 				BMessage* removeMsg = new BMessage(MSG_REMOVE_CHANNEL);
 				removeMsg->AddInt32("channel_idx", ctxItem->ChannelIndex());
 				menu->AddItem(new BMenuItem("Remove Channel", removeMsg));
-				// Mute/Unmute private channel
 				menu->AddSeparatorItem();
 				char chKey[16];
 				snprintf(chKey, sizeof(chKey), "ch_%d",
@@ -1884,7 +1876,7 @@ MainWindow::MessageReceived(BMessage* message)
 				bool isMuted = _IsMuted(chKey);
 				menu->AddItem(new BMenuItem(
 					isMuted ? "Unmute" : "Mute", muteMsg));
-			} else {
+			} else if (!ctxItem->IsChannel()) {
 				// Contact context menu
 				char contactHex[kContactHexSize];
 				FormatContactKey(contactHex, ctxItem->GetContact().publicKey);
@@ -2333,7 +2325,7 @@ MainWindow::MessageReceived(BMessage* message)
 				// Reset selection if we were viewing this channel
 				if (fSelectedChannelIdx == chIdx) {
 					fSelectedChannelIdx = -1;
-					_SelectContact(0);  // Switch to Public Channel
+					fSendingToChannel = false;
 				}
 				_UpdateContactList();
 				// Refresh SettingsWindow channels tab
@@ -2357,13 +2349,62 @@ MainWindow::MessageReceived(BMessage* message)
 			}
 			if (fMaxChannels == 0) {
 				BAlert* alert = new BAlert("Error",
-					"Device does not support private channels.", "OK");
+					"Device does not support channels.", "OK");
 				alert->Go();
 				break;
 			}
 
 			AddChannelWindow* win = new AddChannelWindow(this);
 			win->Show();
+			break;
+		}
+
+		case MSG_ADD_PUBLIC_CHANNEL:
+		{
+			if (!fConnected) {
+				BAlert* alert = new BAlert("Error",
+					"Not connected to device.", "OK");
+				alert->Go();
+				break;
+			}
+			// Check if Public channel already exists
+			bool publicExists = false;
+			for (int32 i = 0; i < fChannels.CountItems(); i++) {
+				ChannelInfo* ch = fChannels.ItemAt(i);
+				if (ch != NULL && ch->index == 0) {
+					publicExists = true;
+					break;
+				}
+			}
+			if (publicExists) {
+				BAlert* alert = new BAlert("Info",
+					"Public channel is already in the channel list.",
+					"OK");
+				alert->Go();
+				break;
+			}
+			// Create Public channel at slot 0 with well-known PSK
+			if (fProtocol->SendSetChannel(0, "Public",
+					kPublicChannelPSK) != B_OK) {
+				_LogMessage("ERROR", "Failed to create Public channel");
+				break;
+			}
+			{
+				ChannelInfo* ch = new ChannelInfo();
+				ch->index = 0;
+				strlcpy(ch->name, "Public", sizeof(ch->name));
+				memcpy(ch->secret, kPublicChannelPSK, 16);
+				fChannels.AddItem(ch);
+			}
+			_UpdateContactList();
+
+			// Refresh SettingsWindow channels tab
+			if (fSettingsWindow != NULL
+				&& fSettingsWindow->LockLooper()) {
+				fSettingsWindow->SetChannels(fChannels, fMaxChannels);
+				fSettingsWindow->UnlockLooper();
+			}
+			_LogMessage("OK", "Public channel added (slot 0)");
 			break;
 		}
 
@@ -3597,58 +3638,9 @@ MainWindow::_SelectContact(int32 index)
 	ContactItem* selectedItem = dynamic_cast<ContactItem*>(
 		fContactList->ItemAt(index));
 
-	if (index == 0) {
-		// Public Channel selected
-		fSendingToChannel = true;
-		fSelectedChannelIdx = -1;  // -1 = public channel (idx 0 on wire)
-		fChatHeader->SetChannel(true);
-		fChatHeader->SetConsoleMode(false);
-		fChatView->SetCurrentContact(NULL);
-		fInfoPanel->SetChannel(true);
-
-		// Pass network stats to channel info panel
-		{
-			int32 totalContacts = fContacts.CountItems();
-			int32 onlineCount = 0;
-			uint32 now = (uint32)time(NULL);
-			for (int32 i = 0; i < totalContacts; i++) {
-				ContactInfo* c = fContacts.ItemAt(i);
-				if (c != NULL && c->lastSeen > 0
-					&& (now - c->lastSeen) < 300)
-					onlineCount++;
-			}
-			fInfoPanel->SetChannelStats(totalContacts, onlineCount);
-		}
-		_ShowAdminToolbar(false);
-		fMessageInput->SetEnabled(fConnected);
-		fSendButton->SetEnabled(fConnected);
-		fAttachButton->SetEnabled(fConnected);
-		fGifButton->SetEnabled(fConnected);
-		fVoiceButton->SetEnabled(fConnected && fAudioEngine != NULL);
-
-		// Load channel message history
-		fChatView->ClearMessages();
-		for (int32 i = 0; i < fChannelMessages.CountItems(); i++) {
-			ChatMessage* msg = fChannelMessages.ItemAt(i);
-			if (msg != NULL) {
-				const char* senderName = msg->isOutgoing ? "Me" : "Channel";
-				// Try to find sender name
-				if (!msg->isOutgoing) {
-					ContactInfo* sender = _FindContactByPrefix(msg->pubKeyPrefix, 6);
-					if (sender != NULL)
-						senderName = sender->name;
-				}
-				fChatView->AddMessage(*msg, senderName);
-			}
-		}
-
-		// Clear unread badge
-		fChannelItem->ClearUnread();
-		fContactList->InvalidateItem(0);
-
-	} else if (selectedItem != NULL && selectedItem->IsChannel()
+	if (selectedItem != NULL && selectedItem->IsChannel()
 		&& selectedItem->ChannelIndex() >= 0) {
-		// Private channel selected
+		// Channel selected (all channels handled uniformly)
 		fSendingToChannel = true;
 		fSelectedChannelIdx = selectedItem->ChannelIndex();
 
@@ -3667,9 +3659,24 @@ MainWindow::_SelectContact(int32 index)
 		else
 			headerName.SetToFormat("#%s", ch ? ch->name : "Channel");
 		fChatHeader->SetChannelName(headerName.String());
+		fChatHeader->SetChannel(true);
 		fChatHeader->SetConsoleMode(false);
 		fChatView->SetCurrentContact(NULL);
 		fInfoPanel->SetChannel(true);
+
+		// Pass network stats to channel info panel
+		{
+			int32 totalContacts = fContacts.CountItems();
+			int32 onlineCount = 0;
+			uint32 now = (uint32)time(NULL);
+			for (int32 ci = 0; ci < totalContacts; ci++) {
+				ContactInfo* c = fContacts.ItemAt(ci);
+				if (c != NULL && c->lastSeen > 0
+					&& (now - c->lastSeen) < 300)
+					onlineCount++;
+			}
+			fInfoPanel->SetChannelStats(totalContacts, onlineCount);
+		}
 		_ShowAdminToolbar(false);
 		fMessageInput->SetEnabled(fConnected);
 		fSendButton->SetEnabled(fConnected);
@@ -3677,16 +3684,16 @@ MainWindow::_SelectContact(int32 index)
 		fGifButton->SetEnabled(fConnected);
 		fVoiceButton->SetEnabled(fConnected && fAudioEngine != NULL);
 
-		// Load private channel message history
+		// Load channel message history
 		fChatView->ClearMessages();
 		if (ch != NULL) {
-			for (int32 i = 0; i < ch->messages.CountItems(); i++) {
-				ChatMessage* msg = ch->messages.ItemAt(i);
+			for (int32 mi = 0; mi < ch->messages.CountItems(); mi++) {
+				ChatMessage* msg = ch->messages.ItemAt(mi);
 				if (msg != NULL) {
 					const char* senderName = msg->isOutgoing ? "Me" : "Channel";
 					if (!msg->isOutgoing) {
 						ContactInfo* sender = _FindContactByPrefix(
-							msg->pubKeyPrefix, 6);
+							msg->pubKeyPrefix, kPubKeyPrefixSize);
 						if (sender != NULL)
 							senderName = sender->name;
 					}
@@ -3699,7 +3706,7 @@ MainWindow::_SelectContact(int32 index)
 		selectedItem->ClearUnread();
 		fContactList->InvalidateItem(index);
 
-	} else if (index > 0 && selectedItem != NULL && !selectedItem->IsChannel()) {
+	} else if (selectedItem != NULL && !selectedItem->IsChannel()) {
 		// Contact selected — find by pubkey (works correctly with filter)
 		fSendingToChannel = false;
 
@@ -3992,8 +3999,7 @@ MainWindow::_SendChannelMessage(const char* text)
 
 	_LogMessage("INFO", BString("Sending to channel: ") << text);
 
-	uint8 wireChannelIdx = (fSelectedChannelIdx >= 0)
-		? (uint8)fSelectedChannelIdx : 0;
+	uint8 wireChannelIdx = (uint8)fSelectedChannelIdx;
 	uint32 timestamp = (uint32)time(NULL);
 	status_t sendResult = fProtocol->SendChannelMsg(wireChannelIdx,
 		timestamp, text, textLen);
@@ -4014,47 +4020,34 @@ MainWindow::_SendChannelMessage(const char* text)
 	outMsg.snr = 0;
 	outMsg.deliveryStatus = DELIVERY_SENT;
 
-	// Store message in appropriate channel list
+	// Store in channel's message list
 	ChatMessage* stored = new ChatMessage(outMsg);
-
-	if (fSelectedChannelIdx >= 0) {
-		// Private channel
-		bool added = false;
-		for (int32 i = 0; i < fChannels.CountItems(); i++) {
-			ChannelInfo* ch = fChannels.ItemAt(i);
-			if (ch->index == wireChannelIdx) {
-				ch->messages.AddItem(stored);
-				added = true;
-				break;
-			}
+	bool added = false;
+	for (int32 i = 0; i < fChannels.CountItems(); i++) {
+		ChannelInfo* ch = fChannels.ItemAt(i);
+		if (ch->index == wireChannelIdx) {
+			ch->messages.AddItem(stored);
+			added = true;
+			break;
 		}
-		if (!added)
-			delete stored;
-		BString dbKey;
-		dbKey.SetToFormat("channel_%d", wireChannelIdx);
-		DatabaseManager::Instance()->InsertMessage(dbKey.String(), outMsg);
-	} else {
-		// Public channel
-		fChannelMessages.AddItem(stored);
-		DatabaseManager::Instance()->InsertMessage("channel", outMsg);
 	}
+	if (!added)
+		delete stored;
+	BString dbKey;
+	dbKey.SetToFormat("channel_%d", wireChannelIdx);
+	DatabaseManager::Instance()->InsertMessage(dbKey.String(), outMsg);
 
 	// Display in chat
 	fChatView->AddMessage(outMsg, "Me");
 
 	// Update sidebar item preview
-	if (fSelectedChannelIdx < 0) {
-		fChannelItem->SetLastMessage(text, timestamp);
-		fContactList->InvalidateItem(0);
-	} else {
-		for (int32 i = 1; i < fContactList->CountItems(); i++) {
-			ContactItem* ci = dynamic_cast<ContactItem*>(fContactList->ItemAt(i));
-			if (ci != NULL && ci->IsChannel()
-				&& ci->ChannelIndex() == fSelectedChannelIdx) {
-				ci->SetLastMessage(text, timestamp);
-				fContactList->InvalidateItem(i);
-				break;
-			}
+	for (int32 i = 0; i < fContactList->CountItems(); i++) {
+		ContactItem* ci = dynamic_cast<ContactItem*>(fContactList->ItemAt(i));
+		if (ci != NULL && ci->IsChannel()
+			&& ci->ChannelIndex() == fSelectedChannelIdx) {
+			ci->SetLastMessage(text, timestamp);
+			fContactList->InvalidateItem(i);
+			break;
 		}
 	}
 }
@@ -5564,31 +5557,24 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 	ChatMessage* stored = new ChatMessage(chatMsg);
 	DatabaseManager* db = DatabaseManager::Instance();
 
-	// Store in appropriate channel list
-	if (channelIdx > 0) {
-		// Private channel
-		bool added = false;
-		for (int32 i = 0; i < fChannels.CountItems(); i++) {
-			ChannelInfo* ch = fChannels.ItemAt(i);
-			if (ch->index == channelIdx) {
-				ch->messages.AddItem(stored);
-				added = true;
-				break;
-			}
+	// Store in channel's message list (all channels, including public at idx 0)
+	bool added = false;
+	for (int32 i = 0; i < fChannels.CountItems(); i++) {
+		ChannelInfo* ch = fChannels.ItemAt(i);
+		if (ch->index == channelIdx) {
+			ch->messages.AddItem(stored);
+			added = true;
+			break;
 		}
-		if (added) {
-			BString dbKey;
-			dbKey.SetToFormat("channel_%d", channelIdx);
-			db->InsertMessage(dbKey.String(), chatMsg);
-		} else {
-			_LogMessage("WARN", BString().SetToFormat(
-				"Dropped message for unknown channel %d", channelIdx));
-			delete stored;
-		}
+	}
+	if (added) {
+		BString dbKey;
+		dbKey.SetToFormat("channel_%d", channelIdx);
+		db->InsertMessage(dbKey.String(), chatMsg);
 	} else {
-		// Public channel
-		fChannelMessages.AddItem(stored);
-		db->InsertMessage("channel", chatMsg);
+		_LogMessage("WARN", BString().SetToFormat(
+			"Dropped message for unknown channel %d", channelIdx));
+		delete stored;
 	}
 
 	// Check for VE2 voice envelope
@@ -5615,12 +5601,8 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 
 	// Determine if this channel is currently displayed
 	bool isCurrentChannel = false;
-	if (fSendingToChannel) {
-		if (channelIdx == 0 && fSelectedChannelIdx < 0)
-			isCurrentChannel = true;  // Viewing public, message is public
-		else if (channelIdx > 0 && fSelectedChannelIdx == (int32)channelIdx)
-			isCurrentChannel = true;  // Viewing this private channel
-	}
+	if (fSendingToChannel && fSelectedChannelIdx == (int32)channelIdx)
+		isCurrentChannel = true;
 
 	// Check for GIF message — only update ChatView if channel is displayed
 	if (isCurrentChannel && GiphyClient::IsGifMessage(messageText)) {
@@ -5679,31 +5661,20 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 
 	// Build channel mute key
 	char channelMuteKey[16];
-	if (channelIdx == 0)
-		strlcpy(channelMuteKey, "ch_public", sizeof(channelMuteKey));
-	else
-		snprintf(channelMuteKey, sizeof(channelMuteKey), "ch_%d",
-			(int)channelIdx);
+	snprintf(channelMuteKey, sizeof(channelMuteKey), "ch_%d",
+		(int)channelIdx);
 	bool channelMuted = _IsMuted(channelMuteKey);
 
-	// Update sidebar item
-	if (channelIdx == 0) {
-		fChannelItem->SetLastMessage(messageText, timestamp);
-		if (!isCurrentChannel && !channelMuted)
-			fChannelItem->IncrementUnread();
-		fContactList->InvalidateItem(0);
-	} else {
-		// Update private channel sidebar item
-		for (int32 i = 1; i < fContactList->CountItems(); i++) {
-			ContactItem* ci = dynamic_cast<ContactItem*>(fContactList->ItemAt(i));
-			if (ci != NULL && ci->IsChannel()
-				&& ci->ChannelIndex() == (int32)channelIdx) {
-				ci->SetLastMessage(messageText, timestamp);
-				if (!isCurrentChannel && !channelMuted)
-					ci->IncrementUnread();
-				fContactList->InvalidateItem(i);
-				break;
-			}
+	// Update sidebar item for this channel
+	for (int32 i = 0; i < fContactList->CountItems(); i++) {
+		ContactItem* ci = dynamic_cast<ContactItem*>(fContactList->ItemAt(i));
+		if (ci != NULL && ci->IsChannel()
+			&& ci->ChannelIndex() == (int32)channelIdx) {
+			ci->SetLastMessage(messageText, timestamp);
+			if (!isCurrentChannel && !channelMuted)
+				ci->IncrementUnread();
+			fContactList->InvalidateItem(i);
+			break;
 		}
 	}
 
@@ -5985,8 +5956,7 @@ MainWindow::_HandleChannelInfo(const uint8* data, size_t length)
 				"Found %d configured channels",
 				(int)fChannels.CountItems()));
 
-			// Load private channel messages from DB
-			// (channel enumeration happens after contact sync)
+			// Load channel messages from DB for all channels
 			DatabaseManager* db = DatabaseManager::Instance();
 			if (db->IsOpen()) {
 				int32 loaded = 0;
@@ -5997,10 +5967,14 @@ MainWindow::_HandleChannelInfo(const uint8* data, size_t length)
 					BString dbKey;
 					dbKey.SetToFormat("channel_%d", ch->index);
 					loaded += db->LoadMessages(dbKey.String(), ch->messages);
+
+					// Migration: load old "channel" key into channel 0
+					if (ch->index == 0)
+						loaded += db->LoadChannelMessages(ch->messages);
 				}
 				if (loaded > 0) {
 					_LogMessage("INFO", BString().SetToFormat(
-						"Loaded %d private channel messages from database",
+						"Loaded %d channel messages from database",
 						loaded));
 				}
 			}
@@ -6784,7 +6758,6 @@ MainWindow::_OnDisconnected()
 	// --- Multi-companion: clear all state for clean reconnect ---
 	fContacts.MakeEmpty();
 	fOldContacts.MakeEmpty();
-	fChannelMessages.MakeEmpty();
 	_UpdateContactList();
 	fChatView->ClearMessages();
 	fInfoPanel->Clear();
@@ -6912,19 +6885,16 @@ MainWindow::_FilterContacts(const char* filter)
 	// queued MSG_CONTACT_SELECTED overriding programmatic re-selection
 	fContactList->SetSelectionMessage(NULL);
 
-	// Remove all items except the Channel item (index 0)
-	while (fContactList->CountItems() > 1) {
-		BListItem* item = fContactList->RemoveItem(1);
+	// Remove all items and rebuild
+	while (fContactList->CountItems() > 0) {
+		BListItem* item = fContactList->RemoveItem(
+			fContactList->CountItems() - 1);
 		delete item;
 	}
 
-	// Set muted state on Public Channel item
-	if (fChannelItem != NULL)
-		fChannelItem->SetMuted(_IsMuted("ch_public"));
-
 	bool hasFilter = (filter != NULL && filter[0] != '\0');
 
-	// Add private channels after Public Channel
+	// Add all channels (Public at index 0 appears first if present)
 	for (int32 i = 0; i < fChannels.CountItems(); i++) {
 		ChannelInfo* ch = fChannels.ItemAt(i);
 		if (ch == NULL || ch->IsEmpty())
@@ -6947,7 +6917,7 @@ MainWindow::_FilterContacts(const char* filter)
 		ContactItem* item = new ContactItem(label.String(), true);
 		item->SetChannelIndex(ch->index);
 
-		// Set muted state on private channel
+		// Set muted state
 		char chKey[16];
 		snprintf(chKey, sizeof(chKey), "ch_%d", (int)ch->index);
 		item->SetMuted(_IsMuted(chKey));
@@ -7520,13 +7490,8 @@ MainWindow::_LoadMessages()
 	if (!db->IsOpen())
 		return;
 
-	// Load public channel messages from database (clear first to avoid
-	// duplicates when _LoadMessages is called again on re-sync)
-	fChannelMessages.MakeEmpty();
-	int32 loadedChannel = db->LoadChannelMessages(fChannelMessages);
-
-	// Note: private channel messages are loaded when channel enumeration
-	// completes (in _HandleChannelInfo / RSP_ERR handler), because channel
+	// Channel messages are loaded when channel enumeration completes
+	// (in _HandleChannelInfo / RSP_ERR handler), because channel
 	// enumeration runs after the contact sync that triggers _LoadMessages.
 
 	// Load DM messages for each contact
@@ -7542,10 +7507,9 @@ MainWindow::_LoadMessages()
 		loadedDM += db->LoadMessages(contactHex, contact->messages);
 	}
 
-	if (loadedChannel > 0 || loadedDM > 0) {
+	if (loadedDM > 0) {
 		_LogMessage("INFO", BString().SetToFormat(
-			"Loaded %d channel, %d DM messages from database",
-			loadedChannel, loadedDM).String());
+			"Loaded %d DM messages from database", loadedDM).String());
 	}
 }
 
@@ -7627,23 +7591,30 @@ MainWindow::_CloseSearch()
 		fMsgSearchField->SetText("");
 
 	// Restore current contact's messages
-	if (fSelectedContact == 0) {
-		// Restore channel messages
+	if (fSendingToChannel && fSelectedChannelIdx >= 0) {
+		// Restore channel messages from fChannels
 		fChatView->ClearMessages();
-		for (int32 i = 0; i < fChannelMessages.CountItems(); i++) {
-			ChatMessage* msg = fChannelMessages.ItemAt(i);
-			if (msg != NULL) {
-				const char* senderName = msg->isOutgoing ? "Me" : "Channel";
-				if (!msg->isOutgoing) {
-					ContactInfo* sender = _FindContactByPrefix(
-						msg->pubKeyPrefix, kPubKeyPrefixSize);
-					if (sender != NULL)
-						senderName = sender->name;
+		for (int32 ci = 0; ci < fChannels.CountItems(); ci++) {
+			ChannelInfo* ch = fChannels.ItemAt(ci);
+			if (ch != NULL && ch->index == (uint8)fSelectedChannelIdx) {
+				for (int32 mi = 0; mi < ch->messages.CountItems(); mi++) {
+					ChatMessage* msg = ch->messages.ItemAt(mi);
+					if (msg != NULL) {
+						const char* senderName = msg->isOutgoing
+							? "Me" : "Channel";
+						if (!msg->isOutgoing) {
+							ContactInfo* sender = _FindContactByPrefix(
+								msg->pubKeyPrefix, kPubKeyPrefixSize);
+							if (sender != NULL)
+								senderName = sender->name;
+						}
+						fChatView->AddMessage(*msg, senderName);
+					}
 				}
-				fChatView->AddMessage(*msg, senderName);
+				break;
 			}
 		}
-	} else if (fSelectedContact > 0) {
+	} else if (fSelectedContact >= 0) {
 		// Look up contact by pubkey from list item (not by index arithmetic)
 		ContactItem* selItem = dynamic_cast<ContactItem*>(
 			fContactList->ItemAt(fSelectedContact));
@@ -7999,11 +7970,8 @@ MainWindow::_SetMuted(const char* keyHex, bool muted)
 
 		if (ci->IsChannel()) {
 			char channelKey[16];
-			if (i == 0)
-				strlcpy(channelKey, "ch_public", sizeof(channelKey));
-			else
-				snprintf(channelKey, sizeof(channelKey), "ch_%d",
-					ci->ChannelIndex());
+			snprintf(channelKey, sizeof(channelKey), "ch_%d",
+				ci->ChannelIndex());
 			if (strcmp(channelKey, keyHex) == 0) {
 				ci->SetMuted(muted);
 				fContactList->InvalidateItem(i);

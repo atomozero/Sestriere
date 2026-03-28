@@ -29,6 +29,12 @@ const size_t kMaxFrameSize = kFrameHeaderSize + kMaxFramePayload;
 // Serial timeout detection
 const int kMaxZeroReads = 30;  // consecutive zero reads before disconnect (~3s)
 
+// Public Channel well-known PSK (from MeshCore protocol)
+static const uint8 kPublicChannelPSK[16] = {
+	0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a,
+	0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72
+};
+
 // =============================================================================
 // MeshCore Companion Protocol - Inbound Commands (App -> Radio)
 // =============================================================================
@@ -389,6 +395,7 @@ enum {
 
 	// Channel management
 	MSG_ADD_CHANNEL = 'achn',
+	MSG_ADD_PUBLIC_CHANNEL = 'apch',
 	MSG_REMOVE_CHANNEL = 'rmch',
 };
 
