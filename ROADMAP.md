@@ -218,12 +218,9 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 - **Fix**: messaggi DM inviabili anche offline, salvati con status PENDING in DB e in-memory queue. `_DrainOutbox()` invia i messaggi in coda dopo la riconnessione e il sync contatti. Messaggi PENDING preservati alla disconnessione (non più marcati FAILED). Il delivery timer ignora i messaggi con attemptCount=0 (non ancora inviati). Canali richiedono ancora connessione attiva.
 - **Stato**: completato (commit 2608e48)
 
-### F4. Download bulk tile mappa
-- **Cosa**: pre-cache aree geografiche per uso offline
-- **UI**: rettangolo di selezione sulla mappa + pulsante "Scarica area"
-- **Limite**: rispettare cap 50 MB cache (o renderlo configurabile)
-- **Difficoltà**: media
-- **File**: MapView.cpp/h, TileCache.cpp/h
+### F4. Download bulk tile mappa — COMPLETATO
+- **Fix**: pulsante "Download Area" nella toolbar mappa scarica tutti i tile per l'area visibile corrente ai livelli zoom corrente ±1. Usa il TileCache async con LRU disk cache 50 MB.
+- **Stato**: completato (commit 58f6eeb)
 
 ---
 
@@ -324,7 +321,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 | ID | Tipo | Descrizione | Difficoltà |
 |----|------|-------------|------------|
 | P2 | Feature | Custom Variables UI | ~~Media~~ DONE |
-| F4 | Feature | Download bulk tile mappa | Media |
+| F4 | Feature | Download bulk tile mappa | ~~Media~~ DONE |
 | U1 | UX | Persistere zoom/pan mappa | ~~Bassa~~ GIÀ FATTO |
 | U2 | UX | Persistere larghezza sidebar | ~~Bassa~~ DONE |
 | U3 | UX | VACUUM periodico DB | ~~Bassa~~ GIÀ FATTO |
