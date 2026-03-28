@@ -118,6 +118,7 @@ private:
 			rgb_color		_ColorForType(uint8 type) const;
 
 			int				_ZoomToTileZoom() const;
+			void			_DownloadVisibleArea();
 
 			OwningObjectList<GeoMapNode>	fNodes;
 			OwningObjectList<SarMapPin>		fSarPins;
@@ -173,6 +174,7 @@ private:
 	BButton*			fZoomOutButton;
 	BButton*			fFitButton;
 	BButton*			fCenterButton;
+	BButton*			fDownloadButton;
 	BCheckBox*			fTilesCheckBox;
 	BWindow*			fParent;
 };

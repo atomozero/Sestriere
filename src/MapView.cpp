@@ -61,6 +61,7 @@ static const uint32 kMsgZoomOut		= 'zmot';
 static const uint32 kMsgZoomFit		= 'zmft';
 static const uint32 kMsgCenterSelf	= 'cnsl';
 static const uint32 kMsgToggleTiles	= 'tltg';
+static const uint32 kMsgDownloadArea = 'dlar';
 
 // Land fill color for coastlines
 static const rgb_color kLandColor = {60, 75, 55, 255};
@@ -589,6 +590,65 @@ MapView::LoadMapState()
 		}
 	}
 	fclose(fp);
+}
+
+
+void
+MapView::_DownloadVisibleArea()
+{
+	if (fTileCache == NULL || !fTileCache->IsEnabled())
+		return;
+
+	int tileZ = _ZoomToTileZoom();
+	BRect bounds = Bounds();
+	float width = bounds.Width();
+	float height = bounds.Height();
+
+	// Calculate lat/lon bounds of visible area
+	float lonPerPx = 1.0f / fZoom;
+	float latPerPx = lonPerPx;  // Approximation at equator
+
+	float minLon = fCenterLon - (width / 2.0f) * lonPerPx;
+	float maxLon = fCenterLon + (width / 2.0f) * lonPerPx;
+	float minLat = fCenterLat - (height / 2.0f) * latPerPx;
+	float maxLat = fCenterLat + (height / 2.0f) * latPerPx;
+
+	// Download current zoom level and one level below
+	int minZ = (tileZ > 2) ? tileZ - 1 : tileZ;
+	int maxZ = (tileZ < 18) ? tileZ + 1 : tileZ;
+
+	int32 totalTiles = 0;
+	for (int z = minZ; z <= maxZ; z++) {
+		int n = 1 << z;
+		int xMin = (int)((minLon + 180.0) / 360.0 * n);
+		int xMax = (int)((maxLon + 180.0) / 360.0 * n);
+		int yMin = (int)((1.0 - log(tan(minLat * M_PI / 180.0)
+			+ 1.0 / cos(minLat * M_PI / 180.0)) / M_PI)
+			/ 2.0 * n);
+		int yMax = (int)((1.0 - log(tan(maxLat * M_PI / 180.0)
+			+ 1.0 / cos(maxLat * M_PI / 180.0)) / M_PI)
+			/ 2.0 * n);
+
+		// Swap if needed (y axis is inverted in tile coords)
+		if (yMin > yMax) {
+			int tmp = yMin;
+			yMin = yMax;
+			yMax = tmp;
+		}
+
+		// Clamp
+		if (xMin < 0) xMin = 0;
+		if (xMax >= n) xMax = n - 1;
+		if (yMin < 0) yMin = 0;
+		if (yMax >= n) yMax = n - 1;
+
+		totalTiles += (xMax - xMin + 1) * (yMax - yMin + 1);
+
+		fTileCache->RequestTiles(z, xMin, yMin, xMax, yMax, this);
+	}
+
+	fprintf(stderr, "[MapView] Downloading ~%d tiles for visible area "
+		"(Z%d-%d)\n", (int)totalTiles, minZ, maxZ);
 }
 
 
@@ -1178,6 +1238,8 @@ MapWindow::MapWindow(BWindow* parent)
 	fFitButton = new BButton("fit", "Fit", new BMessage(kMsgZoomFit));
 	fCenterButton = new BButton("center", "Center",
 		new BMessage(kMsgCenterSelf));
+	fDownloadButton = new BButton("download", "Download Area",
+		new BMessage(kMsgDownloadArea));
 	fTilesCheckBox = new BCheckBox("tiles", "Online Map",
 		new BMessage(kMsgToggleTiles));
 
@@ -1190,6 +1252,7 @@ MapWindow::MapWindow(BWindow* parent)
 		.Add(fZoomOutButton)
 		.Add(fFitButton)
 		.Add(fCenterButton)
+		.Add(fDownloadButton)
 		.AddGlue()
 		.Add(fTilesCheckBox)
 	.End();
@@ -1234,6 +1297,9 @@ MapWindow::MessageReceived(BMessage* message)
 		case kMsgToggleTiles:
 			fMapView->SetTilesEnabled(
 				fTilesCheckBox->Value() == B_CONTROL_ON);
+			break;
+		case kMsgDownloadArea:
+			fMapView->_DownloadVisibleArea();
 			break;
 		case MSG_SAR_MARKER:
 		{
