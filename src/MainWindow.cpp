@@ -6890,7 +6890,7 @@ MainWindow::_UpdateNearestRepeater()
 	}
 
 	if (nearestName != NULL)
-		fTopBar->SetNearestRepeater(nearestName, (float)minDist);
+		fTopBar->SetNearestRepeater(nearestName, (float)(minDist / 1000.0));
 }
 
 
