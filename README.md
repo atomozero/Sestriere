@@ -74,6 +74,8 @@ Unified dashboard with device status, radio health, network health score arc, SN
 ### Radio Analysis
 - **Packet Analyzer** -- Wireshark-style real-time analyzer with color-coded packet types, decoded detail view, hex dump, SNR trend chart, contact heatmap, delta-t timing, CSV export
 - **Statistics Window** -- Core/radio/packet stats with auto-refresh
+- **Airtime Display** -- TX/RX airtime counters in the top bar from radio stats
+- **Nearest Repeater** -- GPS-based distance to nearest repeater shown in the top bar
 - **Trace Path** -- Graphical route visualization with node cards, colored avatars, arrows, and SNR-colored pills between hops
 
 ### Device Control

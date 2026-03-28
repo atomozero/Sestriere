@@ -57,6 +57,11 @@ Dashboard con card-based layout (CardWrapperView), flow layout, auto-sizing Metr
 Ping All e Trace Route quick actions, health arc inline, card style unificato,
 timeline sessione, activity feed, footer last-update con stale detection.
 
+### 15. Airtime Display & Nearest Repeater
+TX/RX airtime (secondi) parsato da radio stats e mostrato nella top bar (`AT:Xs/Ys`).
+Nearest repeater calcolato con distanza haversine GPS e mostrato come `>>Nome X.Xkm`.
+Tooltip con dettagli al hover. Ricalcolato dopo ogni contact sync.
+
 ---
 
 ## Bug fix completati
