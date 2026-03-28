@@ -206,13 +206,10 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 - **Cosa fare**: tab "Custom Variables" in SettingsWindow con lista chiave/valore
 - **Sforzo**: medio
 
-### F1. Compressione SMAZ per messaggi
+### F1. Compressione SMAZ per messaggi — COMPLETATO
 - **Cosa**: compressione dizionario per testo chat (30-50% risparmio)
-- **Formato**: prefisso `s:` per compatibilità meshcore-open
-- **Perché**: critico su LoRa EU 868MHz con duty cycle 1%
-- **Dipendenze**: libreria SMAZ (~150 righe C++, MIT license)
-- **Difficoltà**: media
-- **File**: nuovo Smaz.h/cpp, ProtocolHandler.cpp, MainWindow.cpp
+- **Fix**: Smaz.h header-only con algoritmo SMAZ portato da antirez/smaz. Compressione automatica in invio DM e canale quando il risultato è più corto, prefisso `s:` per compatibilità meshcore-open. Decompressione trasparente in ricezione. Messaggi speciali (GIF, voice, image, CLI) esclusi.
+- **Stato**: completato (commit efdd5b6)
 
 ### F2. Retry messaggi con backoff esponenziale
 - **Cosa**: auto-retry quando `PUSH_SEND_CONFIRMED` non arriva entro timeout
@@ -330,7 +327,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 |----|------|-------------|------------|
 | F2+G7 | Feature | Retry messaggi con backoff + campo attempt | Media-Alta |
 | F3 | Feature | Coda messaggi offline | Media |
-| F1 | Feature | Compressione SMAZ | Media |
+| F1 | Feature | Compressione SMAZ | ~~Media~~ DONE |
 
 ### Sprint 4 — Polish e completamento (v2.3+)
 
