@@ -690,20 +690,12 @@ ChatView::ScrollToBottom()
 	if (CountItems() == 0)
 		return;
 
-	// Scroll to show last item
+	// Scroll so the bottom of the last item is visible
 	int32 lastIndex = CountItems() - 1;
-	ScrollToSelection();
-	Select(lastIndex);
-	Deselect(lastIndex);
-
-	// Also try to scroll the parent scroll view
-	BScrollView* scrollView = dynamic_cast<BScrollView*>(Parent());
-	if (scrollView != NULL) {
-		BScrollBar* vScroll = scrollView->ScrollBar(B_VERTICAL);
-		if (vScroll != NULL) {
-			float min, max;
-			vScroll->GetRange(&min, &max);
-			vScroll->SetValue(max);
-		}
-	}
+	BRect itemFrame = ItemFrame(lastIndex);
+	float viewHeight = Bounds().Height();
+	float scrollTo = itemFrame.bottom - viewHeight;
+	if (scrollTo < 0)
+		scrollTo = 0;
+	ScrollTo(0, scrollTo);
 }
