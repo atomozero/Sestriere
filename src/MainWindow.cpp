@@ -2479,7 +2479,7 @@ MainWindow::MessageReceived(BMessage* message)
 					if (ch != NULL
 						&& ch->index == (uint8)fSelectedChannelIdx
 						&& index < ch->messages.CountItems()) {
-						ch->messages.RemoveItemAt(index);
+						delete ch->messages.RemoveItemAt(index);
 						break;
 					}
 				}
@@ -2492,7 +2492,7 @@ MainWindow::MessageReceived(BMessage* message)
 						selItem->GetContact().publicKey,
 						kPubKeyPrefixSize);
 				if (contact != NULL && index < contact->messages.CountItems())
-					contact->messages.RemoveItemAt(index);
+					delete contact->messages.RemoveItemAt(index);
 			}
 
 			BListItem* item = fChatView->RemoveItem(index);
@@ -4532,7 +4532,7 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 					DELIVERY_CONFIRMED, roundTripMs);
 
 				// Remove from queue
-				fPendingMessages.RemoveItemAt(pendingIdx);
+				delete fPendingMessages.RemoveItemAt(pendingIdx);
 
 				// Stop timer if queue is empty
 				if (fPendingMessages.CountItems() == 0)
@@ -6786,7 +6786,7 @@ MainWindow::_HandleCmdErr(const uint8* data, size_t length)
 				_RetryMessage(pending);
 			} else {
 				_FailMessage(pending);
-				fPendingMessages.RemoveItemAt(i);
+				delete fPendingMessages.RemoveItemAt(i);
 				if (fPendingMessages.CountItems() == 0)
 					_StopDeliveryTimer();
 			}
@@ -6845,13 +6845,13 @@ MainWindow::_CheckDeliveryTimeouts()
 				_RetryMessage(pending);
 			} else {
 				_FailMessage(pending);
-				fPendingMessages.RemoveItemAt(i);
+				delete fPendingMessages.RemoveItemAt(i);
 			}
 		} else if (pending->gotRspSent && elapsed > kConfirmCleanup) {
 			// Got RSP_SENT but no CONFIRMED after 2 minutes
 			// This is normal for offline recipients — just clean up the queue
 			// Status stays as SENT (✓) in the UI
-			fPendingMessages.RemoveItemAt(i);
+			delete fPendingMessages.RemoveItemAt(i);
 		}
 	}
 
@@ -7117,7 +7117,7 @@ MainWindow::_OnDisconnected()
 		}
 		if (pending->gotRspSent) {
 			// Already transmitted — remove from queue, keep SENT status
-			fPendingMessages.RemoveItemAt(i);
+			delete fPendingMessages.RemoveItemAt(i);
 		} else {
 			// Not yet transmitted — reset for reconnect delivery
 			pending->attemptCount = 0;
