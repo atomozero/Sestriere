@@ -423,6 +423,9 @@ enum {
 	// Anonymous request
 	MSG_ANON_REQUEST = 'anrq',
 
+	// TCP connection
+	MSG_TCP_CONNECT = 'tcpc',
+
 	// Channel management
 	MSG_ADD_CHANNEL = 'achn',
 	MSG_ADD_PUBLIC_CHANNEL = 'apch',

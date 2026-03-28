@@ -1006,6 +1006,14 @@ MainWindow::_RefreshPortMenu()
 		fConnectMenu->AddItem(none);
 	}
 
+	// TCP connection option
+	fConnectMenu->AddSeparatorItem();
+	BMessage* tcpMsg = new BMessage(MSG_TCP_CONNECT);
+	BMenuItem* tcpItem = new BMenuItem(
+		"TCP Connection" B_UTF8_ELLIPSIS, tcpMsg);
+	tcpItem->SetTarget(this);
+	fConnectMenu->AddItem(tcpItem);
+
 	// Add separator + refresh item
 	fConnectMenu->AddSeparatorItem();
 	BMessage* refreshMsg = new BMessage(MSG_SERIAL_CONNECT);
@@ -1350,6 +1358,36 @@ MainWindow::MessageReceived(BMessage* message)
 					fNetworkMapWindow->UpdateFromContacts(&fContacts);
 					fNetworkMapWindow->UnlockLooper();
 				}
+			}
+			break;
+		}
+
+		case MSG_TCP_CONNECT:
+		{
+			// Prompt for host:port via simple text input
+			BString prompt("Enter TCP address (host:port):");
+			BTextControl* input = new BTextControl("tcp_addr",
+				"", "192.168.1.100:4403", NULL);
+			input->SetModificationMessage(NULL);
+			BAlert* alert = new BAlert("TCP Connection",
+				"Enter the TCP address of the MeshCore device:",
+				"Cancel", "Connect");
+			alert->SetType(B_INFO_ALERT);
+			// Add the text control to the alert
+			BView* panel = alert->Panel();
+			if (panel != NULL) {
+				input->ResizeTo(200, 24);
+				input->MoveTo(20, 30);
+				panel->AddChild(input);
+				alert->ResizeTo(alert->Bounds().Width(),
+					alert->Bounds().Height() + 30);
+			}
+			int32 result = alert->Go();
+			if (result == 1 && input->Text()[0] != '\0') {
+				BString tcpPort;
+				tcpPort.SetToFormat("tcp:%s", input->Text());
+				fSelectedPort = tcpPort;
+				_Connect();
 			}
 			break;
 		}

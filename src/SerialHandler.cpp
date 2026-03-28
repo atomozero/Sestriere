@@ -18,6 +18,9 @@
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
 #include <errno.h>
 
 #include <cstdio>
@@ -33,6 +36,7 @@ SerialHandler::SerialHandler(BHandler* target)
 	fReadThread(-1),
 	fRunning(false),
 	fConnected(false),
+	fIsTcp(false),
 	fRawMode(false),
 	fBufferPos(0),
 	fBufferLen(0),
@@ -102,67 +106,119 @@ SerialHandler::Connect(const char* portName)
 	if (fConnected)
 		Disconnect();
 
-	// Open serial port using POSIX
-	fSerialFd = open(portName, O_RDWR | O_NOCTTY);
-	if (fSerialFd < 0) {
-		status_t err = errno;
-		fprintf(stderr, "SerialHandler: Failed to open %s: %s\n",
-			portName, strerror(errno));
-		_NotifyError(err, "Failed to open serial port");
-		return B_ERROR;
+	fIsTcp = false;
+
+	// Check for TCP connection format: "tcp:host:port"
+	if (strncmp(portName, "tcp:", 4) == 0) {
+		const char* hostPort = portName + 4;
+		char host[128];
+		int port = 0;
+
+		// Parse host:port
+		const char* colon = strrchr(hostPort, ':');
+		if (colon == NULL || colon == hostPort) {
+			_NotifyError(B_BAD_VALUE, "Invalid TCP address "
+				"(use tcp:host:port)");
+			return B_BAD_VALUE;
+		}
+		size_t hostLen = colon - hostPort;
+		if (hostLen >= sizeof(host))
+			hostLen = sizeof(host) - 1;
+		memcpy(host, hostPort, hostLen);
+		host[hostLen] = '\0';
+		port = atoi(colon + 1);
+		if (port <= 0 || port > 65535) {
+			_NotifyError(B_BAD_VALUE, "Invalid TCP port");
+			return B_BAD_VALUE;
+		}
+
+		// Resolve hostname
+		struct hostent* he = gethostbyname(host);
+		if (he == NULL) {
+			_NotifyError(B_NAME_NOT_FOUND,
+				"Failed to resolve hostname");
+			return B_NAME_NOT_FOUND;
+		}
+
+		// Create TCP socket
+		fSerialFd = socket(AF_INET, SOCK_STREAM, 0);
+		if (fSerialFd < 0) {
+			_NotifyError(errno, "Failed to create TCP socket");
+			return B_ERROR;
+		}
+
+		struct sockaddr_in addr;
+		memset(&addr, 0, sizeof(addr));
+		addr.sin_family = AF_INET;
+		addr.sin_port = htons(port);
+		memcpy(&addr.sin_addr, he->h_addr_list[0], he->h_length);
+
+		if (connect(fSerialFd, (struct sockaddr*)&addr,
+				sizeof(addr)) < 0) {
+			close(fSerialFd);
+			fSerialFd = -1;
+			BString errMsg;
+			errMsg.SetToFormat("Failed to connect to %s:%d",
+				host, port);
+			_NotifyError(errno, errMsg.String());
+			return B_ERROR;
+		}
+
+		fIsTcp = true;
+		fprintf(stderr, "SerialHandler: TCP connected to %s:%d\n",
+			host, port);
+	} else {
+		// Open serial port using POSIX
+		fSerialFd = open(portName, O_RDWR | O_NOCTTY);
+		if (fSerialFd < 0) {
+			status_t err = errno;
+			fprintf(stderr,
+				"SerialHandler: Failed to open %s: %s\n",
+				portName, strerror(errno));
+			_NotifyError(err, "Failed to open serial port");
+			return B_ERROR;
+		}
+
+		// Configure port: 115200 8N1, raw mode
+		struct termios tty;
+		if (tcgetattr(fSerialFd, &tty) != 0) {
+			close(fSerialFd);
+			fSerialFd = -1;
+			_NotifyError(errno,
+				"Failed to get terminal attributes");
+			return B_ERROR;
+		}
+
+		cfsetispeed(&tty, B115200);
+		cfsetospeed(&tty, B115200);
+		cfmakeraw(&tty);
+		tty.c_cflag |= CREAD | CLOCAL;
+		tty.c_cflag &= ~CSIZE;
+		tty.c_cflag |= CS8;
+		tty.c_cflag &= ~PARENB;
+		tty.c_cflag &= ~CSTOPB;
+		tty.c_cflag &= ~CRTSCTS;
+		tty.c_cc[VMIN] = 0;
+		tty.c_cc[VTIME] = 1;
+
+		if (tcsetattr(fSerialFd, TCSANOW, &tty) != 0) {
+			close(fSerialFd);
+			fSerialFd = -1;
+			_NotifyError(errno,
+				"Failed to set terminal attributes");
+			return B_ERROR;
+		}
+
+		// Set DTR and RTS signals for ESP32-based devices
+		int modemFlags;
+		if (ioctl(fSerialFd, TIOCMGET, &modemFlags) == 0) {
+			modemFlags |= TIOCM_DTR | TIOCM_RTS;
+			ioctl(fSerialFd, TIOCMSET, &modemFlags);
+		}
+
+		tcflush(fSerialFd, TCIOFLUSH);
+		snooze(100000);
 	}
-
-	// Configure port: 115200 8N1, raw mode
-	struct termios tty;
-	if (tcgetattr(fSerialFd, &tty) != 0) {
-		close(fSerialFd);
-		fSerialFd = -1;
-		_NotifyError(errno, "Failed to get terminal attributes");
-		return B_ERROR;
-	}
-
-	// Set baud rate
-	cfsetispeed(&tty, B115200);
-	cfsetospeed(&tty, B115200);
-
-	// Raw mode (no echo, no signals, no canonical processing)
-	cfmakeraw(&tty);
-
-	// Enable receiver, ignore modem control lines
-	tty.c_cflag |= CREAD | CLOCAL;
-
-	// 8 data bits, no parity, 1 stop bit
-	tty.c_cflag &= ~CSIZE;
-	tty.c_cflag |= CS8;
-	tty.c_cflag &= ~PARENB;
-	tty.c_cflag &= ~CSTOPB;
-
-	// No hardware flow control
-	tty.c_cflag &= ~CRTSCTS;
-
-	// Non-blocking read with timeout
-	tty.c_cc[VMIN] = 0;
-	tty.c_cc[VTIME] = 1;  // 100ms timeout
-
-	if (tcsetattr(fSerialFd, TCSANOW, &tty) != 0) {
-		close(fSerialFd);
-		fSerialFd = -1;
-		_NotifyError(errno, "Failed to set terminal attributes");
-		return B_ERROR;
-	}
-
-	// CRITICAL: Set DTR and RTS signals for ESP32-based devices
-	int modemFlags;
-	if (ioctl(fSerialFd, TIOCMGET, &modemFlags) == 0) {
-		modemFlags |= TIOCM_DTR | TIOCM_RTS;
-		ioctl(fSerialFd, TIOCMSET, &modemFlags);
-	}
-
-	// Flush any stale data
-	tcflush(fSerialFd, TCIOFLUSH);
-
-	// Small delay to allow device to stabilize
-	snooze(100000);  // 100ms
 
 	fPortName = portName;
 	fConnected = true;
@@ -225,6 +281,7 @@ SerialHandler::Disconnect()
 			fSerialFd = -1;
 		}
 		fConnected = false;
+		fIsTcp = false;
 		fRawMode = false;
 		fPortName = "";
 	}
@@ -403,16 +460,20 @@ SerialHandler::_ReadLoop()
 			// Timeout — check fRunning before touching the fd again
 			if (!fRunning)
 				break;
-			// Check if fd is still valid (USB unplugged?)
-			int modemFlags;
-			if (ioctl(fd, TIOCMGET, &modemFlags) < 0) {
-				// ioctl failed — fd is dead
-				if (fRunning) {
-					fprintf(stderr,
-						"SerialHandler: device disappeared\n");
-					_NotifyError(ENXIO, "Serial device disconnected");
+			// Check if serial fd is still valid (USB unplugged?)
+			// Skip for TCP connections — socket stays valid
+			if (!fIsTcp) {
+				int modemFlags;
+				if (ioctl(fd, TIOCMGET, &modemFlags) < 0) {
+					if (fRunning) {
+						fprintf(stderr,
+							"SerialHandler: device "
+							"disappeared\n");
+						_NotifyError(ENXIO,
+							"Serial device disconnected");
+					}
+					break;
 				}
-				break;
 			}
 			continue;
 		}

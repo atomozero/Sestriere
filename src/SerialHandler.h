@@ -58,6 +58,7 @@ private:
 			thread_id		fReadThread;
 			volatile bool	fRunning;
 			volatile bool	fConnected;
+			volatile bool	fIsTcp;
 			volatile bool	fRawMode;
 
 			// Read buffer
