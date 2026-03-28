@@ -59,6 +59,7 @@ Unified dashboard with device status, radio health, network health score arc, SN
 - **@Mention Replies** -- Double-click a message to reply with @[nickname] mention highlighting
 - **Ping with Feedback** -- Round-trip time measurement with results shown directly in chat
 - **Channel Management** -- Create private channels with random PSK, join existing channels with custom PSK, add Public channel with well-known key
+- **Communities** -- Create and join communities with shared secret (HMAC-SHA256 PSK derivation), clipboard-based sharing compatible with meshcore-open
 - **GIF Sharing** -- GIPHY-powered animated GIF picker, compatible with meshcore-open (`g:ID` format)
 - **Emoji Rendering** -- Unicode emoji displayed as PNG sprites with transparent alpha compositing
 - **Image Sharing** -- LoRa color WebP image transfer with chunked encoding, auto-fetch, and chat integration
@@ -258,6 +259,7 @@ Sestriere/
 │   ├── VoiceSession.cpp/h          # Voice message session management
 │   ├── VoiceCodec.cpp/h            # Codec2 encode/decode wrapper
 │   ├── AudioEngine.cpp/h           # Audio recording and playback (BSoundPlayer)
+│   ├── Community.cpp/h              # Community model with HMAC-SHA256 PSK derivation
 │   ├── Reactions.h                  # Message reactions (meshcore-open compatible, header-only)
 │   ├── Smaz.h                      # SMAZ short string compression (header-only)
 │   ├── SarMarker.cpp/h             # SAR marker parsing (meshcore-sar protocol)
