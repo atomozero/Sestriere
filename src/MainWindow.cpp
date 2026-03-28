@@ -7003,6 +7003,12 @@ MainWindow::_RetryMessage(PendingMessage* pending)
 	if (sendResult != B_OK) {
 		_LogMessage("ERROR", "Retry send failed — not connected");
 		_FailMessage(pending);
+		// Remove from queue to prevent zombie entry blocking the slot
+		int32 idx = fPendingMessages.IndexOf(pending);
+		if (idx >= 0)
+			delete fPendingMessages.RemoveItemAt(idx);
+		if (fPendingMessages.CountItems() == 0)
+			_StopDeliveryTimer();
 		return;
 	}
 	fTopBar->FlashTx();
