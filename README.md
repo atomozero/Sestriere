@@ -47,12 +47,17 @@ Unified dashboard with device status, radio health, network health score arc, SN
 - **Telegram-style Chat** -- 3-panel layout: contact sidebar, chat area, info panel
 - **Chat Bubbles** -- Color-coded with timestamps, SNR indicators, delivery status
 - **Direct & Channel Messages** -- Private messages and public broadcast channel
+- **SMAZ Compression** -- Automatic dictionary compression for text messages (30-50% smaller), compatible with meshcore-open (`s:` prefix)
+- **Offline Message Queue** -- Compose messages while disconnected, automatic delivery on reconnect
+- **Message Deletion** -- Delete individual messages or clear entire chat history per contact/channel
+- **Delivery Retry** -- Exponential backoff retry (15s/30s/60s) with protocol-level attempt deduplication
 - **Message Search** -- Full-text search across chat history (Cmd+F)
 - **Auto-growing Input** -- Multi-line input (1-4 lines), Enter to send, Shift+Enter for newline
-- **Contact Management** -- Search, sync, export/import, right-click context menu
+- **Contact Management** -- Search, incremental sync, export/import, right-click context menu
 - **Contact Type Filters** -- Sidebar checkboxes to show/hide Chat, Repeater, and Room contacts (persistent)
 - **@Mention Replies** -- Double-click a message to reply with @[nickname] mention highlighting
 - **Ping with Feedback** -- Round-trip time measurement with results shown directly in chat
+- **Channel Management** -- Create private channels with random PSK, join existing channels with custom PSK, add Public channel with well-known key
 - **GIF Sharing** -- GIPHY-powered animated GIF picker, compatible with meshcore-open (`g:ID` format)
 - **Emoji Rendering** -- Unicode emoji displayed as PNG sprites with transparent alpha compositing
 - **Image Sharing** -- LoRa color WebP image transfer with chunked encoding, auto-fetch, and chat integration
@@ -61,7 +66,7 @@ Unified dashboard with device status, radio health, network health score arc, SN
 
 ### Visualization
 - **Network Map** -- Force-directed topology with SNR-colored links, animated flow dots, trace route visualization, auto-trace, full mesh discovery, and edge persistence
-- **Geographic Map** -- Lat/lon map with Google Maps-style zoom levels (Z2-Z18), pan, grid, compass, scale bar, hop-count colored connections, and OSM tile overlay with 50 MB LRU disk cache
+- **Geographic Map** -- Lat/lon map with Google Maps-style zoom levels (Z2-Z18), pan, grid, compass, scale bar, hop-count colored connections, OSM tile overlay with 50 MB LRU disk cache, and bulk area download for offline use
 - **Telemetry Dashboard** -- Battery, storage, radio stats graphs with time ranges up to 7 days, CSV export, card-based dashboard layout
 - **Mission Control** -- Unified dashboard: health score arc, SNR/RSSI trend, packet rate histogram, mini topology, session timeline, activity feed, and alert banners
 - **Line-of-Sight Analysis** -- Terrain profile between two nodes with Fresnel zone, earth curvature, and elevation data from Open-Meteo API
@@ -72,8 +77,8 @@ Unified dashboard with device status, radio health, network health score arc, SN
 - **Trace Path** -- Graphical route visualization with node cards, colored avatars, arrows, and SNR-colored pills between hops
 
 ### Device Control
-- **Settings** -- Node name, location, TX power, 12 radio presets (frequency, bandwidth, SF, CR)
-- **Repeater Admin** -- Remote administration of repeaters/rooms after login with contextual toolbar in chat area (stats, contacts, reboot, factory reset)
+- **Settings** -- Node name, location, TX power, 12 radio presets (frequency, bandwidth, SF, CR), client-repeat mode, custom variables, tuning parameters, BLE PIN
+- **Repeater Admin** -- Remote administration of repeaters/rooms after login with contextual toolbar in chat area (stats, contacts, reboot, factory reset), simultaneous multi-repeater sessions
 - **Battery & Storage Monitoring** -- Real-time voltage and storage status with LiPo/LiFePO4/NMC chemistry curves
 - **Serial Monitor** -- Terminal-style CLI interaction for repeater/standalone devices
 - **Multi-Companion** -- DB partitioned per companion radio, clean state reset on disconnect, seamless switching between different radios
@@ -187,7 +192,7 @@ Sestriere implements the [MeshCore Companion Radio Protocol](https://github.com/
 - All multi-byte values are Little Endian
 - Default baud rate: 115200 8N1
 
-V3 adds SNR fields to incoming messages. V2 responses (0x07, 0x08) are also supported for backwards compatibility.
+V3 adds SNR fields to incoming messages. V2 responses (0x07, 0x08) are also supported for backwards compatibility. Protocol features include incremental contact sync (`since` parameter), message retry with `attempt` field (0-3), client-repeat mode, and signed message support (`TXT_TYPE_SIGNED_PLAIN`).
 
 ## Project Structure
 
@@ -222,10 +227,10 @@ Sestriere/
 │   ├── ContactItem.cpp/h           # Contact list item with status dots & groups
 │   ├── ContactInfoPanel.cpp/h      # Right-side contact detail panel
 │   ├── SNRChartView.cpp/h          # SNR history chart
-│   ├── AddChannelWindow.cpp/h      # Channel creation dialog
+│   ├── AddChannelWindow.cpp/h      # Channel creation/join dialog (PSK modes)
 │   ├── TopBarView.cpp/h            # Unified top bar (icons + status)
 │   ├── GrowingTextView.cpp/h       # Auto-growing multi-line input
-│   ├── SettingsWindow.cpp/h        # Device & Radio settings (12 presets)
+│   ├── SettingsWindow.cpp/h        # Device, Radio, MQTT, Channels & Variables settings
 │   ├── StatsWindow.cpp/h           # Device statistics display
 │   ├── MapView.cpp/h               # Geographic map with zoom/pan/grid
 │   ├── NetworkMapWindow.cpp/h      # Force-directed network topology
@@ -250,6 +255,7 @@ Sestriere/
 │   ├── VoiceSession.cpp/h          # Voice message session management
 │   ├── VoiceCodec.cpp/h            # Codec2 encode/decode wrapper
 │   ├── AudioEngine.cpp/h           # Audio recording and playback (BSoundPlayer)
+│   ├── Smaz.h                      # SMAZ short string compression (header-only)
 │   ├── SarMarker.cpp/h             # SAR marker parsing (meshcore-sar protocol)
 │   ├── ElevationService.cpp/h      # Open-Meteo elevation API client
 │   ├── LoSAnalysis.h               # Line-of-Sight math library (header-only)
@@ -317,4 +323,5 @@ Created by **Andrea Bernardi**.
 ## References
 
 - [MeshCore Companion Radio Protocol](https://github.com/meshcore-dev/MeshCore/wiki/Companion-Radio-Protocol)
+- [SMAZ compression](https://github.com/antirez/smaz) -- Short string compression used for LoRa messages
 - [Haiku Coding Guidelines](https://www.haiku-os.org/development/coding-guidelines/)
