@@ -24,7 +24,7 @@
 // Avatar colors — use kAvatarPalette from Constants.h
 
 // Layout constants
-static const float kPanelMinWidth = 160.0f;
+static const float kPanelFixedWidth = 230.0f;
 static const float kAvatarSize = 64.0f;
 static const float kMargin = 12.0f;
 static const float kRowHeight = 20.0f;
@@ -88,13 +88,14 @@ ContactInfoPanel::ContactInfoPanel(const char* name)
 	fAdminNoise(0)
 {
 	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-	SetExplicitMinSize(BSize(kPanelMinWidth, B_SIZE_UNSET));
-	SetExplicitPreferredSize(BSize(220, B_SIZE_UNSET));
+	SetExplicitMinSize(BSize(kPanelFixedWidth, B_SIZE_UNSET));
+	SetExplicitMaxSize(BSize(kPanelFixedWidth, B_SIZE_UNSET));
+	SetExplicitPreferredSize(BSize(kPanelFixedWidth, B_SIZE_UNSET));
 
 	// Create SNR chart child view — hidden until a contact is selected
 	fSNRChart = new SNRChartView("snr_chart");
 	fSNRChart->MoveTo(kMargin, 280);
-	fSNRChart->ResizeTo(kPanelMinWidth - kMargin * 2, 100);
+	fSNRChart->ResizeTo(kPanelFixedWidth - kMargin * 2, 100);
 	fSNRChart->Hide();
 	AddChild(fSNRChart);
 }
@@ -116,14 +117,14 @@ ContactInfoPanel::FrameResized(float newWidth, float newHeight)
 BSize
 ContactInfoPanel::MinSize()
 {
-	return BSize(kPanelMinWidth, 300);
+	return BSize(kPanelFixedWidth, 300);
 }
 
 
 BSize
 ContactInfoPanel::PreferredSize()
 {
-	return BSize(220, B_SIZE_UNLIMITED);
+	return BSize(kPanelFixedWidth, B_SIZE_UNLIMITED);
 }
 
 
