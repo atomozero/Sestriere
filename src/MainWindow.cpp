@@ -372,7 +372,7 @@ MainWindow::MainWindow()
 	fDeliveryCheckTimer(NULL),
 	fSendingToChannel(false),
 	fLoginPending(false),
-	fLoggedIn(false),
+	fAdminSessions(4),
 	fSettingsWindow(NULL),
 	fStatsWindow(NULL),
 	fTracePathWindow(NULL),
@@ -445,7 +445,6 @@ MainWindow::MainWindow()
 	fPingAllIndex = 0;
 	fPingAllTotal = 0;
 	fPingAllResponded = 0;
-	memset(fLoggedInKey, 0, sizeof(fLoggedInKey));
 	fHasDeviceInfo = false;
 	fImageSessions = new ImageSessionManager();
 	fVoiceSessions = new VoiceSessionManager();
@@ -2959,11 +2958,12 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 
 		case MSG_ADMIN_REFRESH_TICK:
-			if (fConnected && fLoggedIn && fInfoPanel->IsAdminSession()) {
-				ContactInfo* target = _FindContactByPrefix(
-					fLoggedInKey, kPubKeyPrefixSize);
-				if (target != NULL)
-					fProtocol->SendStatusRequest(target->publicKey);
+			if (fConnected && fInfoPanel->IsAdminSession()) {
+				const ContactInfo* displayed = fInfoPanel->GetContact();
+				if (displayed != NULL
+					&& _IsLoggedInto(displayed->publicKey))
+					fProtocol->SendStatusRequest(
+						displayed->publicKey);
 			}
 			break;
 
@@ -3876,9 +3876,8 @@ MainWindow::_SelectContact(int32 index)
 		if (contact != NULL) {
 			fChatHeader->SetContact(contact);
 			// Enable console mode if logged into this contact
-			bool isLoggedInContact = fLoggedIn &&
-				memcmp(contact->publicKey, fLoggedInKey,
-					kPubKeyPrefixSize) == 0;
+			bool isLoggedInContact =
+				_IsLoggedInto(contact->publicKey);
 			fChatHeader->SetConsoleMode(isLoggedInContact);
 			fChatView->SetCurrentContact(contact);
 			fInfoPanel->SetContact(contact);
@@ -3949,14 +3948,22 @@ MainWindow::_Disconnect()
 void
 MainWindow::_SendCliCommand(const char* command)
 {
-	if (!fLoggedIn || !fSerialHandler->IsConnected()) {
-		_LogMessage("ERROR", "Not logged into a repeater/room");
+	if (!fSerialHandler->IsConnected()) {
+		_LogMessage("ERROR", "Not connected");
 		return;
 	}
 
-	ContactInfo* target = _FindContactByPrefix(fLoggedInKey, kPubKeyPrefixSize);
-	if (target == NULL) {
-		_LogMessage("ERROR", "Login target contact not found");
+	// Send CLI to the currently selected contact (must be logged in)
+	ContactItem* selItem = dynamic_cast<ContactItem*>(
+		fContactList->ItemAt(fSelectedContact));
+	if (selItem == NULL || selItem->IsChannel()) {
+		_LogMessage("ERROR", "No contact selected");
+		return;
+	}
+	ContactInfo* target = _FindContactByPrefix(
+		selItem->GetContact().publicKey, kPubKeyPrefixSize);
+	if (target == NULL || !_IsLoggedInto(target->publicKey)) {
+		_LogMessage("ERROR", "Not logged into this repeater/room");
 		return;
 	}
 
@@ -3999,14 +4006,14 @@ MainWindow::_SendCliCommand(const char* command)
 
 	// Update chat view if this contact is selected
 	int32 chatViewIdx = -1;
-	ContactItem* selItem = dynamic_cast<ContactItem*>(
+	ContactItem* cliItem = dynamic_cast<ContactItem*>(
 		fContactList->ItemAt(fSelectedContact));
-	if (selItem != NULL && !selItem->IsChannel() &&
-		memcmp(selItem->GetContact().publicKey, fLoggedInKey,
-			kPubKeyPrefixSize) == 0) {
+	if (cliItem != NULL && !cliItem->IsChannel()
+		&& memcmp(cliItem->GetContact().publicKey,
+			target->publicKey, kPubKeyPrefixSize) == 0) {
 		fChatView->AddMessage(outMsg, "Me");
 		chatViewIdx = fChatView->CountItems() - 1;
-		selItem->SetLastMessage(command, timestamp);
+		cliItem->SetLastMessage(command, timestamp);
 		fContactList->InvalidateItem(fSelectedContact);
 	}
 
@@ -4076,14 +4083,11 @@ MainWindow::_SendTextMessage(const char* text)
 		_LogMessage("INFO", BString().SetToFormat(
 			"Sending DM to %s [%s] (idx %d, cli=%d): %s",
 			contact->name, hex, (int)fSelectedContact,
-			(int)(fLoggedIn && memcmp(contact->publicKey,
-				fLoggedInKey, kPubKeyPrefixSize) == 0),
-			text));
+			(int)_IsLoggedInto(contact->publicKey), text));
 	}
 
 	// Use CLI txt_type when logged into this contact
-	bool isCli = (fLoggedIn &&
-		memcmp(contact->publicKey, fLoggedInKey, kPubKeyPrefixSize) == 0);
+	bool isCli = _IsLoggedInto(contact->publicKey);
 	uint8 txtType = isCli ? TXT_TYPE_CLI_DATA : TXT_TYPE_PLAIN;
 
 	// Try SMAZ compression for plain text messages
@@ -5129,17 +5133,20 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 	// Load saved messages after contacts are available
 	_LoadMessages();
 
-	// Re-select logged-in contact after list rebuild (login + resync race)
-	if (fLoggedIn) {
-		for (int32 i = 1; i < fContactList->CountItems(); i++) {
-			ContactItem* item = dynamic_cast<ContactItem*>(
-				fContactList->ItemAt(i));
-			if (item != NULL && !item->IsChannel() &&
-				memcmp(item->GetContact().publicKey,
-					fLoggedInKey, kPubKeyPrefixSize) == 0) {
-				fContactList->Select(i);
-				_SelectContact(i);
-				break;
+	// Re-select a logged-in contact after list rebuild if any session active
+	if (fAdminSessions.CountItems() > 0) {
+		AdminSession* first = fAdminSessions.ItemAt(0);
+		if (first != NULL) {
+			for (int32 i = 0; i < fContactList->CountItems(); i++) {
+				ContactItem* item = dynamic_cast<ContactItem*>(
+					fContactList->ItemAt(i));
+				if (item != NULL && !item->IsChannel()
+					&& memcmp(item->GetContact().publicKey,
+						first->key, kPubKeyPrefixSize) == 0) {
+					fContactList->Select(i);
+					_SelectContact(i);
+					break;
+				}
 			}
 		}
 	}
@@ -6534,6 +6541,7 @@ MainWindow::_HandlePushLoginResult(const uint8* data, size_t length)
 
 	uint8 code = data[0];
 	bool success = (code == PUSH_LOGIN_SUCCESS);
+	bool isAdmin = false;
 
 	if (success && length >= 8) {
 		// PUSH_LOGIN_SUCCESS frame layout:
@@ -6543,9 +6551,7 @@ MainWindow::_HandlePushLoginResult(const uint8* data, size_t length)
 		// [8-11] = tag (int32, optional)
 		// [12] = new_permissions (V7+, optional)
 		uint8 permissions = data[1];
-		bool isAdmin = (permissions & 0x01) != 0;
-		fLoggedInAsAdmin = isAdmin;
-
+		isAdmin = (permissions & 0x01) != 0;
 		char hex[kContactHexSize];
 		FormatPubKeyPrefix(hex, data + 2);
 
@@ -6561,8 +6567,7 @@ MainWindow::_HandlePushLoginResult(const uint8* data, size_t length)
 
 		_LogMessage("OK", logMsg);
 	} else if (success) {
-		// Short frame — parse what we can
-		fLoggedInAsAdmin = false;
+		// Short frame — isAdmin stays false
 		char hex[kContactHexSize];
 		FormatPubKeyPrefix(hex, fLoginTargetKey);
 		_LogMessage("OK", BString().SetToFormat(
@@ -6587,9 +6592,13 @@ MainWindow::_HandlePushLoginResult(const uint8* data, size_t length)
 	// After successful login, select the target contact so the user
 	// can see the room/repeater menu messages, and refresh contacts
 	if (success) {
-		// Track active login session for CLI console mode
-		fLoggedIn = true;
-		memcpy(fLoggedInKey, fLoginTargetKey, kPubKeyPrefixSize);
+		// Track active login session (multi-repeater support)
+		if (_FindAdminSession(fLoginTargetKey) == NULL) {
+			AdminSession* session = new AdminSession();
+			memcpy(session->key, fLoginTargetKey, kPubKeyPrefixSize);
+			session->isAdmin = isAdmin;
+			fAdminSessions.AddItem(session);
+		}
 
 		// Auto-select the contact we just logged into
 		for (int32 i = 1; i < fContactList->CountItems(); i++) {
@@ -6655,8 +6664,8 @@ MainWindow::_HandlePushStatusResponse(const uint8* data, size_t length)
 
 	const uint8* prefix = &data[2];
 
-	// Verify this is from the repeater we're logged into
-	if (!fLoggedIn || memcmp(prefix, fLoggedInKey, kPubKeyPrefixSize) != 0)
+	// Verify this is from a repeater we're logged into
+	if (!_IsLoggedInto(prefix))
 		return;
 
 	uint16 battMv = ReadLE16(data + 8);
@@ -6840,6 +6849,33 @@ MainWindow::_CheckDeliveryTimeouts()
 	// Stop timer if queue is empty
 	if (fPendingMessages.CountItems() == 0)
 		_StopDeliveryTimer();
+}
+
+
+MainWindow::AdminSession*
+MainWindow::_FindAdminSession(const uint8* prefix)
+{
+	for (int32 i = 0; i < fAdminSessions.CountItems(); i++) {
+		AdminSession* session = fAdminSessions.ItemAt(i);
+		if (session != NULL
+			&& memcmp(session->key, prefix, kPubKeyPrefixSize) == 0)
+			return session;
+	}
+	return NULL;
+}
+
+
+bool
+MainWindow::_IsLoggedInto(const uint8* prefix)
+{
+	return _FindAdminSession(prefix) != NULL;
+}
+
+
+void
+MainWindow::_ClearAdminSessions()
+{
+	fAdminSessions.MakeEmpty();
 }
 
 
@@ -7048,9 +7084,7 @@ MainWindow::_OnDisconnected()
 	}
 	_StopDeliveryTimer();
 
-	fLoggedIn = false;
-	fLoggedInAsAdmin = false;
-	memset(fLoggedInKey, 0, kPubKeyPrefixSize);
+	_ClearAdminSessions();
 	fChatHeader->SetConsoleMode(false);
 
 	// Cancel ping-all if in progress

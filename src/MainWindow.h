@@ -204,6 +204,11 @@ private:
 			void			_LoadContactGroups();
 			void			_RefreshContactList();
 
+			// Admin session helpers
+			AdminSession*	_FindAdminSession(const uint8* prefix);
+			bool			_IsLoggedInto(const uint8* prefix);
+			void			_ClearAdminSessions();
+
 			// Delivery queue management
 			void			_StartDeliveryTimer();
 			void			_StopDeliveryTimer();
@@ -328,9 +333,13 @@ private:
 			bool			fSendingToChannel;
 			bool			fLoginPending;
 			uint8			fLoginTargetKey[6];
-			bool			fLoggedIn;
-			bool			fLoggedInAsAdmin;
-			uint8			fLoggedInKey[6];
+
+			// Admin sessions (multi-repeater login)
+			struct AdminSession {
+				uint8	key[6];
+				bool	isAdmin;
+			};
+			OwningObjectList<AdminSession>	fAdminSessions;
 
 			// Child windows
 			SettingsWindow*	fSettingsWindow;
