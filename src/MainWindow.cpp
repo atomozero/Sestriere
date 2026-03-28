@@ -217,7 +217,10 @@ static const bigtime_t kHandshakeTimeout = 5000000;      // 5 seconds
 static const bigtime_t kDeliveryCheckInterval = 10000000; // 10 seconds
 
 // Delivery retry constants
-static const bigtime_t kSendTimeout = 60000000;          // 60 seconds for RSP_SENT
+// Backoff timeouts per attempt: 15s, 30s, 60s
+static const bigtime_t kSendTimeouts[] = {
+	15000000, 30000000, 60000000
+};
 static const bigtime_t kConfirmCleanup = 120000000;      // 2 minutes: remove SENT from queue
 static const int kMaxRetryAttempts = 3;
 static const int kMaxSimultaneousPending = 3;
@@ -6761,7 +6764,14 @@ MainWindow::_CheckDeliveryTimeouts()
 
 		bigtime_t elapsed = now - pending->sentTime;
 
-		if (!pending->gotRspSent && elapsed > kSendTimeout) {
+		int32 timeoutIdx = pending->attemptCount - 1;
+		if (timeoutIdx < 0)
+			timeoutIdx = 0;
+		if (timeoutIdx > 2)
+			timeoutIdx = 2;
+		bigtime_t timeout = kSendTimeouts[timeoutIdx];
+
+		if (!pending->gotRspSent && elapsed > timeout) {
 			// No RSP_SENT after timeout — retry or fail
 			if (pending->attemptCount < kMaxRetryAttempts) {
 				_RetryMessage(pending);
@@ -6822,10 +6832,13 @@ MainWindow::_RetryMessage(PendingMessage* pending)
 		}
 	}
 
-	// Re-send via protocol
+	// Re-send via protocol with attempt number (0-based on wire)
 	size_t textLen = strlen(pending->text);
+	uint8 wireAttempt = (pending->attemptCount > 1)
+		? (uint8)(pending->attemptCount - 1) : 0;
 	status_t sendResult = fProtocol->SendDM(pending->pubKey,
-		pending->txtType, pending->timestamp, pending->text, textLen);
+		pending->txtType, pending->timestamp, pending->text, textLen,
+		wireAttempt);
 	if (sendResult != B_OK) {
 		_LogMessage("ERROR", "Retry send failed — not connected");
 		_FailMessage(pending);

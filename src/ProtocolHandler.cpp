@@ -453,7 +453,7 @@ ProtocolHandler::SendShareContact(const uint8* pubkey)
 
 status_t
 ProtocolHandler::SendDM(const uint8* pubkeyPrefix, uint8 txtType,
-	uint32 timestamp, const char* text, size_t textLen)
+	uint32 timestamp, const char* text, size_t textLen, uint8 attempt)
 {
 	if (!IsConnected())
 		return B_NOT_INITIALIZED;
@@ -463,7 +463,7 @@ ProtocolHandler::SendDM(const uint8* pubkeyPrefix, uint8 txtType,
 
 	payload[pos++] = CMD_SEND_TXT_MSG;
 	payload[pos++] = txtType;
-	payload[pos++] = 0;  // attempt
+	payload[pos++] = (attempt <= 3) ? attempt : 3;
 
 	payload[pos++] = timestamp & 0xFF;
 	payload[pos++] = (timestamp >> 8) & 0xFF;

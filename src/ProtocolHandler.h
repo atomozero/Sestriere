@@ -65,7 +65,8 @@ public:
 		// Messaging (frame-level only)
 		status_t		SendDM(const uint8* pubkeyPrefix,
 							uint8 txtType, uint32 timestamp,
-							const char* text, size_t textLen);
+							const char* text, size_t textLen,
+							uint8 attempt = 0);
 		status_t		SendChannelMsg(uint8 channelIdx,
 							uint32 timestamp, const char* text,
 							size_t textLen);
