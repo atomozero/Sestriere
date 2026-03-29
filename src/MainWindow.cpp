@@ -5867,7 +5867,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 					msg->timestamp, NULL, msg->text);
 				if (msgHash == reactionHash) {
 					_AddReactionToMessage(msg, reactionEmoji);
-					fChatView->InvalidateMessage(i);
+					fChatView->UpdateReactions(i, msg->reactions);
 					break;
 				}
 			}
@@ -6221,7 +6221,7 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 					_AddReactionToMessage(msg, reactionEmoji);
 					if (fSendingToChannel
 						&& fSelectedChannelIdx == (int32)channelIdx)
-						fChatView->InvalidateMessage(mi);
+						fChatView->UpdateReactions(mi, msg->reactions);
 					break;
 				}
 			}

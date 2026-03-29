@@ -136,7 +136,8 @@ MessageView::MessageView(const ChatMessage& message, const char* senderName)
 	fGifCurrentFrame(0),
 	fGifLastAdvance(0),
 	fGifLoadState(0),
-	fBaselineOffset(0)
+	fBaselineOffset(0),
+	fReactions(message.reactions)
 {
 	memcpy(fPubKeyPrefix, message.pubKeyPrefix, sizeof(fPubKeyPrefix));
 
@@ -630,6 +631,68 @@ MessageView::DrawItem(BView* owner, BRect frame, bool complete)
 			BPoint(metaX + metaWidthActual, metaY));
 	}
 
+	// Draw reaction pills below the bubble
+	if (fReactions.Length() > 0) {
+		BFont reactFont;
+		owner->GetFont(&reactFont);
+		reactFont.SetSize(reactFont.Size() * 0.85f);
+		owner->SetFont(&reactFont);
+
+		font_height rfh;
+		reactFont.GetHeight(&rfh);
+		float pillH = rfh.ascent + rfh.descent + 4;
+		float reactY = bubbleRect.bottom + 2;
+		float reactX = fOutgoing
+			? bubbleRect.right
+			: bubbleRect.left;
+
+		// Parse "emoji:count,emoji:count,..."
+		char temp[128];
+		strlcpy(temp, fReactions.String(), sizeof(temp));
+		char* saveptr;
+		char* token = strtok_r(temp, ",", &saveptr);
+		while (token != NULL) {
+			char* colon = strrchr(token, ':');
+			if (colon != NULL) {
+				*colon = '\0';
+				const char* emoji = token;
+				int count = atoi(colon + 1);
+
+				char label[32];
+				if (count > 1)
+					snprintf(label, sizeof(label), "%s %d", emoji, count);
+				else
+					snprintf(label, sizeof(label), "%s", emoji);
+
+				float pillW = reactFont.StringWidth(label) + 8;
+
+				// Position pill (right-aligned for outgoing)
+				float pillLeft;
+				if (fOutgoing) {
+					reactX -= pillW + 2;
+					pillLeft = reactX + 2;
+				} else {
+					pillLeft = reactX;
+					reactX += pillW + 2;
+				}
+
+				// Draw pill background
+				rgb_color pillBg = tint_color(
+					ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_1_TINT);
+				owner->SetHighColor(pillBg);
+				BRect pillRect(pillLeft, reactY,
+					pillLeft + pillW, reactY + pillH);
+				owner->FillRoundRect(pillRect, 3, 3);
+
+				// Draw label
+				owner->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
+				owner->DrawString(label,
+					BPoint(pillLeft + 4, reactY + 2 + rfh.ascent));
+			}
+			token = strtok_r(NULL, ",", &saveptr);
+		}
+	}
+
 	owner->PopState();
 }
 
@@ -647,6 +710,7 @@ MessageView::Update(BView* owner, const BFont* font)
 			+ fontHeight.leading;
 		float headerHeight = (!fOutgoing && fSenderName.Length() > 0)
 			? lineHeight : 0;
+		float replyHeight = fIsReply ? (lineHeight + 4) : 0;
 		float metaHeight = lineHeight * 0.8f;
 		float imgW = 128.0f, imgH = 100.0f;
 		if (fGifFrames != NULL && fGifFrames[0] != NULL) {
@@ -654,7 +718,7 @@ MessageView::Update(BView* owner, const BFont* font)
 			imgH = fGifFrames[0]->Bounds().Height() + 1;
 		}
 		_FitMediaSize(imgW, imgH);
-		float height = headerHeight + imgH + metaHeight
+		float height = headerHeight + replyHeight + imgH + metaHeight
 			+ kBubblePadding * 2 + kBubbleMargin;
 		SetHeight(height);
 		return;
@@ -668,9 +732,10 @@ MessageView::Update(BView* owner, const BFont* font)
 			+ fontHeight.leading;
 		float headerHeight = (!fOutgoing && fSenderName.Length() > 0)
 			? lineHeight : 0;
+		float replyHeight = fIsReply ? (lineHeight + 4) : 0;
 		float metaHeight = lineHeight * 0.8f;
 		float voiceBarHeight = 28.0f;  // play button + progress bar
-		float height = headerHeight + voiceBarHeight + metaHeight
+		float height = headerHeight + replyHeight + voiceBarHeight + metaHeight
 			+ kBubblePadding * 2 + kBubbleMargin;
 		SetHeight(height);
 		return;
@@ -684,6 +749,7 @@ MessageView::Update(BView* owner, const BFont* font)
 			+ fontHeight.leading;
 		float headerHeight = (!fOutgoing && fSenderName.Length() > 0)
 			? lineHeight : 0;
+		float replyHeight = fIsReply ? (lineHeight + 4) : 0;
 		float metaHeight = lineHeight * 0.8f;
 		float imgW = 128.0f, imgH = 100.0f;
 		if (fImageBitmap != NULL) {
@@ -691,7 +757,7 @@ MessageView::Update(BView* owner, const BFont* font)
 			imgH = fImageBitmap->Bounds().Height() + 1;
 		}
 		_FitMediaSize(imgW, imgH);
-		float height = headerHeight + imgH + metaHeight
+		float height = headerHeight + replyHeight + imgH + metaHeight
 			+ kBubblePadding * 2 + kBubbleMargin;
 		SetHeight(height);
 		return;
@@ -700,8 +766,8 @@ MessageView::Update(BView* owner, const BFont* font)
 	bool isCli = (fTxtType == 1);
 	bool isSar = fIsSarMarker;
 
-	// Use monospace font metrics for CLI messages
-	const BFont* measureFont = isCli ? be_fixed_font : font;
+	// Use the same font as DrawItem for consistent measurement
+	const BFont* measureFont = isCli ? be_fixed_font : be_plain_font;
 
 	font_height fontHeight;
 	measureFont->GetHeight(&fontHeight);
@@ -714,8 +780,6 @@ MessageView::Update(BView* owner, const BFont* font)
 	// Calculate max bubble width
 	BRect ownerBounds = owner->Bounds();
 	float maxBubbleWidth = ownerBounds.Width() * kBubbleMaxWidthRatio;
-
-	int32 lineCount;
 
 	std::vector<BString> lines;
 
@@ -733,20 +797,26 @@ MessageView::Update(BView* owner, const BFont* font)
 			displayText.Prepend("> ");
 
 		// Use real word-wrap to match DrawItem line count exactly.
+		// Pass measureFont explicitly — calling owner->SetFont() inside
+		// Update() triggers _UpdateItems() → infinite recursion crash.
 		float availWidth = maxBubbleWidth - kBubblePadding * 2;
 		float emojiH = (!isCli && !isSar)
 			? (fontHeight.ascent + fontHeight.descent) : 0;
 		_WrapText(owner, isCli ? displayText : fText,
-			availWidth, lines, emojiH);
+			availWidth, lines, emojiH, measureFont);
 	}
 
 	// Calculate total height
 	float textHeight = lines.size() * lineHeight;
 	float headerHeight = (!fOutgoing && fSenderName.Length() > 0) ? lineHeight : 0;
+	float replyHeight = fIsReply ? (lineHeight + 4) : 0;
 	float metaHeight = lineHeight * 0.8f;
 
-	float height = headerHeight + textHeight + metaHeight +
-		kBubblePadding * 2 + kBubbleMargin;
+	float reactionHeight = (fReactions.Length() > 0)
+		? (lineHeight * 0.85f + 4) : 0;
+
+	float height = headerHeight + replyHeight + textHeight + metaHeight +
+		kBubblePadding * 2 + kBubbleMargin + reactionHeight;
 
 	SetHeight(height);
 }
@@ -758,6 +828,13 @@ MessageView::SetDeliveryStatus(uint8 status, uint32 rtt, uint8 retryCount)
 	fDeliveryStatus = status;
 	fRoundTripMs = rtt;
 	fRetryCount = retryCount;
+}
+
+
+void
+MessageView::SetReactions(const char* reactions)
+{
+	fReactions = (reactions != NULL) ? reactions : "";
 }
 
 
@@ -1520,7 +1597,8 @@ MessageView::_FormatTimestamp(char* buffer, size_t size) const
 
 void
 MessageView::_WrapText(BView* owner, const BString& text, float maxWidth,
-	std::vector<BString>& outLines, float emojiSize) const
+	std::vector<BString>& outLines, float emojiSize,
+	const BFont* useFont) const
 {
 	outLines.clear();
 
@@ -1531,11 +1609,14 @@ MessageView::_WrapText(BView* owner, const BString& text, float maxWidth,
 
 	// Emoji-aware width measurement
 	BFont font;
-	owner->GetFont(&font);
+	if (useFont != NULL)
+		font = *useFont;
+	else
+		owner->GetFont(&font);
 	auto measure = [&](const char* s) -> float {
 		if (emojiSize > 0)
 			return EmojiRenderer::MeasureLine(&font, s, emojiSize);
-		return owner->StringWidth(s);
+		return font.StringWidth(s);
 	};
 
 	// Check if text fits on one line

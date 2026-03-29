@@ -49,6 +49,10 @@ public:
 								uint8 retryCount = 0);
 			uint8			DeliveryStatus() const { return fDeliveryStatus; }
 
+			void			SetReactions(const char* reactions);
+			const char*		Reactions() const
+								{ return fReactions.String(); }
+
 			// Image message support
 			bool			IsImageMessage() const { return fIsImageMsg; }
 			uint32			ImageSessionId() const { return fImageSessionId; }
@@ -88,10 +92,13 @@ private:
 			void			_WrapText(BView* owner, const BString& text,
 								float maxWidth,
 								std::vector<BString>& outLines,
-								float emojiSize = 0) const;
+								float emojiSize = 0,
+								const BFont* useFont = NULL) const;
 			void			_DrawImageBubble(BView* owner, BRect frame);
 			void			_DrawVoiceBubble(BView* owner, BRect frame);
 			void			_DrawGifBubble(BView* owner, BRect frame);
+
+			BString			fReactions;
 
 			BString			fText;
 			BString			fSenderName;

@@ -35,6 +35,8 @@ public:
 								uint32 rtt = 0, uint8 retryCount = 0);
 			void			ClearMessages();
 			void			InvalidateMessage(int32 index);
+			void			UpdateReactions(int32 index,
+								const char* reactions);
 
 			void			SetCurrentContact(ContactInfo* contact);
 			ContactInfo*	CurrentContact() const { return fCurrentContact; }

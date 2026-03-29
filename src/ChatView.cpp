@@ -536,6 +536,20 @@ ChatView::InvalidateMessage(int32 index)
 
 
 void
+ChatView::UpdateReactions(int32 index, const char* reactions)
+{
+	if (index < 0 || index >= CountItems())
+		return;
+
+	MessageView* item = dynamic_cast<MessageView*>(ItemAt(index));
+	if (item != NULL) {
+		item->SetReactions(reactions);
+		InvalidateItem(index);
+	}
+}
+
+
+void
 ChatView::ClearMessages()
 {
 	// Stop GIF animation
@@ -689,12 +703,8 @@ ChatView::ScrollToBottom()
 	if (CountItems() == 0)
 		return;
 
-	// Scroll so the bottom of the last item is visible
 	int32 lastIndex = CountItems() - 1;
-	BRect itemFrame = ItemFrame(lastIndex);
-	float viewHeight = Bounds().Height();
-	float scrollTo = itemFrame.bottom - viewHeight;
-	if (scrollTo < 0)
-		scrollTo = 0;
-	ScrollTo(0, scrollTo);
+	Select(lastIndex);
+	ScrollToSelection();
+	Deselect(lastIndex);
 }
