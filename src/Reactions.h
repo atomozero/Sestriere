@@ -163,8 +163,14 @@ FormatReaction(char* out, size_t outSize, uint16 hash, uint8 emojiIdx)
 inline bool
 IsReactionMessage(const char* text)
 {
-	// Must match: r:XXXX:XX (9 chars exactly)
-	if (text == NULL || strlen(text) != 9)
+	// Must match: r:XXXX:XX (at least 9 chars, ignore trailing whitespace/null)
+	if (text == NULL)
+		return false;
+	size_t len = strlen(text);
+	// Trim trailing whitespace/control chars
+	while (len > 0 && (uint8)text[len - 1] <= ' ')
+		len--;
+	if (len != 9)
 		return false;
 	if (text[0] != 'r' || text[1] != ':' || text[6] != ':')
 		return false;
