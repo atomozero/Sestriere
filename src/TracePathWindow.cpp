@@ -25,7 +25,9 @@
 
 static const uint32 MSG_START_TRACE = 'sttr';
 static const uint32 MSG_TRACE_TIMEOUT = 'trto';
+static const uint32 MSG_ELAPSED_TICK = 'eltk';
 static const bigtime_t kTraceTimeoutUs = 30000000LL;  // 30 seconds
+static const bigtime_t kElapsedTickUs = 500000LL;     // 500ms for animation
 
 // Layout constants for TracePathView
 static const float kNodeCardH = 40.0f;
@@ -35,6 +37,161 @@ static const float kLeftMargin = 12.0f;
 static const float kSnrPillH = 16.0f;
 static const float kSnrPillRadius = 4.0f;
 static const float kTopPadding = 8.0f;
+
+
+// =============================================================================
+// TraceStatusView — Status bar with color-coded state and animation
+// =============================================================================
+
+enum TraceStatus {
+	kTraceIdle,
+	kTraceRunning,
+	kTraceSuccess,
+	kTracePartial,		// timeout but has known path
+	kTraceFailed,
+	kTraceDirect
+};
+
+
+class TraceStatusView : public BView {
+public:
+								TraceStatusView();
+
+	virtual void				Draw(BRect updateRect);
+	virtual BSize				MinSize();
+
+			void				SetStatus(TraceStatus status,
+									const char* text);
+			void				SetElapsed(int32 seconds);
+
+private:
+			TraceStatus			fStatus;
+			char				fText[128];
+			int32				fElapsedSec;
+			int32				fDotPhase;	// 0-3 for dot animation
+};
+
+
+TraceStatusView::TraceStatusView()
+	:
+	BView("trace_status", B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE),
+	fStatus(kTraceIdle),
+	fElapsedSec(0),
+	fDotPhase(0)
+{
+	fText[0] = '\0';
+	SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+}
+
+
+void
+TraceStatusView::SetStatus(TraceStatus status, const char* text)
+{
+	fStatus = status;
+	strlcpy(fText, text ? text : "", sizeof(fText));
+	if (status == kTraceRunning)
+		fDotPhase = (fDotPhase + 1) % 4;
+	Invalidate();
+}
+
+
+void
+TraceStatusView::SetElapsed(int32 seconds)
+{
+	fElapsedSec = seconds;
+	fDotPhase = (fDotPhase + 1) % 4;
+	Invalidate();
+}
+
+
+BSize
+TraceStatusView::MinSize()
+{
+	font_height fh;
+	be_plain_font->GetHeight(&fh);
+	float h = fh.ascent + fh.descent + fh.leading + 12;
+	return BSize(100, h);
+}
+
+
+void
+TraceStatusView::Draw(BRect updateRect)
+{
+	BRect bounds = Bounds();
+	rgb_color bgColor = ui_color(B_PANEL_BACKGROUND_COLOR);
+
+	// Status indicator dot color
+	rgb_color dotColor;
+	switch (fStatus) {
+		case kTraceRunning:
+			dotColor = kColorFair;	// yellow/orange
+			break;
+		case kTraceSuccess:
+		case kTraceDirect:
+			dotColor = kColorGood;	// green
+			break;
+		case kTracePartial:
+			dotColor = kColorPoor;	// orange
+			break;
+		case kTraceFailed:
+			dotColor = kColorBad;	// red
+			break;
+		default:
+			dotColor = tint_color(bgColor, B_DARKEN_2_TINT);
+			break;
+	}
+
+	// Background pill
+	rgb_color pillBg = tint_color(bgColor, B_DARKEN_1_TINT);
+	SetHighColor(pillBg);
+	FillRoundRect(bounds, 4, 4);
+
+	// Status dot (animated pulse for running)
+	float dotRadius = 4.0f;
+	float dotX = 10.0f + dotRadius;
+	float dotY = bounds.Height() / 2.0f;
+
+	if (fStatus == kTraceRunning) {
+		// Pulsating dot: alternate size
+		float pulse = (fDotPhase % 2 == 0) ? 1.0f : 1.5f;
+		float r = dotRadius * pulse;
+		// Outer glow
+		rgb_color glow = dotColor;
+		glow.alpha = 80;
+		SetHighColor(glow);
+		FillEllipse(BPoint(dotX, dotY), r + 2, r + 2);
+		SetHighColor(dotColor);
+		FillEllipse(BPoint(dotX, dotY), r, r);
+	} else {
+		SetHighColor(dotColor);
+		FillEllipse(BPoint(dotX, dotY), dotRadius, dotRadius);
+	}
+
+	// Text
+	BFont font(be_plain_font);
+	font.SetSize(11.0f);
+	SetFont(&font);
+
+	font_height fh;
+	font.GetHeight(&fh);
+	float textY = (bounds.Height() + fh.ascent - fh.descent) / 2.0f;
+	float textX = dotX + dotRadius + 8.0f;
+
+	rgb_color textColor = ui_color(B_PANEL_TEXT_COLOR);
+	SetHighColor(textColor);
+
+	BString display;
+	if (fStatus == kTraceRunning) {
+		// Animated dots
+		const char* dots[] = {"", ".", "..", "..."};
+		display.SetToFormat("%s%s  (%ds)",
+			fText, dots[fDotPhase], (int)fElapsedSec);
+	} else {
+		display = fText;
+	}
+
+	DrawString(display.String(), BPoint(textX, textY));
+}
 
 
 // =============================================================================
@@ -390,7 +547,7 @@ TracePathView::_AvatarColor(const char* name)
 
 TracePathWindow::TracePathWindow(BWindow* parent, const ContactInfo* contact)
 	:
-	BWindow(BRect(0, 0, 380, 320), "Trace Path",
+	BWindow(BRect(0, 0, 380, 360), "Trace Path",
 		B_FLOATING_WINDOW_LOOK, B_NORMAL_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS | B_CLOSE_ON_ESCAPE),
 	fParent(parent),
@@ -398,10 +555,12 @@ TracePathWindow::TracePathWindow(BWindow* parent, const ContactInfo* contact)
 	fPathView(NULL),
 	fTraceButton(NULL),
 	fCloseButton(NULL),
-	fStatusLabel(NULL),
+	fStatusView(NULL),
 	fHops(10),
 	fTracing(false),
-	fTimeoutRunner(NULL)
+	fTimeoutRunner(NULL),
+	fElapsedRunner(NULL),
+	fElapsedSec(0)
 {
 	if (contact != NULL)
 		fContact = *contact;
@@ -426,14 +585,15 @@ TracePathWindow::TracePathWindow(BWindow* parent, const ContactInfo* contact)
 	fCloseButton = new BButton("close_button", "Close",
 		new BMessage(B_QUIT_REQUESTED));
 
-	fStatusLabel = new BStringView("status_label", "Press Start to begin trace");
+	fStatusView = new TraceStatusView();
+	fStatusView->SetStatus(kTraceIdle, "Ready — press Start Trace");
 
 	// Layout
 	BLayoutBuilder::Group<>(this, B_VERTICAL)
 		.SetInsets(B_USE_WINDOW_SPACING)
 		.Add(fTargetLabel)
 		.Add(scrollView, 1.0)
-		.Add(fStatusLabel)
+		.Add(fStatusView)
 		.AddGroup(B_HORIZONTAL)
 			.AddGlue()
 			.Add(fCloseButton)
@@ -452,6 +612,7 @@ TracePathWindow::TracePathWindow(BWindow* parent, const ContactInfo* contact)
 TracePathWindow::~TracePathWindow()
 {
 	delete fTimeoutRunner;
+	delete fElapsedRunner;
 }
 
 
@@ -476,6 +637,15 @@ TracePathWindow::MessageReceived(BMessage* message)
 			if (fTracing)
 				SetTraceComplete(false);
 			break;
+
+		case MSG_ELAPSED_TICK:
+		{
+			if (!fTracing)
+				break;
+			fElapsedSec++;
+			fStatusView->SetElapsed(fElapsedSec);
+			break;
+		}
 
 		default:
 			BWindow::MessageReceived(message);
@@ -505,20 +675,26 @@ TracePathWindow::SetTraceComplete(bool success)
 	fTraceButton->SetEnabled(true);
 	fTraceButton->SetLabel("Retry Trace");
 
+	// Stop elapsed timer
+	delete fElapsedRunner;
+	fElapsedRunner = NULL;
+
 	if (success) {
 		BString status;
-		status.SetToFormat("Live trace: %d hop(s)", (int)fHops.CountItems());
-		fStatusLabel->SetText(status.String());
+		status.SetToFormat("Trace complete: %d hop(s) in %ds",
+			(int)fHops.CountItems(), (int)fElapsedSec);
+		fStatusView->SetStatus(kTraceSuccess, status.String());
 	} else {
 		if (fHops.CountItems() > 0) {
 			BString status;
-			status.SetToFormat("No live response — showing known path (%d hop(s))",
+			status.SetToFormat("Timeout — showing known path (%d hop(s))",
 				(int)fHops.CountItems());
-			fStatusLabel->SetText(status.String());
+			fStatusView->SetStatus(kTracePartial, status.String());
 		} else {
-			fPathView->SetMessage("No response from device");
+			fPathView->SetMessage("No response received");
 			fPathView->Invalidate();
-			fStatusLabel->SetText("Trace timed out — no response");
+			fStatusView->SetStatus(kTraceFailed,
+				"Trace failed — no response after 30s");
 		}
 	}
 }
@@ -605,12 +781,15 @@ TracePathWindow::ParseTraceData(const uint8* data, size_t length)
 
 	// Mark trace as complete
 	if (numHops == 0) {
-		fStatusLabel->SetText("Direct path — no intermediate hops");
+		fStatusView->SetStatus(kTraceDirect,
+			"Direct path — no intermediate hops");
 		fTracing = false;
 		fTraceButton->SetEnabled(true);
 		fTraceButton->SetLabel("Retry Trace");
 		delete fTimeoutRunner;
 		fTimeoutRunner = NULL;
+		delete fElapsedRunner;
+		fElapsedRunner = NULL;
 	} else {
 		SetTraceComplete(true);
 	}
@@ -641,7 +820,7 @@ TracePathWindow::SetContact(const ContactInfo* contact)
 
 	fTraceButton->SetEnabled(true);
 	fTraceButton->SetLabel("Start Trace");
-	fStatusLabel->SetText("Press Start to begin trace");
+	fStatusView->SetStatus(kTraceIdle, "Ready — press Start Trace");
 }
 
 
@@ -671,7 +850,8 @@ TracePathWindow::StartExternalTrace(const ContactInfo* contact)
 		fTracing = false;
 		fTraceButton->SetEnabled(true);
 		fTraceButton->SetLabel("Start Trace");
-		fStatusLabel->SetText("Direct path — no intermediate hops");
+		fStatusView->SetStatus(kTraceDirect,
+			"Direct path — no intermediate hops");
 		return;
 	}
 
@@ -685,22 +865,29 @@ TracePathWindow::StartExternalTrace(const ContactInfo* contact)
 
 	// Set tracing state — trace command already sent by MainWindow
 	fTracing = true;
+	fElapsedSec = 0;
 	fTraceButton->SetEnabled(false);
 	fTraceButton->SetLabel("Tracing...");
 
 	if (fContact.outPathLen > 0) {
 		BString statusStr;
-		statusStr.SetToFormat("Known path: %d hop(s) — waiting for live trace...",
+		statusStr.SetToFormat("Known path: %d hop(s) — waiting for live trace",
 			(int)fContact.outPathLen);
-		fStatusLabel->SetText(statusStr.String());
+		fStatusView->SetStatus(kTraceRunning, statusStr.String());
 	} else {
-		fStatusLabel->SetText("Path unknown — waiting for live trace...");
+		fStatusView->SetStatus(kTraceRunning, "Tracing route");
 	}
 
 	// Start timeout timer
 	BMessage timeoutMsg(MSG_TRACE_TIMEOUT);
 	fTimeoutRunner = new BMessageRunner(this, &timeoutMsg,
 		kTraceTimeoutUs, 1);
+
+	// Start elapsed tick
+	delete fElapsedRunner;
+	BMessage elapsedMsg(MSG_ELAPSED_TICK);
+	fElapsedRunner = new BMessageRunner(this, &elapsedMsg,
+		kElapsedTickUs);
 }
 
 
@@ -759,18 +946,25 @@ TracePathWindow::_OnStartTrace()
 
 	// Immediate visual feedback
 	fTracing = true;
+	fElapsedSec = 0;
 	fTraceButton->SetEnabled(false);
 	fTraceButton->SetLabel("Tracing...");
 	fHops.MakeEmpty();
 	fPathView->SetMessage("Sending trace request...");
 	_UpdatePathView();
-	fStatusLabel->SetText("Sending trace request...");
+	fStatusView->SetStatus(kTraceRunning, "Tracing route");
 
 	// Start timeout timer
 	delete fTimeoutRunner;
 	BMessage timeoutMsg(MSG_TRACE_TIMEOUT);
 	fTimeoutRunner = new BMessageRunner(this, &timeoutMsg,
 		kTraceTimeoutUs, 1);
+
+	// Start elapsed tick
+	delete fElapsedRunner;
+	BMessage elapsedMsg(MSG_ELAPSED_TICK);
+	fElapsedRunner = new BMessageRunner(this, &elapsedMsg,
+		kElapsedTickUs);
 
 	// Send trace path request to parent window
 	if (fParent != NULL) {

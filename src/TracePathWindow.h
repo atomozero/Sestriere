@@ -17,6 +17,7 @@ class BButton;
 class BMessageRunner;
 class BStringView;
 class TracePathView;
+class TraceStatusView;
 
 // Single hop in a trace path
 struct TraceHop {
@@ -69,11 +70,13 @@ private:
 			TracePathView*	fPathView;
 			BButton*		fTraceButton;
 			BButton*		fCloseButton;
-			BStringView*	fStatusLabel;
+			TraceStatusView*	fStatusView;
 
 			OwningObjectList<TraceHop>	fHops;
 			bool			fTracing;
 			BMessageRunner*	fTimeoutRunner;
+			BMessageRunner*	fElapsedRunner;
+			int32			fElapsedSec;
 };
 
 #endif // TRACEPATHWINDOW_H

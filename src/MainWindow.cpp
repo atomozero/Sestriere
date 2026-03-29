@@ -1374,7 +1374,7 @@ MainWindow::MessageReceived(BMessage* message)
 				"Cancel", "Connect");
 			alert->SetType(B_INFO_ALERT);
 			// Add the text control to the alert
-			BView* panel = alert->Panel();
+			BView* panel = alert->ChildAt(0);
 			if (panel != NULL) {
 				input->ResizeTo(200, 24);
 				input->MoveTo(20, 30);

@@ -53,7 +53,7 @@ SRCS = \
 
 RDEFS = Sestriere.rdef
 
-LIBS = be tracker shared columnlistview mosquitto sqlite3 translation curl gif codec2 media $(STDCPPLIBS)
+LIBS = be tracker shared columnlistview mosquitto sqlite3 translation curl gif codec2 media network $(STDCPPLIBS)
 
 LIBPATHS = /boot/system/non-packaged/lib
 
