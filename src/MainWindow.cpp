@@ -4835,17 +4835,29 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			_LogMessage("OK", logMsg.String());
 
 			// Find first pending message eligible for confirmation
-			// (has RSP_SENT or is in late-ACK grace period)
+			// Prefer messages that already got RSP_SENT, but also accept
+			// messages still waiting (firmware may send CONFIRMED before/without RSP_SENT)
 			PendingMessage* pending = NULL;
 			int32 pendingIdx = -1;
+			PendingMessage* fallback = NULL;
+			int32 fallbackIdx = -1;
 			for (int32 i = 0; i < fPendingMessages.CountItems(); i++) {
 				PendingMessage* p = fPendingMessages.ItemAt(i);
-				if (p != NULL
-					&& (p->gotRspSent || p->inGracePeriod)) {
+				if (p == NULL)
+					continue;
+				if (p->gotRspSent || p->inGracePeriod) {
 					pending = p;
 					pendingIdx = i;
 					break;
 				}
+				if (fallback == NULL && p->attemptCount > 0) {
+					fallback = p;
+					fallbackIdx = i;
+				}
+			}
+			if (pending == NULL && fallback != NULL) {
+				pending = fallback;
+				pendingIdx = fallbackIdx;
 			}
 
 			if (pending != NULL) {
