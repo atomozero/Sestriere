@@ -112,6 +112,17 @@ Fix lifecycle fSearchThread.
 ### B13. getenv("HOME") senza null check in MapView — v1.9.2
 Sostituito con `find_directory(B_USER_SETTINGS_DIRECTORY)`.
 
+### B14. Room messages sent as TXT_TYPE_CLI_DATA — v2.0-dev
+Messaggi normali di chat a Room/Repeater inviati con `TXT_TYPE_CLI_DATA` (1) invece di
+`TXT_TYPE_PLAIN` (0). Il server li interpretava come comandi admin, non come messaggi.
+Fix: `_SendTextMessage()` usa sempre `TXT_TYPE_PLAIN`; il tipo CLI resta solo in `_SendCliCommand()`.
+
+### B15. Room forwarded messages show Room name, not sender — v2.0-dev
+I messaggi inoltrati da un Room arrivano con il pubkey del Room come mittente. Il testo
+contiene `"SenderNick: messaggio"` ma Sestriere mostrava il nome del Room nel bubble.
+Fix: per contatti type==3, il testo viene parsato per estrarre il nick prima del `:` e
+mostrarlo come senderName nel bubble. Il testo visualizzato è solo la parte dopo `": "`.
+
 ### P1. Share Contact UI — v1.8.0-beta
 Context menu "Share Contact" nella sidebar.
 

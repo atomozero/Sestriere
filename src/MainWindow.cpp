@@ -4425,16 +4425,18 @@ MainWindow::_SendTextMessage(const char* text)
 			(int)_IsLoggedInto(contact->publicKey), text));
 	}
 
-	// Use CLI txt_type when logged into this contact
-	bool isCli = _IsLoggedInto(contact->publicKey);
-	uint8 txtType = isCli ? TXT_TYPE_CLI_DATA : TXT_TYPE_PLAIN;
+	// Only use CLI txt_type for explicit admin commands (handled by
+	// _SendCliCommand).  Normal chat messages to a Room/Repeater use
+	// TXT_TYPE_PLAIN so the server treats them as room messages, not
+	// CLI commands.
+	uint8 txtType = TXT_TYPE_PLAIN;
 
 	// Try SMAZ compression for plain text messages
 	char smazBuf[256];
 	const char* wireText = text;
 	size_t wireLen = textLen;
 
-	if (!isCli && textLen > 4
+	if (textLen > 4
 		&& !GiphyClient::IsGifMessage(text)
 		&& !VoiceSessionManager::IsVoiceEnvelope(text)
 		&& !ImageSessionManager::IsImageEnvelope(text)) {
@@ -5907,6 +5909,21 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 			senderPrefix[0], senderPrefix[1], senderPrefix[2]);
 	}
 
+	// Room messages: the Room server prefixes forwarded text with
+	// "SenderNick: actual message".  Extract the nick so we can show
+	// it as the bubble sender instead of the Room name.
+	BString roomParticipant;
+	const char* displayText = text;
+	if (sender != NULL && sender->type == 3 && txtType == TXT_TYPE_PLAIN) {
+		const char* colon = strchr(text, ':');
+		if (colon != NULL && colon > text && colon < text + 32
+			&& colon[1] == ' ') {
+			roomParticipant.SetTo(text, (int32)(colon - text));
+			displayText = colon + 2;
+			senderName = roomParticipant;
+		}
+	}
+
 	if (pathLen == kPathLenDirect || pathLen == 0) {
 		_LogMessage("MSG", BString().SetToFormat("DM from %s [direct, SNR:%d]: %s",
 			senderName.String(), snr, text));
@@ -5927,7 +5944,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 	chatMsg.pathLen = pathLen;
 	chatMsg.snr = snr;
 	chatMsg.timestamp = timestamp;
-	strlcpy(chatMsg.text, text, sizeof(chatMsg.text));
+	strlcpy(chatMsg.text, displayText, sizeof(chatMsg.text));
 	chatMsg.isOutgoing = false;
 	chatMsg.isChannel = false;
 	chatMsg.txtType = txtType;
