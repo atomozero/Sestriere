@@ -989,7 +989,7 @@ PacketAnalyzerWindow::_DecodePacket(CapturedPacket& packet,
 			break;
 		}
 
-		case PUSH_RAW_RADIO_PACKET:
+		case PUSH_LOG_RX_DATA:
 		{
 			if (rawLength >= 5) {
 				uint8 seqLo = rawData[1];
@@ -1235,7 +1235,7 @@ PacketAnalyzerWindow::_PacketTypeName(uint8 code)
 		case PUSH_LOGIN_SUCCESS:		return "LOGIN_OK";
 		case PUSH_LOGIN_FAIL:			return "LOGIN_FAIL";
 		case PUSH_STATUS_RESPONSE:		return "STATUS_RSP";
-		case PUSH_RAW_RADIO_PACKET:		return "RAW_RADIO";
+		case PUSH_LOG_RX_DATA:		return "RAW_RADIO";
 		case PUSH_TRACE_DATA:			return "TRACE_DATA";
 		case PUSH_NEW_ADVERT:			return "NEW_ADVERT";
 		case PUSH_TELEMETRY_RESPONSE:	return "TELEMETRY";
@@ -1289,7 +1289,7 @@ PacketAnalyzerWindow::_PacketCategoryColor(uint8 code)
 			return base;
 
 		// Raw/Radio — purple
-		case PUSH_RAW_RADIO_PACKET:
+		case PUSH_LOG_RX_DATA:
 		case PUSH_TRACE_DATA:
 		case PUSH_TELEMETRY_RESPONSE:
 		case PUSH_RAW_DATA:
@@ -1686,7 +1686,7 @@ PacketAnalyzerWindow::_FormatDecodedSection(const CapturedPacket* packet,
 			break;
 		}
 
-		case PUSH_RAW_RADIO_PACKET:
+		case PUSH_LOG_RX_DATA:
 		{
 			output << "\xf0\x9f\x93\xa1  Raw Radio Packet\n";
 			output << "A low-level radio frame captured from the "
@@ -2115,7 +2115,7 @@ PacketAnalyzerWindow::_MatchesFilter(const CapturedPacket& packet)
 					return false;
 				break;
 			case 0x88:	// Raw radio
-				if (packet.code != PUSH_RAW_RADIO_PACKET)
+				if (packet.code != PUSH_LOG_RX_DATA)
 					return false;
 				break;
 			case 0x00:	// Responses

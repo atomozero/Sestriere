@@ -151,6 +151,12 @@ private:
 			void			_HandlePushRawData(const uint8* data, size_t length);
 			void			_HandlePushControlData(const uint8* data,
 								size_t length);
+			void			_HandlePushContactDeleted(const uint8* data,
+								size_t length);
+			void			_HandlePushPathDiscovery(const uint8* data,
+								size_t length);
+			void			_HandleSignResponse(const uint8* data,
+								size_t length, bool isStart);
 
 			// Connection events
 			void			_OnConnected(BMessage* message);
@@ -413,6 +419,8 @@ private:
 			uint8			fRadioTxPower;
 			bool			fHasRadioParams;
 			uint32			fDevicePin;
+			uint8			fClientRepeat;   // v9+: client repeat/off-grid mode
+			uint8			fPathHashMode;   // v10+: 0=1B, 1=2B, 2=3B hashes
 
 			// Other params from RSP_SELF_INFO (for CMD_SET_OTHER_PARAMS)
 			uint8			fMultiAcks;

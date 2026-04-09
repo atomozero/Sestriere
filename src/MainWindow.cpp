@@ -467,6 +467,8 @@ MainWindow::MainWindow()
 	fRadioTxPower = 0;
 	fHasRadioParams = false;
 	fDevicePin = 0;
+	fClientRepeat = 0;
+	fPathHashMode = 0;
 	fMultiAcks = 0;
 	fAdvertLocPolicy = 0;
 	fTelemetryModes = 0;
@@ -4961,7 +4963,7 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 		case PUSH_LOGIN_FAIL:
 			_HandlePushLoginResult(data, length);
 			break;
-		case PUSH_RAW_RADIO_PACKET:
+		case PUSH_LOG_RX_DATA:
 			_HandleRawPacket(data, length);
 			break;
 		case PUSH_STATUS_RESPONSE:
@@ -4983,6 +4985,37 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 
 		case PUSH_CONTROL_DATA:
 			_HandlePushControlData(data, length);
+			break;
+
+		case PUSH_PATH_DISCOVERY:
+			_HandlePushPathDiscovery(data, length);
+			break;
+
+		case PUSH_CONTACT_DELETED:
+			_HandlePushContactDeleted(data, length);
+			break;
+
+		case PUSH_CONTACTS_FULL:
+			_LogMessage("WARN", "Device contact table is full — "
+				"cannot add more contacts");
+			break;
+
+		case RSP_DISABLED:
+			_LogMessage("WARN", "Feature disabled by device");
+			break;
+
+		case RSP_PRIVATE_KEY:
+			_LogMessage("INFO", BString().SetToFormat(
+				"Private key export received (%zu bytes)",
+				length > 1 ? length - 1 : (size_t)0));
+			break;
+
+		case RSP_SIGN_START:
+			_HandleSignResponse(data, length, true);
+			break;
+
+		case RSP_SIGNATURE:
+			_HandleSignResponse(data, length, false);
 			break;
 
 		case RSP_CUSTOM_VARS:
@@ -5221,6 +5254,95 @@ MainWindow::_HandlePushControlData(const uint8* data, size_t length)
 
 
 void
+MainWindow::_HandlePushContactDeleted(const uint8* data, size_t length)
+{
+	// PUSH_CONTACT_DELETED (0x8F):
+	// [0]=code [1-32]=pubkey of evicted contact
+	if (length < 33) {
+		_LogMessage("WARN", "PUSH_CONTACT_DELETED: frame too short");
+		return;
+	}
+
+	const uint8* pubKey = data + 1;
+
+	// Build hex key for identification
+	char keyHex[kContactHexSize];
+	FormatContactKey(keyHex, pubKey);
+
+	// Find and identify the contact before removing
+	BString contactName("unknown");
+	ContactInfo* contact = _FindContactByPrefix(pubKey, 6);
+	if (contact != NULL)
+		contactName = contact->name;
+
+	_LogMessage("WARN", BString().SetToFormat(
+		"Contact auto-deleted by device: %s (%s)",
+		contactName.String(), keyHex));
+
+	// Re-sync contacts to update the list
+	if (fConnected && !fSyncingContacts) {
+		fSyncingContacts = true;
+		fProtocol->SendGetContacts(0);
+	}
+}
+
+
+void
+MainWindow::_HandlePushPathDiscovery(const uint8* data, size_t length)
+{
+	// PUSH_PATH_DISCOVERY_RESPONSE (0x8D):
+	// [0]=code [1+]=discovery result data
+	if (length < 2) {
+		_LogMessage("WARN", "PUSH_PATH_DISCOVERY: frame too short");
+		return;
+	}
+
+	// Build hex dump for logging
+	BString hexDump;
+	size_t dumpLen = (length - 1) < 32 ? (length - 1) : 32;
+	for (size_t i = 0; i < dumpLen; i++) {
+		if (i > 0)
+			hexDump << " ";
+		hexDump << BString().SetToFormat("%02X", data[1 + i]);
+	}
+	if (length - 1 > 32)
+		hexDump << "...";
+
+	_LogMessage("INFO", BString().SetToFormat(
+		"Path discovery response: %zu bytes [%s]",
+		length - 1, hexDump.String()));
+
+	// Forward to NetworkMapWindow if open
+	if (_LockIfVisible(fNetworkMapWindow)) {
+		BMessage msg(MSG_UPDATE_MAP_DATA);
+		msg.AddData("path_discovery", B_RAW_TYPE, data + 1, length - 1);
+		fNetworkMapWindow->PostMessage(&msg);
+		fNetworkMapWindow->UnlockLooper();
+	}
+}
+
+
+void
+MainWindow::_HandleSignResponse(const uint8* data, size_t length,
+	bool isStart)
+{
+	if (isStart) {
+		// RSP_SIGN_START (0x13): signing process initiated
+		_LogMessage("INFO", "Message signing started by device");
+	} else {
+		// RSP_SIGNATURE (0x14): signature data received
+		if (length < 2) {
+			_LogMessage("WARN", "RSP_SIGNATURE: frame too short");
+			return;
+		}
+		_LogMessage("INFO", BString().SetToFormat(
+			"Message signature received (%zu bytes)",
+			length - 1));
+	}
+}
+
+
+void
 MainWindow::_HandleDeviceInfo(const uint8* data, size_t length)
 {
 	if (length < 4) {
@@ -5290,6 +5412,22 @@ MainWindow::_HandleDeviceInfo(const uint8* data, size_t length)
 		memcpy(firmware, data + 60, fwLen);
 		strlcpy(fDeviceFirmware, firmware, sizeof(fDeviceFirmware));
 		info << "Firmware: " << fDeviceFirmware << "\n";
+	}
+
+	// V9+ fields (after version string, offset 80+)
+	if (length >= 81) {
+		fClientRepeat = data[80];
+		info << BString().SetToFormat("Client repeat mode: %s\n",
+			fClientRepeat ? "enabled" : "disabled");
+	}
+	if (length >= 82) {
+		fPathHashMode = data[81];
+		const char* modeStr = "1-byte";
+		if (fPathHashMode == 1)
+			modeStr = "2-byte";
+		else if (fPathHashMode == 2)
+			modeStr = "3-byte";
+		info << BString().SetToFormat("Path hash mode: %s\n", modeStr);
 	}
 
 	_LogMessage("INFO", info.String());
@@ -9569,7 +9707,7 @@ MainWindow::_StartImageFetch(uint32 sessionId)
 
 	// Send fetch request via CMD_SEND_RAW_DATA (broadcast).
 	// CMD_SEND_BINARY_REQ does NOT deliver decrypted data on current
-	// firmware — arrives as PUSH_RAW_RADIO_PACKET (0x88) which the
+	// firmware — arrives as PUSH_LOG_RX_DATA (0x88) which the
 	// sender can't process. SendRawData delivers as PUSH_RAW_DATA (0x84).
 	if (fProtocol == NULL
 		|| fProtocol->SendRawData(packet, pktLen) != B_OK) {

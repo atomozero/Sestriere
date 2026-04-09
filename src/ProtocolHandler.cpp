@@ -234,7 +234,9 @@ ProtocolHandler::SendRadioParams(uint32 freqHz, uint32 bwHz, uint8 sf,
 	if (!IsConnected())
 		return B_NOT_INITIALIZED;
 
-	// Protocol wire format: frequency in kHz, bandwidth in Hz
+	// Protocol wire format: frequency in kHz, bandwidth in Hz.
+	// Note: the official wiki says Hz for both, but the firmware actually
+	// sends/expects kHz for frequency (confirmed by RSP_SELF_INFO parsing).
 	uint32 freqKHz = freqHz / 1000;
 
 	uint8 payload[12];
@@ -446,6 +448,23 @@ ProtocolHandler::SendShareContact(const uint8* pubkey)
 	payload[0] = CMD_SHARE_CONTACT;
 	memcpy(payload + 1, pubkey, kPubKeySize);
 	return fSerial->SendFrame(payload, 33);
+}
+
+
+status_t
+ProtocolHandler::SendImportContact(const uint8* cardData, size_t length)
+{
+	if (!IsConnected())
+		return B_NOT_INITIALIZED;
+
+	if (length == 0 || length > kMaxFramePayload - 1)
+		return B_BAD_VALUE;
+
+	// CMD_IMPORT_CONTACT: [code][card_data...]
+	uint8 payload[kMaxFramePayload];
+	payload[0] = CMD_IMPORT_CONTACT;
+	memcpy(payload + 1, cardData, length);
+	return fSerial->SendFrame(payload, 1 + length);
 }
 
 

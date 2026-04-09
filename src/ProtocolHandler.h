@@ -61,6 +61,8 @@ public:
 		status_t		SendAddUpdateContact(const uint8* pubkey,
 							const char* name, uint8 type);
 		status_t		SendShareContact(const uint8* pubkey);
+		status_t		SendImportContact(const uint8* cardData,
+							size_t length);
 
 		// Messaging (frame-level only)
 		status_t		SendDM(const uint8* pubkeyPrefix,
