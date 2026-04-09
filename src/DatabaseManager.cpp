@@ -377,7 +377,7 @@ DatabaseManager::DeleteMessage(const char* contactKeyHex,
 
 	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
 	sqlite3_bind_text(stmt, 2, fCompanionKey, -1, SQLITE_TRANSIENT);
-	sqlite3_bind_int(stmt, 3, (int)timestamp);
+	sqlite3_bind_int64(stmt, 3, (int64_t)timestamp);
 	sqlite3_bind_text(stmt, 4, text, -1, SQLITE_TRANSIENT);
 
 	bool ok = (sqlite3_step(stmt) == SQLITE_DONE);

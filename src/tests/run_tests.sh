@@ -14,7 +14,7 @@ SKIP=0
 ERRORS=""
 
 # Tests requiring sqlite3
-SQLITE_TESTS="test_error_handling test_phase1_fixes test_phase2_fixes test_phase3_fixes test_security"
+SQLITE_TESTS="test_error_handling test_phase1_fixes test_phase2_fixes test_phase3_fixes test_security test_message_db"
 
 for src in test_*.cpp; do
 	name="${src%.cpp}"

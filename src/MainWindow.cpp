@@ -430,8 +430,8 @@ MainWindow::MainWindow()
 	fImageExpireTimer(NULL),
 	fCurrentSendSession(0),
 	fCurrentSendIndex(0),
-	fImageEnvelopeWaiting(false),
-	fVoiceEnvelopeWaiting(false)
+	fImageEnvelopeSession(0),
+	fVoiceEnvelopeSession(0)
 {
 	// Initialize device info
 	memset(fDeviceName, 0, sizeof(fDeviceName));
@@ -4406,15 +4406,33 @@ MainWindow::_SendTextMessage(const char* text)
 		return;
 	}
 
-	size_t textLen = strlen(text);
+	// Work on a mutable copy so we can truncate at UTF-8 boundary
+	char textBuf[256];
+	strlcpy(textBuf, text, sizeof(textBuf));
+	size_t textLen = strlen(textBuf);
 	if (textLen > 160) {
-		_LogMessage("ERROR", "Message too long (max 160 chars)");
-		return;
+		// Truncate at UTF-8 character boundary to avoid splitting
+		// multi-byte sequences (emoji, CJK, accented chars)
+		textLen = 160;
+		while (textLen > 0 && ((uint8)textBuf[textLen] & 0xC0) == 0x80)
+			textLen--;  // skip continuation bytes
+		textBuf[textLen] = '\0';
+		_LogMessage("WARN", "Message truncated to 160 bytes at UTF-8 boundary");
 	}
+	text = textBuf;
 
 	// Rate-limit: refuse if too many pending messages
 	if (fPendingMessages.CountItems() >= kMaxSimultaneousPending) {
 		_LogMessage("ERROR", "Too many pending messages — wait for delivery");
+		// Show feedback in chat so user knows the message wasn't sent
+		ChatMessage errMsg;
+		strlcpy(errMsg.text, "Message not sent \xe2\x80\x94 waiting for "
+			"pending deliveries. Try again shortly.",
+			sizeof(errMsg.text));
+		errMsg.timestamp = (uint32)time(NULL);
+		errMsg.isOutgoing = true;
+		errMsg.deliveryStatus = DELIVERY_FAILED;
+		fChatView->AddMessage(errMsg, "Me");
 		return;
 	}
 
@@ -4568,15 +4586,8 @@ MainWindow::_SendChannelMessage(const char* text)
 
 	uint8 wireChannelIdx = (uint8)fSelectedChannelIdx;
 	uint32 timestamp = (uint32)time(NULL);
-	status_t sendResult = fProtocol->SendChannelMsg(wireChannelIdx,
-		timestamp, wireText, wireLen);
-	if (sendResult != B_OK) {
-		_LogMessage("ERROR", "Failed to send channel message — not connected");
-		return;
-	}
-	fTopBar->FlashTx();
-
-	// Add to chat view as outgoing message (sent immediately for channel)
+	// Build outgoing message first — display even if send fails so user
+	// sees the delivery status (SENT vs FAILED)
 	ChatMessage outMsg;
 	memset(outMsg.pubKeyPrefix, 0, kPubKeyPrefixSize);
 	strlcpy(outMsg.text, text, sizeof(outMsg.text));
@@ -4585,7 +4596,16 @@ MainWindow::_SendChannelMessage(const char* text)
 	outMsg.isChannel = true;
 	outMsg.pathLen = 0;
 	outMsg.snr = 0;
-	outMsg.deliveryStatus = DELIVERY_SENT;
+
+	status_t sendResult = fProtocol->SendChannelMsg(wireChannelIdx,
+		timestamp, wireText, wireLen);
+	if (sendResult == B_OK) {
+		fTopBar->FlashTx();
+		outMsg.deliveryStatus = DELIVERY_SENT;
+	} else {
+		_LogMessage("ERROR", "Failed to send channel message — not connected");
+		outMsg.deliveryStatus = DELIVERY_FAILED;
+	}
 
 	// Store in channel's message list
 	ChatMessage* stored = new ChatMessage(outMsg);
@@ -4836,9 +4856,11 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 					(unsigned long)roundTripMs);
 			_LogMessage("OK", logMsg.String());
 
-			// Find first pending message eligible for confirmation
-			// Prefer messages that already got RSP_SENT, but also accept
-			// messages still waiting (firmware may send CONFIRMED before/without RSP_SENT)
+			// Find pending message by ackCode match, then FIFO fallback
+			uint32 ackCode = 0;
+			if (length >= 5)
+				ackCode = ReadLE32(data + 1);
+
 			PendingMessage* pending = NULL;
 			int32 pendingIdx = -1;
 			PendingMessage* fallback = NULL;
@@ -4847,11 +4869,20 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 				PendingMessage* p = fPendingMessages.ItemAt(i);
 				if (p == NULL)
 					continue;
-				if (p->gotRspSent || p->inGracePeriod) {
+				// Prefer exact ackCode match (reliable identification)
+				if (ackCode != 0 && p->expectedAck == ackCode
+					&& p->gotRspSent) {
 					pending = p;
 					pendingIdx = i;
 					break;
 				}
+				// FIFO fallback for messages with RSP_SENT or in grace
+				if (fallback == NULL
+					&& (p->gotRspSent || p->inGracePeriod)) {
+					fallback = p;
+					fallbackIdx = i;
+				}
+				// Last resort: any message with attempt > 0
 				if (fallback == NULL && p->attemptCount > 0) {
 					fallback = p;
 					fallbackIdx = i;
@@ -4918,8 +4949,9 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			}
 
 			// Start image fragment transmission if envelope was just confirmed
-			if (fImageEnvelopeWaiting) {
-				fImageEnvelopeWaiting = false;
+			if (fImageEnvelopeSession != 0
+				&& fImageEnvelopeSession == fCurrentSendSession) {
+				fImageEnvelopeSession = 0;
 				delete fImageFragmentTimer;
 				BMessage fragMsg(MSG_IMAGE_SEND_NEXT);
 				// 4s interval to match LoRa airtime
@@ -4930,8 +4962,9 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 					"for session %08x", fCurrentSendSession));
 			}
 			// Same for voice
-			if (fVoiceEnvelopeWaiting) {
-				fVoiceEnvelopeWaiting = false;
+			if (fVoiceEnvelopeSession != 0
+				&& fVoiceEnvelopeSession == fCurrentVoiceSendSession) {
+				fVoiceEnvelopeSession = 0;
 				delete fVoiceFragmentTimer;
 				BMessage fragMsg(MSG_VOICE_SEND_NEXT);
 				fVoiceFragmentTimer = new BMessageRunner(this, &fragMsg,
@@ -5999,6 +6032,14 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 			decoded[decompLen] = '\0';
 			strlcpy(text, decoded, sizeof(text));
 			textLen = (size_t)decompLen;
+		} else {
+			// Decompression failed — strip "s:" prefix so the user
+			// sees raw payload instead of the misleading prefix
+			memmove(text, text + kSmazPrefixLen,
+				textLen - kSmazPrefixLen + 1);
+			textLen -= kSmazPrefixLen;
+			_LogMessage("WARN", "SMAZ decompression failed — "
+				"showing raw payload");
 		}
 	}
 
@@ -6065,11 +6106,16 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 	BString roomParticipant;
 	const char* displayText = text;
 	if (sender != NULL && sender->type == 3 && txtType == TXT_TYPE_PLAIN) {
-		const char* colon = strchr(text, ':');
-		if (colon != NULL && colon > text && colon < text + 32
-			&& colon[1] == ' ') {
-			roomParticipant.SetTo(text, (int32)(colon - text));
-			displayText = colon + 2;
+		// Find the LAST ": " within first 32 chars to handle nicks
+		// containing colons (e.g. "User: Admin: hello" → nick="User: Admin")
+		const char* bestColon = NULL;
+		for (const char* p = text; p < text + 32 && *p != '\0'; p++) {
+			if (*p == ':' && p > text && p[1] == ' ')
+				bestColon = p;
+		}
+		if (bestColon != NULL) {
+			roomParticipant.SetTo(text, (int32)(bestColon - text));
+			displayText = bestColon + 2;
 			senderName = roomParticipant;
 		}
 	}
@@ -7337,6 +7383,10 @@ MainWindow::_HandleMsgSent(const uint8* data, size_t length)
 		return;
 
 	pending->gotRspSent = true;
+
+	// Extract expectedAck from RSP_SENT: [0]=code [1]=routeType [2-5]=expectedAck
+	if (length >= 6)
+		pending->expectedAck = ReadLE32(data + 2);
 
 	// Update ChatView if the pending message's contact is currently displayed
 	ContactInfo* currentContact = fChatView->CurrentContact();
@@ -9477,7 +9527,7 @@ MainWindow::_HandleImageSelected(BMessage* message)
 	// a session BEFORE fragments arrive, otherwise they get dropped.
 	fCurrentSendSession = sid;
 	fCurrentSendIndex = 0;
-	fImageEnvelopeWaiting = true;
+	fImageEnvelopeSession = sid;
 
 	// Fallback: start fragments after 10s even if PUSH_SEND_CONFIRMED
 	// never arrives (e.g. delivery failed, radio unresponsive)
@@ -9534,8 +9584,8 @@ MainWindow::_SendNextImageFragment()
 	_UpdateImageMessageView(fCurrentSendSession);
 
 	// If called from fallback timer (one-shot), switch to repeating
-	if (fImageEnvelopeWaiting) {
-		fImageEnvelopeWaiting = false;
+	if (fImageEnvelopeSession != 0) {
+		fImageEnvelopeSession = 0;
 		_LogMessage("IMG", "Fallback: starting fragments without delivery "
 			"confirmation");
 		delete fImageFragmentTimer;
@@ -9871,7 +9921,7 @@ MainWindow::_StopVoiceRecord()
 	// Wait for delivery confirmation before sending fragments
 	fCurrentVoiceSendSession = sid;
 	fCurrentVoiceSendIndex = 0;
-	fVoiceEnvelopeWaiting = true;
+	fVoiceEnvelopeSession = sid;
 
 	// Fallback: start fragments after 10s even without confirmation
 	delete fVoiceFragmentTimer;
@@ -9923,8 +9973,8 @@ MainWindow::_SendNextVoiceFragment()
 	fCurrentVoiceSendIndex++;
 
 	// If called from fallback timer (one-shot), switch to repeating
-	if (fVoiceEnvelopeWaiting) {
-		fVoiceEnvelopeWaiting = false;
+	if (fVoiceEnvelopeSession != 0) {
+		fVoiceEnvelopeSession = 0;
 		_LogMessage("VOICE", "Fallback: starting fragments without delivery "
 			"confirmation");
 		delete fVoiceFragmentTimer;

@@ -69,13 +69,15 @@ struct PendingMessage {
 	uint8		attemptCount;		// Current attempt (1-based)
 	bigtime_t	sentTime;			// system_time() when sent
 	bool		gotRspSent;			// True after RSP_SENT received
+	uint32		expectedAck;		// ackCode from RSP_SENT for matching CONFIRMED
 	bool		inGracePeriod;		// True = waiting for late ACK after max retries
 	bigtime_t	graceStartTime;		// system_time() when grace period started
 	int32		chatViewIndex;		// Index in ChatView (-1 if not visible)
 
 	PendingMessage()
 		: timestamp(0), txtType(0), attemptCount(1), sentTime(0),
-		  gotRspSent(false), inGracePeriod(false), graceStartTime(0),
+		  gotRspSent(false), expectedAck(0),
+		  inGracePeriod(false), graceStartTime(0),
 		  chatViewIndex(-1) {
 		memset(contactKey, 0, sizeof(contactKey));
 		memset(pubKey, 0, sizeof(pubKey));
@@ -477,8 +479,8 @@ private:
 			BMessageRunner*	fImageExpireTimer;
 			uint32			fCurrentSendSession;
 			uint8			fCurrentSendIndex;
-			bool			fImageEnvelopeWaiting;  // Wait for delivery before fragments
-			bool			fVoiceEnvelopeWaiting;
+			uint32			fImageEnvelopeSession;  // Session awaiting envelope ACK (0=none)
+			uint32			fVoiceEnvelopeSession;  // Session awaiting envelope ACK (0=none)
 };
 
 
