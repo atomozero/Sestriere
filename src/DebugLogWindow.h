@@ -32,10 +32,13 @@ public:
 
 private:
 			BString			_FormatHex(const uint8* data, size_t length);
-			const char*		_CommandName(uint8 cmd);
+			const char*		_CommandName(uint8 cmd, bool isTx);
+			void			_PruneLog();
 
 			BTextView*		fLogView;
 			BButton*		fClearButton;
+
+	static const int32	kMaxLogSize = 256 * 1024;  // 256 KB
 
 	static	DebugLogWindow*	sInstance;
 };

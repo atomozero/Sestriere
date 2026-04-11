@@ -36,9 +36,12 @@ void
 DebugLogWindow::ShowWindow()
 {
 	DebugLogWindow* window = Instance();
-	if (window->IsHidden())
-		window->Show();
-	window->Activate();
+	if (window->LockLooper()) {
+		if (window->IsHidden())
+			window->Show();
+		window->Activate();
+		window->UnlockLooper();
+	}
 }
 
 
@@ -139,6 +142,7 @@ DebugLogWindow::LogMessage(const char* prefix, const char* text)
 	// Append to log (must lock window first)
 	if (LockLooper()) {
 		fLogView->Insert(fLogView->TextLength(), line.String(), line.Length());
+		_PruneLog();
 		fLogView->ScrollToOffset(fLogView->TextLength());
 		UnlockLooper();
 	}
@@ -149,7 +153,8 @@ void
 DebugLogWindow::LogHex(const char* prefix, const uint8* data, size_t length)
 {
 	BString hex = _FormatHex(data, length);
-	const char* cmdName = (length > 0) ? _CommandName(data[0]) : "";
+	bool isTx = (prefix != NULL && strstr(prefix, "TX") != NULL);
+	const char* cmdName = (length > 0) ? _CommandName(data[0], isTx) : "";
 
 	BString line;
 	line.SetToFormat("%s [%zu]%s: %s", prefix, length, cmdName, hex.String());
@@ -163,6 +168,25 @@ DebugLogWindow::Clear()
 	if (LockLooper()) {
 		fLogView->SetText("");
 		UnlockLooper();
+	}
+}
+
+
+void
+DebugLogWindow::_PruneLog()
+{
+	int32 textLen = fLogView->TextLength();
+	if (textLen > kMaxLogSize) {
+		// Remove first quarter to avoid pruning on every message
+		int32 removeLen = textLen / 4;
+		const char* text = fLogView->Text();
+		for (int32 i = removeLen; i < textLen && i < removeLen + 256; i++) {
+			if (text[i] == '\n') {
+				removeLen = i + 1;
+				break;
+			}
+		}
+		fLogView->Delete(0, removeLen);
 	}
 }
 
@@ -184,38 +208,109 @@ DebugLogWindow::_FormatHex(const uint8* data, size_t length)
 
 
 const char*
-DebugLogWindow::_CommandName(uint8 cmd)
+DebugLogWindow::_CommandName(uint8 cmd, bool isTx)
 {
-	// Inbound commands (App -> Radio)
-	switch (cmd) {
-		case 1: return " (APP_START)";
-		case 2: return " (SEND_TXT_MSG)";
-		case 3: return " (SEND_CHANNEL_TXT_MSG)";
-		case 4: return " (GET_CONTACTS)";
-		case 5: return " (GET_DEVICE_TIME)";
-		case 6: return " (SET_DEVICE_TIME)";
-		case 7: return " (SEND_SELF_ADVERT)";
-		case 8: return " (SET_ADVERT_NAME)";
-		case 9: return " (ADD_UPDATE_CONTACT)";
-		case 10: return " (SYNC_NEXT_MESSAGE)";
-		case 11: return " (SET_RADIO_PARAMS)";
-		case 12: return " (SET_RADIO_TX_POWER)";
-		case 13: return " (RESET_PATH)";
-		case 14: return " (SET_ADVERT_LATLON)";
-		case 20: return " (GET_BATT_AND_STORAGE)";
-		case 22: return " (DEVICE_QUERY)";
-		case 56: return " (GET_STATS)";
-		default: break;
+	// CMD codes 0-22 overlap with RSP codes 0-22 numerically.
+	// Use direction (TX = commands sent, RX = responses received) to disambiguate.
+	if (isTx) {
+		switch (cmd) {
+			case CMD_APP_START:				return " (APP_START)";
+			case CMD_SEND_TXT_MSG:			return " (SEND_TXT_MSG)";
+			case CMD_SEND_CHANNEL_TXT_MSG:	return " (SEND_CHANNEL)";
+			case CMD_GET_CONTACTS:			return " (GET_CONTACTS)";
+			case CMD_GET_DEVICE_TIME:		return " (GET_TIME)";
+			case CMD_SET_DEVICE_TIME:		return " (SET_TIME)";
+			case CMD_SEND_SELF_ADVERT:		return " (SEND_ADVERT)";
+			case CMD_SET_ADVERT_NAME:		return " (SET_NAME)";
+			case CMD_ADD_UPDATE_CONTACT:	return " (ADD_CONTACT)";
+			case CMD_SYNC_NEXT_MESSAGE:		return " (SYNC_MSG)";
+			case CMD_SET_RADIO_PARAMS:		return " (SET_RADIO)";
+			case CMD_SET_RADIO_TX_POWER:	return " (SET_TX_PWR)";
+			case CMD_RESET_PATH:			return " (RESET_PATH)";
+			case CMD_SET_ADVERT_LATLON:		return " (SET_LATLON)";
+			case CMD_REMOVE_CONTACT:		return " (RM_CONTACT)";
+			case CMD_SHARE_CONTACT:			return " (SHARE)";
+			case CMD_EXPORT_CONTACT:		return " (EXPORT)";
+			case CMD_IMPORT_CONTACT:		return " (IMPORT)";
+			case CMD_REBOOT:				return " (REBOOT)";
+			case CMD_GET_BATT_AND_STORAGE:	return " (GET_BATT)";
+			case CMD_SET_TUNING_PARAMS:		return " (SET_TUNING)";
+			case CMD_DEVICE_QUERY:			return " (DEV_QUERY)";
+			case CMD_SEND_RAW_DATA:			return " (SEND_RAW)";
+			case CMD_SEND_LOGIN:			return " (LOGIN)";
+			case CMD_SEND_STATUS_REQ:		return " (STATUS_REQ)";
+			case CMD_GET_CHANNEL:			return " (GET_CH)";
+			case CMD_SET_CHANNEL:			return " (SET_CH)";
+			case CMD_SEND_TRACE_PATH:		return " (TRACE)";
+			case CMD_SET_DEVICE_PIN:		return " (SET_PIN)";
+			case CMD_SET_OTHER_PARAMS:		return " (SET_OTHER)";
+			case CMD_SEND_TELEMETRY_REQ:	return " (TEL_REQ)";
+			case CMD_GET_CUSTOM_VARS:		return " (GET_VARS)";
+			case CMD_SET_CUSTOM_VAR:		return " (SET_VAR)";
+			case CMD_GET_ADVERT_PATH:		return " (GET_PATH)";
+			case CMD_GET_TUNING_PARAMS:		return " (GET_TUNING)";
+			case CMD_SEND_BINARY_REQ:		return " (BIN_REQ)";
+			case CMD_FACTORY_RESET:			return " (FACTORY_RST)";
+			case CMD_SEND_CONTROL_DATA:		return " (CTRL_DATA)";
+			case CMD_GET_STATS:				return " (GET_STATS)";
+			case CMD_SEND_ANON_REQ:			return " (ANON_REQ)";
+			case CMD_SET_AUTO_ADD_CONFIG:	return " (SET_AUTOADD)";
+			case CMD_GET_AUTO_ADD_CONFIG:	return " (GET_AUTOADD)";
+			case CMD_GET_ALLOWED_REPEAT_FREQ: return " (GET_FREQ)";
+			case CMD_SET_PATH_HASH_MODE:	return " (SET_HASH)";
+			default: return "";
+		}
 	}
 
-	// Push notifications
+	// RX: responses and push notifications
 	switch (cmd) {
-		case 0x80: return " (PUSH_ADVERT)";
-		case 0x81: return " (PUSH_PATH_UPDATED)";
-		case 0x82: return " (PUSH_SEND_CONFIRMED)";
-		case 0x83: return " (PUSH_MSG_WAITING)";
-		case 0x8A: return " (PUSH_NEW_ADVERT)";
-		case 0x8B: return " (PUSH_TELEMETRY)";
+		case RSP_OK:					return " (OK)";
+		case RSP_ERR:					return " (ERR)";
+		case RSP_CONTACTS_START:		return " (CONTACTS_START)";
+		case RSP_CONTACT:				return " (CONTACT)";
+		case RSP_END_OF_CONTACTS:		return " (END_CONTACTS)";
+		case RSP_SELF_INFO:				return " (SELF_INFO)";
+		case RSP_SENT:					return " (SENT)";
+		case RSP_CONTACT_MSG_RECV:		return " (DM_V2)";
+		case RSP_CHANNEL_MSG_RECV:		return " (CH_MSG_V2)";
+		case RSP_CURR_TIME:				return " (TIME)";
+		case RSP_NO_MORE_MESSAGES:		return " (NO_MORE_MSG)";
+		case RSP_EXPORT_CONTACT:		return " (EXPORT)";
+		case RSP_BATT_AND_STORAGE:		return " (BATTERY)";
+		case RSP_DEVICE_INFO:			return " (DEV_INFO)";
+		case RSP_PRIVATE_KEY:			return " (PRIV_KEY)";
+		case RSP_DISABLED:				return " (DISABLED)";
+		case RSP_CONTACT_MSG_RECV_V3:	return " (DM_V3)";
+		case RSP_CHANNEL_MSG_RECV_V3:	return " (CH_MSG_V3)";
+		case RSP_CHANNEL_INFO:			return " (CH_INFO)";
+		case RSP_SIGN_START:			return " (SIGN_START)";
+		case RSP_SIGNATURE:				return " (SIGNATURE)";
+		case RSP_CUSTOM_VARS:			return " (VARS)";
+		case RSP_ADVERT_PATH:			return " (ADV_PATH)";
+		case RSP_TUNING_PARAMS:			return " (TUNING)";
+		case RSP_STATS:					return " (STATS)";
+		case RSP_AUTO_ADD_CONFIG:		return " (AUTOADD_CFG)";
+		case RSP_ALLOWED_REPEAT_FREQ:	return " (FREQ)";
+
+		// Push notifications (0x80+, no overlap with CMD)
+		case PUSH_ADVERT:				return " (ADVERT)";
+		case PUSH_PATH_UPDATED:			return " (PATH_UPD)";
+		case PUSH_SEND_CONFIRMED:		return " (CONFIRMED)";
+		case PUSH_MSG_WAITING:			return " (MSG_WAIT)";
+		case PUSH_RAW_DATA:				return " (RAW_DATA)";
+		case PUSH_LOGIN_SUCCESS:		return " (LOGIN_OK)";
+		case PUSH_LOGIN_FAIL:			return " (LOGIN_FAIL)";
+		case PUSH_STATUS_RESPONSE:		return " (STATUS)";
+		case PUSH_LOG_RX_DATA:			return " (LOG_RX)";
+		case PUSH_TRACE_DATA:			return " (TRACE)";
+		case PUSH_NEW_ADVERT:			return " (NEW_ADV)";
+		case PUSH_TELEMETRY_RESPONSE:	return " (TELEMETRY)";
+		case PUSH_BINARY_RESPONSE:		return " (BIN_RSP)";
+		case PUSH_PATH_DISCOVERY:		return " (PATH_DISC)";
+		case PUSH_CONTROL_DATA:			return " (CTRL_DATA)";
+		case PUSH_CONTACT_DELETED:		return " (CONTACT_DEL)";
+		case PUSH_CONTACTS_FULL:		return " (FULL)";
+
 		default: return "";
 	}
 }
