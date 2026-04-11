@@ -196,7 +196,7 @@ Sestriere implements the [MeshCore Companion Radio Protocol](https://github.com/
 - All multi-byte values are Little Endian
 - Default baud rate: 115200 8N1
 
-V3 adds SNR fields to incoming messages. V2 responses (0x07, 0x08) are also supported for backwards compatibility. Protocol features include incremental contact sync (`since` parameter), message retry with `attempt` field (0-3), client-repeat mode, and signed message support (`TXT_TYPE_SIGNED_PLAIN`).
+Sestriere implements 100% of the V3 specification (94/94 codes): 45 commands, 26 responses, 17 push notifications, and 6 error codes. V2 responses (0x07, 0x08) are also supported for backwards compatibility. Protocol features include incremental contact sync (`since` parameter), message retry with `attempt` field (0-3), ackCode-based delivery confirmation, client-repeat mode, path hash mode (V10+), and signed message support (`TXT_TYPE_SIGNED_PLAIN`).
 
 ## Project Structure
 
