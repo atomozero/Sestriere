@@ -242,6 +242,12 @@ ImageCodec::DecompressGifFrames(const uint8* gifData, size_t size,
 	int32 canvasW = gif->SWidth;
 	int32 canvasH = gif->SHeight;
 
+	// Reject absurdly large GIFs to prevent integer overflow in allocation
+	if (canvasW <= 0 || canvasH <= 0 || canvasW > 4096 || canvasH > 4096) {
+		DGifCloseFile(gif, &error);
+		return B_ERROR;
+	}
+
 	BBitmap** frames = new BBitmap*[frameCount];
 	uint32* durations = new uint32[frameCount];
 	memset(frames, 0, sizeof(BBitmap*) * frameCount);

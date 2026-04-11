@@ -119,6 +119,18 @@ ImageSessionManager::CreateFromEnvelope(const char* ie2Text)
 	session->state = IMAGE_PENDING;
 	session->createdTime = system_time();
 
+	// Limit concurrent sessions to prevent memory exhaustion
+	if (fSessions.CountItems() >= 32) {
+		// Remove oldest non-sending session to make room
+		for (int32 i = 0; i < fSessions.CountItems(); i++) {
+			ImageSession* old = fSessions.ItemAt(i);
+			if (old != NULL && old->state != IMAGE_SENDING) {
+				delete fSessions.RemoveItemAt(i);
+				break;
+			}
+		}
+	}
+
 	fSessions.AddItem(session);
 	return session;
 }
@@ -171,8 +183,11 @@ ImageSessionManager::PurgeExpired()
 {
 	for (int32 i = fSessions.CountItems() - 1; i >= 0; i--) {
 		ImageSession* s = fSessions.ItemAt(i);
-		if (s != NULL && s->IsExpired() && s->state != IMAGE_COMPLETE)
-			fSessions.RemoveItemAt(i);
+		if (s == NULL)
+			continue;
+		// Purge expired sessions (including completed ones after TTL)
+		if (s->IsExpired())
+			delete fSessions.RemoveItemAt(i);
 	}
 }
 

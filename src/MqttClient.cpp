@@ -47,7 +47,9 @@ MqttClient::MqttClient()
 MqttClient::~MqttClient()
 {
 	delete fStatusTimer;
+	fStatusTimer = NULL;
 	delete fReconnectTimer;
+	fReconnectTimer = NULL;
 
 	if (fMosquitto != NULL) {
 		mosquitto_loop_stop(fMosquitto, true);
