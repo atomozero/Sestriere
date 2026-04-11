@@ -103,9 +103,10 @@ static const rgb_color kEdgeDiscoveredColor = {100, 180, 255, 200}; // Blue for 
 static const rgb_color kHubGlowColor = {255, 180, 50, 40};         // Amber glow for repeater hubs
 
 // Node sizes
-static const float kSelfNodeRadius = 14.0f;
-static const float kNodeRadiusMin = 10.0f;
-static const float kNodeRadiusMax = 18.0f;
+static const float kSelfNodeRadius = 12.0f;
+static const float kNodeRadiusMin = 8.0f;
+static const float kNodeRadiusMax = 14.0f;
+static const float kMaxDrawnRadius = 22.0f;  // Absolute cap after zoom
 static const float kMinDistance = 80.0f;
 static const float kMaxDistance = 280.0f;
 
@@ -1341,6 +1342,8 @@ void
 NetworkMapView::_DrawSelfNode()
 {
 	float radius = kSelfNodeRadius * fZoom;
+	if (radius > kMaxDrawnRadius)
+		radius = kMaxDrawnRadius;
 
 	// Animated glow
 	float glowSize = radius * (1.2f + 0.1f * sinf(fSelfNode.pulsePhase));
@@ -1396,6 +1399,8 @@ void
 NetworkMapView::_DrawNode(const MapNode& node)
 {
 	float radius = _RadiusForNode(node) * fZoom;
+	if (radius > kMaxDrawnRadius)
+		radius = kMaxDrawnRadius;
 	rgb_color fillColor = _ColorForNode(node);
 	bool isRepeater = (node.nodeType == NODE_REPEATER);
 
@@ -1404,7 +1409,7 @@ NetworkMapView::_DrawNode(const MapNode& node)
 
 	// Pulse effect for recent activity
 	if (node.pulsePhase > 0) {
-		float pulseRadius = radius * (1.0f + node.pulsePhase * 0.5f);
+		float pulseRadius = radius * (1.0f + node.pulsePhase * 0.3f);
 		rgb_color pulseColor = kPulseColor;
 		pulseColor.alpha = (uint8)(node.pulsePhase * 200);
 		SetHighColor(pulseColor);
@@ -1434,7 +1439,7 @@ NetworkMapView::_DrawNode(const MapNode& node)
 			}
 		}
 		if (isHub) {
-			float glowRadius = radius * 2.5f;
+			float glowRadius = radius * 1.6f;
 			rgb_color glow = kHubGlowColor;
 			glow.alpha = (uint8)(40 * opacity);
 			SetHighColor(glow);
