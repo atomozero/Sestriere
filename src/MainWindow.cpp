@@ -6404,6 +6404,10 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 				decoded[decompLen] = '\0';
 				strlcpy(messageText, decoded,
 					sizeof(messageText));
+			} else {
+				// Decompression failed — strip "s:" prefix
+				memmove(messageText, messageText + kSmazPrefixLen,
+					msgLen - kSmazPrefixLen + 1);
 			}
 		}
 	}
