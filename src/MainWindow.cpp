@@ -4560,29 +4560,13 @@ MainWindow::_SendChannelMessage(const char* text)
 
 	_LogMessage("INFO", BString("Sending to channel: ") << text);
 
-	// Try SMAZ compression for plain text channel messages
-	char smazBuf[256];
+	// SMAZ compression is NOT used on channels: public channels are
+	// received by any MeshCore client, and stock clients don't know
+	// the "s:" prefix — they'd render the compressed bytes as garbage.
+	// Why: users reported every Sestriere channel message arriving as
+	//   "s:<binary junk>" on other clients.
 	const char* wireText = text;
 	size_t wireLen = textLen;
-
-	if (textLen > 4
-		&& !GiphyClient::IsGifMessage(text)
-		&& !VoiceSessionManager::IsVoiceEnvelope(text)
-		&& !ImageSessionManager::IsImageEnvelope(text)) {
-		int compressed = SmazCompress(text, (int)textLen,
-			smazBuf + kSmazPrefixLen,
-			(int)(sizeof(smazBuf) - kSmazPrefixLen));
-		if (compressed > 0
-			&& (size_t)compressed + kSmazPrefixLen < textLen) {
-			memcpy(smazBuf, kSmazPrefix, kSmazPrefixLen);
-			wireText = smazBuf;
-			wireLen = (size_t)compressed + kSmazPrefixLen;
-			_LogMessage("DEBUG", BString().SetToFormat(
-				"SMAZ: %zu -> %zu bytes (%.0f%% saved)",
-				textLen, wireLen,
-				(1.0 - (double)wireLen / textLen) * 100.0));
-		}
-	}
 
 	uint8 wireChannelIdx = (uint8)fSelectedChannelIdx;
 	uint32 timestamp = (uint32)time(NULL);
