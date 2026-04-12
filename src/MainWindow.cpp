@@ -6032,13 +6032,14 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 			strlcpy(text, decoded, sizeof(text));
 			textLen = (size_t)decompLen;
 		} else {
-			// Decompression failed — strip "s:" prefix so the user
-			// sees raw payload instead of the misleading prefix
-			memmove(text, text + kSmazPrefixLen,
-				textLen - kSmazPrefixLen + 1);
-			textLen -= kSmazPrefixLen;
+			// Decompression failed — leave the text untouched.
+			// Stripping the "s:" prefix here would silently eat the
+			// first two characters of any real message that happened
+			// to start with "s:" (users on stock clients can write
+			// "s:ok" as plaintext), which is worse than showing the
+			// prefix verbatim.
 			_LogMessage("WARN", "SMAZ decompression failed — "
-				"showing raw payload");
+				"showing message as-is");
 		}
 	}
 
@@ -6403,11 +6404,10 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 				decoded[decompLen] = '\0';
 				strlcpy(messageText, decoded,
 					sizeof(messageText));
-			} else {
-				// Decompression failed — strip "s:" prefix
-				memmove(messageText, messageText + kSmazPrefixLen,
-					msgLen - kSmazPrefixLen + 1);
 			}
+			// If decompression failed, leave messageText untouched:
+			// a legit plaintext message starting with "s:" from a
+			// stock client would otherwise lose its first two chars.
 		}
 	}
 
