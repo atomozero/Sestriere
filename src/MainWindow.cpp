@@ -3536,6 +3536,11 @@ MainWindow::MessageReceived(BMessage* message)
 				fLoginPending = true;
 				memcpy(fLoginTargetKey, pubkey,
 					sizeof(fLoginTargetKey));
+				// Re-sync device RTC right before login — handshake
+				// sync may have happened minutes ago and a drifted or
+				// reset device clock will make the room's anti-replay
+				// check reject the login packet.
+				fProtocol->SendSetDeviceTime((uint32)time(NULL));
 				fProtocol->SendLogin((const uint8*)pubkey, password);
 			}
 			break;
@@ -5534,6 +5539,13 @@ MainWindow::_HandleExportContact(const uint8* data, size_t length)
 		// Handshake succeeded — cancel timeout
 		delete fHandshakeTimer;
 		fHandshakeTimer = NULL;
+
+		// Sync the device RTC to host time. MeshCore stamps the LoRa
+		// login packet with the companion's clock; rooms/repeaters
+		// reject logins whose timestamp falls outside the anti-replay
+		// window, so a drifted or reset device RTC breaks login even
+		// with a correct password.
+		fProtocol->SendSetDeviceTime((uint32)time(NULL));
 
 		// Update MQTT client with latest settings (including device name)
 		if (fMqttClient != NULL) {
@@ -7847,9 +7859,19 @@ MainWindow::_OnDisconnected()
 			// Already transmitted — remove from queue, keep SENT status
 			delete fPendingMessages.RemoveItemAt(i);
 		} else {
-			// Not yet transmitted — reset for reconnect delivery
+			// Not yet transmitted — reset for reconnect delivery.
+			// chatViewIndex must be cleared because ClearMessages()
+			// below wipes the ChatView, and on reconnect _SelectContact
+			// rebuilds it with fresh indices; any stale index would
+			// cause _HandleMsgSent to write status into the wrong row
+			// (or out of bounds). Clear transient per-attempt state too.
 			pending->attemptCount = 0;
 			pending->sentTime = 0;
+			pending->gotRspSent = false;
+			pending->expectedAck = 0;
+			pending->inGracePeriod = false;
+			pending->graceStartTime = 0;
+			pending->chatViewIndex = -1;
 		}
 	}
 	_StopDeliveryTimer();
