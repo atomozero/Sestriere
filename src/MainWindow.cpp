@@ -1155,7 +1155,10 @@ MainWindow::MessageReceived(BMessage* message)
 			info << "Firmware: " << (fDeviceFirmware[0] ? fDeviceFirmware : "Unknown") << "\n";
 
 			if (fRadioFreq > 0) {
-				float freqMHz = fRadioFreq / 1000.0f;
+				// fRadioFreq is stored in Hz (see _HandleSelfInfo).
+				// Dividing by 1000 produced kHz labelled as MHz — e.g.
+				// "869618.000 MHz" for an 869.618 MHz radio.
+				float freqMHz = fRadioFreq / 1000000.0f;
 				info << BString().SetToFormat("\nFrequency: %.3f MHz\n", freqMHz);
 				if (fRadioBw > 0) {
 					if (fRadioBw >= 1000000)
