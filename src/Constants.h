@@ -14,10 +14,10 @@
 // Application info
 #define APP_SIGNATURE "application/x-vnd.Sestriere"
 #define APP_NAME "Sestriere"
-#define APP_VERSION "2.1.0"
+#define APP_VERSION "2.1.1"
 #define APP_VERSION_MAJOR 2
 #define APP_VERSION_MIDDLE 1
-#define APP_VERSION_MINOR 0
+#define APP_VERSION_MINOR 1
 
 // Serial frame constants
 const uint8 kFrameMarkerInbound = '<';   // App -> Device

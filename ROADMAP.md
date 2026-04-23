@@ -123,6 +123,22 @@ contiene `"SenderNick: messaggio"` ma Sestriere mostrava il nome del Room nel bu
 Fix: per contatti type==3, il testo viene parsato per estrarre il nick prima del `:` e
 mostrarlo come senderName nel bubble. Il testo visualizzato è solo la parte dopo `": "`.
 
+### B16. Sestriere.rdef version out of sync con Constants.h — v2.1.1
+- **Trovato da**: code review v2.1.1
+- **Dove**: `src/Sestriere.rdef` vs `src/Constants.h`
+- **Problema**: `app_version` nel rdef aveva `middle = 0, minor = 0` (corrispondente a 2.0.0) mentre Constants.h definiva `APP_VERSION "2.1.0"` con `MIDDLE=1, MINOR=0`. Il rdef non era stato aggiornato durante il bump a v2.1.0.
+- **Impatto**: Haiku's `AboutWindow` e `listattr` mostravano versione 2.0.0 anziché 2.1.0.
+- **Fix**: allineato rdef a `middle = 1, minor = 1` nel diff v2.1.1.
+- **Stato**: fix in corso (diff v2.1.1, non ancora committato)
+
+### B17. Password cap era stato erroneamente alzato a 16 — v2.1.1
+- **Trovato da**: code review v2.1.1
+- **Dove**: `src/ProtocolHandler.cpp` — `SendLogin()`, `src/LoginWindow.cpp` — `SetMaxBytes()`
+- **Problema**: il cap era stato portato da 15 a 16 credendo che `MAX_ADMIN_PASS_LEN = 16` significasse 16 char utilizzabili. Verifica nel firmware MeshCore ha rivelato: `char password[16]` + `StrHelper::strncpy` null-terminante = **15 char utili**. Il firmware stesso tronca a 15 in `BaseChatMesh::sendLogin()`. La wiki conferma "max 15 bytes".
+- **Impatto**: con cap 16, una password di 16 char veniva troncata silenziosamente dal firmware → login fallito.
+- **Fix**: ripristinato cap a 15 in `ProtocolHandler.cpp` e `SetMaxBytes(15)` in `LoginWindow.cpp`.
+- **Stato**: completato
+
 ### P1. Share Contact UI — v1.8.0-beta
 Context menu "Share Contact" nella sidebar.
 
@@ -164,16 +180,77 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 - **Fix**: `DatabaseManager::DeleteMessage()` e `DeleteMessagesForContact()`. "Delete" nel context menu ChatView, "Clear Chat" nei context menu sidebar per canali e contatti. Rimozione da DB, liste in-memory e chat view.
 - **Stato**: completato (commit e36f8dc)
 
-### S5. Registrazione audio non funzionante — [#6](https://github.com/atomozero/Sestriere/issues/6)
+### S5. Registrazione audio non funzionante — [#6](https://github.com/atomozero/Sestriere/issues/6) — COMPLETATO
 - **Segnalato da**: serwin2 (scotty3g)
-- **Problema**: click sul microfono mostra BAlert "Could not start recording. Check that a microphone is connected." nonostante SoundRecorder funzioni correttamente sullo stesso sistema. Non è solo un problema di feedback — è un **bug reale** nell'AudioEngine.
-- **Analisi**: `AudioEngine` usa `BMediaRecorder` con auto-connect al system audio input. Se l'auto-connect fallisce (nodo non trovato, formato non compatibile), `StartRecording()` ritorna errore. SoundRecorder probabilmente usa un approccio diverso per agganciare l'input audio. Possibili cause:
-  1. `BMediaRecorder::Connect()` non trova il nodo input corretto
-  2. Il formato richiesto (8kHz mono 16-bit) non è supportato dal nodo sorgente senza conversione
-  3. Il media_server ha il nodo input bloccato da un altro consumer
-- **Fix**: investigare il flusso di connessione in `AudioEngine::StartRecording()`. Provare approccio alternativo: usare `BMediaRoster::GetAudioInput()` per ottenere il nodo di sistema, oppure accettare il formato nativo del nodo e fare resampling in software (il resampling nel callback esiste già).
-- **Difficoltà**: media — richiede debug su Haiku con media_server attivo
-- **File**: AudioEngine.cpp/h, MainWindow.cpp
+- **Problema**: click sul microfono mostra BAlert "Could not start recording. Check that a microphone is connected." nonostante SoundRecorder funzioni correttamente sullo stesso sistema.
+- **Causa root**: `BMediaRecorder::Connect(format)` (overload a 1 argomento) connette al **mixer audio**, non all'input. Il mixer espone output in formato nativo (48kHz stereo float32) che non è compatibile con 8kHz mono int16 → fallisce con `B_MEDIA_BAD_SOURCE`. Inoltre il callback `_RecordBuffer` assumeva sempre dati int16, ma l'hardware produce float32.
+- **Fix**: (1) `StartRecording()` ora usa `GetAudioInput()` + `GetFreeOutputsFor()` + overload `Connect(node, &output, &format)` a 3 argomenti, come fa SoundRecorder. (2) `SetAcceptedFormat()` con wildcard per accettare qualsiasi formato. (3) `_RecordBuffer()` riscritto con conversione format-aware (float32/int32/int16/uint8/int8) + resampling + downmix.
+- **Stato**: completato (v2.1.1)
+
+### S6. Verifica duplicati e tipo canale alla creazione — [#7](https://github.com/atomozero/Sestriere/issues/7)
+- **Segnalato da**: serwin2
+- **Problema**: si possono creare canali con nomi duplicati. I canali pubblici hashtag creati via "Create new channel" generano chiavi random anziché SHA-256 del nome. Serve distinguere: canale privato nuovo (key random), join canale privato esistente (key manuale), join canale hashtag (key SHA-256).
+- **File**: AddChannelWindow.cpp, MainWindow.cpp
+- **Difficoltà**: media
+
+### S7. Login repeater causa scomparsa contatti — [#8](https://github.com/atomozero/Sestriere/issues/8) — COMPLETATO
+- **Segnalato da**: serwin2
+- **Problema**: dopo login repeater, i contatti spariscono dalla lista lasciando solo i canali.
+- **Causa root**: due bug nel sync contatti:
+  1. `_HandlePushLoginResult()` usava `SendGetContacts(fContactsSince)` — sync incrementale post-login. Se nessun contatto è cambiato, il device restituisce 0 contatti, ma `_HandleContactsStart()` aveva già svuotato `fContacts` in `fOldContacts` → lista vuota.
+  2. `_HandleContactsEnd()` cancellava `fOldContacts.MakeEmpty()` i contatti non matchati, anche durante sync incrementale dove i non-restituiti sono semplicemente invariati.
+- **Fix**: (1) forzare full sync (`since=0`) dopo ogni login. (2) in `_HandleContactsEnd()`, rimettere i contatti da `fOldContacts` in `fContacts` anziché cancellarli, così i contatti invariati sono preservati durante sync incrementale.
+- **Stato**: completato (v2.1.1)
+
+### S8. Contatti spariscono dopo autenticazione room/repeater — [#9](https://github.com/atomozero/Sestriere/issues/9) — COMPLETATO
+- **Segnalato da**: PaxForever
+- **Problema**: all'inserimento password per repeater/room, i contatti spariscono.
+- **Nota**: stessa causa root di S7 — risolto dalla stessa fix.
+- **Stato**: completato (v2.1.1)
+
+### S9. Collegamento USB a volte non riconosciuto — [#10](https://github.com/atomozero/Sestriere/issues/10)
+- **Segnalato da**: PaxForever
+- **Problema**: la connessione USB a volte non si connette automaticamente. Il device potrebbe non essere riconosciuto; disconnettere, fare refresh porte e riconnettere a una porta USB appena rilevata risolve temporaneamente.
+- **File**: SerialHandler.cpp, MainWindow.cpp (port enumeration)
+- **Difficoltà**: media
+
+### S10. Telemetry page non scorre con molti device — [#11](https://github.com/atomozero/Sestriere/issues/11)
+- **Segnalato da**: PaxForever
+- **Problema**: con più dispositivi che riportano telemetria, dopo 3-4 device visualizzati, la pagina non scorre verso il basso per mostrare dati aggiuntivi.
+- **File**: TelemetryWindow.cpp
+- **Difficoltà**: bassa
+
+### S11. Network Map valori dB anomali — [#12](https://github.com/atomozero/Sestriere/issues/12)
+- **Segnalato da**: PaxForever
+- **Problema**: la Network Map mostra valori dB atipici quando tutti i dispositivi sono connessi (es. repeater a 53dB con companion a 12dB, room/repeater a 48dB con companion a 0dB). I valori potrebbero essere non firmati o parsati come unsigned.
+- **File**: NetworkMapWindow.cpp
+- **Difficoltà**: media
+
+### S12. Room: simboli prima del testo messaggi — [#13](https://github.com/atomozero/Sestriere/issues/13)
+- **Segnalato da**: PaxForever
+- **Problema**: i messaggi nelle Room mostrano 3-4 simboli prima del testo. Chat dirette e canali funzionano correttamente.
+- **Analisi**: potrebbe essere il prefisso del protocollo (tipo messaggio, SNR bytes) non strippato, oppure un problema con l'encoding del testo nelle room forwarded messages.
+- **File**: MainWindow.cpp (_ParseFrame, room message handler)
+- **Difficoltà**: media
+
+### S13. Messaggi nelle room/chat private appaiono criptati — [#14](https://github.com/atomozero/Sestriere/issues/14)
+- **Segnalato da**: PaxForever
+- **Problema**: messaggi inviati da Haiku a room o chat dirette appaiono criptati/illeggibili sugli altri dispositivi. La ricezione funziona correttamente. Il problema non si verifica nei canali.
+- **Analisi**: potrebbe essere legato alla compressione SMAZ (attiva su DM), all'encoding del testo, o al formato del frame inviato.
+- **File**: MainWindow.cpp, ProtocolHandler.cpp
+- **Difficoltà**: media-alta
+
+### S14. Gestione region mancante — [#15](https://github.com/atomozero/Sestriere/issues/15)
+- **Segnalato da**: PaxForever
+- **Problema**: non è possibile configurare la regione radio né per i canali né per il dispositivo nell'applicazione.
+- **File**: SettingsWindow.cpp, ProtocolHandler.cpp
+- **Difficoltà**: media
+
+### S15. Manca comando "Imposta percorso" — [#16](https://github.com/atomozero/Sestriere/issues/16)
+- **Segnalato da**: PaxForever
+- **Problema**: esiste "Reset path" per ripristinare i percorsi di rete ma manca il comando per impostare inizialmente i percorsi. La selezione del percorso determina i repeater preferiti per il routing dei pacchetti.
+- **File**: MainWindow.cpp (context menu, protocol commands)
+- **Difficoltà**: media
 
 ---
 
@@ -316,7 +393,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 |----|-------|------|-------------|------------|
 | S1 | [#2](https://github.com/atomozero/Sestriere/issues/2) | Bug | Doppio `#` nei nomi canali hashtag | ~~Bassa~~ DONE |
 | S2 | [#3](https://github.com/atomozero/Sestriere/issues/3) | Bug | Public Channel duplicato/non funzionante | ~~Media~~ DONE |
-| S5 | [#6](https://github.com/atomozero/Sestriere/issues/6) | Bug | Registrazione audio non funzionante | Media |
+| S5 | [#6](https://github.com/atomozero/Sestriere/issues/6) | Bug | Registrazione audio non funzionante | ~~Media~~ DONE |
 | G4 | — | Proto | ERR_CODE decodifica human-readable | ~~Bassa~~ DONE |
 | G3 | — | Proto | Login success parsing completo | ~~Bassa~~ DONE |
 
@@ -349,6 +426,21 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 | U3 | UX | VACUUM periodico DB | ~~Bassa~~ GIÀ FATTO |
 | U4 | UX | Validazione tile cache | ~~Bassa~~ GIÀ FATTO |
 | U5 | UX | Admin multi-repeater | ~~Media~~ DONE |
+
+### Sprint 5 — Bug utenti aprile 2026 (v2.2)
+
+| ID | Issue | Tipo | Descrizione | Difficoltà | Priorità |
+|----|-------|------|-------------|------------|----------|
+| S7 | [#8](https://github.com/atomozero/Sestriere/issues/8) | Bug | Login repeater causa scomparsa contatti | ~~Media-Alta~~ DONE | **Critica** |
+| S8 | [#9](https://github.com/atomozero/Sestriere/issues/9) | Bug | Contatti spariscono dopo auth room/repeater | ~~Media~~ DONE | **Critica** (correlato S7) |
+| S13 | [#14](https://github.com/atomozero/Sestriere/issues/14) | Bug | Messaggi DM/room appaiono criptati su altri device | Media-Alta | **Alta** |
+| S12 | [#13](https://github.com/atomozero/Sestriere/issues/13) | Bug | Room: simboli prima del testo messaggi | Media | **Alta** |
+| S11 | [#12](https://github.com/atomozero/Sestriere/issues/12) | Bug | Network Map valori dB anomali | Media | Media |
+| S10 | [#11](https://github.com/atomozero/Sestriere/issues/11) | Bug | Telemetry non scorre con molti device | Bassa | Media |
+| S9 | [#10](https://github.com/atomozero/Sestriere/issues/10) | Bug | USB a volte non riconosciuto | Media | Media |
+| S6 | [#7](https://github.com/atomozero/Sestriere/issues/7) | Feature | Verifica duplicati/tipo canale alla creazione | Media | Bassa |
+| S14 | [#15](https://github.com/atomozero/Sestriere/issues/15) | Feature | Gestione region radio mancante | Media | Bassa |
+| S15 | [#16](https://github.com/atomozero/Sestriere/issues/16) | Feature | Comando "Imposta percorso" mancante | Media | Bassa |
 
 ---
 
