@@ -2907,6 +2907,21 @@ MainWindow::MessageReceived(BMessage* message)
 			if (!fConnected)
 				break;
 
+			// Check for duplicate channel name
+			for (int32 i = 0; i < fChannels.CountItems(); i++) {
+				ChannelInfo* existing = fChannels.ItemAt(i);
+				if (existing != NULL
+					&& strcasecmp(existing->name, name) == 0) {
+					BAlert* alert = new BAlert("Error",
+						"A channel with this name already exists.",
+						"OK", NULL, NULL, B_WIDTH_AS_USUAL,
+						B_WARNING_ALERT);
+					alert->Go();
+					goto channel_done;
+				}
+			}
+
+			{
 			// Find first empty slot
 			int32 emptySlot = -1;
 			for (uint8 s = 0; s < fMaxChannels; s++) {
@@ -2933,7 +2948,9 @@ MainWindow::MessageReceived(BMessage* message)
 			uint8 secret[16];
 			const char* pskHex;
 			bool randomPsk = false;
+			bool hashtag = false;
 			message->FindBool("random_psk", &randomPsk);
+			message->FindBool("hashtag", &hashtag);
 
 			if (message->FindString("psk_hex", &pskHex) == B_OK
 				&& pskHex[0] != '\0') {
@@ -2948,6 +2965,17 @@ MainWindow::MessageReceived(BMessage* message)
 					if (sscanf(pskHex + i * 2, "%2x", &byte) == 1)
 						secret[i] = (uint8)byte;
 				}
+			} else if (hashtag) {
+				// Hashtag mode: derive PSK from channel name
+				// using SHA-256(name)[:16] — compatible with stock
+				// MeshCore hashtag channel derivation
+				const char* hashName = name;
+				if (hashName[0] == '#')
+					hashName++;
+				SHA256 hash;
+				hash.Update(hashName, strlen(hashName));
+				const uint8* digest = hash.Digest();
+				memcpy(secret, digest, 16);
 			} else if (randomPsk) {
 				// Create mode: generate random 16-byte PSK
 				srand48(real_time_clock_usecs());
@@ -2985,6 +3013,8 @@ MainWindow::MessageReceived(BMessage* message)
 
 			_LogMessage("OK", BString().SetToFormat(
 				"Created channel #%s (slot %d)", name, (int)emptySlot));
+			}  // end of inner block for variable scoping
+			channel_done:
 			break;
 		}
 

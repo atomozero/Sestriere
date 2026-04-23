@@ -25,21 +25,24 @@ static const uint32 kMsgCreateChannel = 'crcn';
 
 AddChannelWindow::AddChannelWindow(BWindow* parent)
 	:
-	BWindow(BRect(0, 0, 340, 160), "Add Channel",
+	BWindow(BRect(0, 0, 380, 180), "Add Channel",
 		B_FLOATING_WINDOW_LOOK, B_MODAL_APP_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_NOT_RESIZABLE | B_AUTO_UPDATE_SIZE_LIMITS
 			| B_CLOSE_ON_ESCAPE),
 	fParent(parent),
 	fNameControl(NULL),
 	fPskControl(NULL),
-	fModeJoin(NULL),
 	fModeCreate(NULL),
+	fModeJoin(NULL),
+	fModeHashtag(NULL),
 	fAddButton(NULL),
 	fCancelButton(NULL)
 {
-	fModeCreate = new BRadioButton("mode_create", "Create new channel",
+	fModeCreate = new BRadioButton("mode_create", "Create private",
 		new BMessage(kMsgModeChanged));
-	fModeJoin = new BRadioButton("mode_join", "Join existing channel",
+	fModeJoin = new BRadioButton("mode_join", "Join private",
+		new BMessage(kMsgModeChanged));
+	fModeHashtag = new BRadioButton("mode_hashtag", "Join hashtag",
 		new BMessage(kMsgModeChanged));
 	fModeCreate->SetValue(B_CONTROL_ON);
 
@@ -65,6 +68,7 @@ AddChannelWindow::AddChannelWindow(BWindow* parent)
 		.AddGroup(B_HORIZONTAL)
 			.Add(fModeCreate)
 			.Add(fModeJoin)
+			.Add(fModeHashtag)
 		.End()
 		.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
 			.Add(fNameControl->CreateLabelLayoutItem(), 0, 0)
@@ -123,8 +127,12 @@ void
 AddChannelWindow::_UpdatePskField()
 {
 	bool joinMode = (fModeJoin->Value() == B_CONTROL_ON);
+	bool hashtagMode = (fModeHashtag->Value() == B_CONTROL_ON);
 	fPskControl->SetEnabled(joinMode);
-	fAddButton->SetLabel(joinMode ? "Join" : "Create");
+	if (joinMode || hashtagMode)
+		fAddButton->SetLabel("Join");
+	else
+		fAddButton->SetLabel("Create");
 }
 
 
@@ -141,14 +149,16 @@ AddChannelWindow::_OnAdd()
 	BMessage msg(kMsgCreateChannel);
 	msg.AddString("name", name);
 
-	bool joinMode = (fModeJoin->Value() == B_CONTROL_ON);
-	if (joinMode) {
-		// User-provided PSK in hex
+	if (fModeHashtag->Value() == B_CONTROL_ON) {
+		// Hashtag mode: PSK derived from channel name via SHA-256
+		msg.AddBool("hashtag", true);
+	} else if (fModeJoin->Value() == B_CONTROL_ON) {
+		// Join mode: user-provided PSK in hex
 		const char* pskHex = fPskControl->Text();
 		if (pskHex != NULL && pskHex[0] != '\0')
 			msg.AddString("psk_hex", pskHex);
 	} else {
-		// Signal "generate random PSK" by adding flag
+		// Create mode: generate random PSK
 		msg.AddBool("random_psk", true);
 	}
 

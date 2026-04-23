@@ -30,8 +30,9 @@ private:
 			BWindow*		fParent;
 			BTextControl*	fNameControl;
 			BTextControl*	fPskControl;
-			BRadioButton*	fModeJoin;
 			BRadioButton*	fModeCreate;
+			BRadioButton*	fModeJoin;
+			BRadioButton*	fModeHashtag;
 			BButton*		fAddButton;
 			BButton*		fCancelButton;
 };
