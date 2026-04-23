@@ -4459,12 +4459,17 @@ MainWindow::_SendTextMessage(const char* text)
 	// CLI commands.
 	uint8 txtType = TXT_TYPE_PLAIN;
 
-	// Try SMAZ compression for plain text messages
+	// SMAZ compression for peer-to-peer DMs only (both sides must be
+	// Sestriere).  Room and repeater messages are forwarded to all
+	// connected clients — stock MeshCore apps don't understand the
+	// "s:" prefix and render compressed bytes as garbage (#13, #14).
 	char smazBuf[256];
 	const char* wireText = text;
 	size_t wireLen = textLen;
 
-	if (textLen > 4
+	bool isRoomOrRepeater = (contact->type == 2 || contact->type == 3);
+	if (!isRoomOrRepeater
+		&& textLen > 4
 		&& !GiphyClient::IsGifMessage(text)
 		&& !VoiceSessionManager::IsVoiceEnvelope(text)
 		&& !ImageSessionManager::IsImageEnvelope(text)) {

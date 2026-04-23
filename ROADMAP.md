@@ -226,19 +226,19 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 - **File**: NetworkMapWindow.cpp
 - **Difficoltà**: media
 
-### S12. Room: simboli prima del testo messaggi — [#13](https://github.com/atomozero/Sestriere/issues/13)
+### S12. Room: simboli prima del testo messaggi — [#13](https://github.com/atomozero/Sestriere/issues/13) — COMPLETATO
 - **Segnalato da**: PaxForever
-- **Problema**: i messaggi nelle Room mostrano 3-4 simboli prima del testo. Chat dirette e canali funzionano correttamente.
-- **Analisi**: potrebbe essere il prefisso del protocollo (tipo messaggio, SNR bytes) non strippato, oppure un problema con l'encoding del testo nelle room forwarded messages.
-- **File**: MainWindow.cpp (_ParseFrame, room message handler)
-- **Difficoltà**: media
+- **Problema**: i messaggi nelle Room mostrano 3-4 simboli prima del testo.
+- **Causa root**: SMAZ compression attiva su messaggi inviati a room (tipo 3). Il prefisso `s:` + bytes compressi appaiono come simboli sui client riceventi (stock MeshCore o Sestriere che decomprime ma mostra il nick room corrotto).
+- **Fix**: disabilitata SMAZ compression per contatti tipo 2 (repeater) e 3 (room), come già fatto per i canali nel commit 5167e8d. SMAZ resta attivo solo per DM peer-to-peer.
+- **Stato**: completato (v2.1.1)
 
-### S13. Messaggi nelle room/chat private appaiono criptati — [#14](https://github.com/atomozero/Sestriere/issues/14)
+### S13. Messaggi nelle room/chat private appaiono criptati — [#14](https://github.com/atomozero/Sestriere/issues/14) — COMPLETATO
 - **Segnalato da**: PaxForever
-- **Problema**: messaggi inviati da Haiku a room o chat dirette appaiono criptati/illeggibili sugli altri dispositivi. La ricezione funziona correttamente. Il problema non si verifica nei canali.
-- **Analisi**: potrebbe essere legato alla compressione SMAZ (attiva su DM), all'encoding del testo, o al formato del frame inviato.
-- **File**: MainWindow.cpp, ProtocolHandler.cpp
-- **Difficoltà**: media-alta
+- **Problema**: messaggi inviati da Haiku a room o chat dirette appaiono criptati/illeggibili sugli altri dispositivi.
+- **Causa root**: stessa di S12 — SMAZ compression inviava `s:` + dati compressi binari. I client stock MeshCore (app Android, etc.) non supportano SMAZ e mostrano il contenuto compresso come testo corrotto.
+- **Fix**: stessa fix di S12.
+- **Stato**: completato (v2.1.1)
 
 ### S14. Gestione region mancante — [#15](https://github.com/atomozero/Sestriere/issues/15)
 - **Segnalato da**: PaxForever
@@ -433,8 +433,8 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 |----|-------|------|-------------|------------|----------|
 | S7 | [#8](https://github.com/atomozero/Sestriere/issues/8) | Bug | Login repeater causa scomparsa contatti | ~~Media-Alta~~ DONE | **Critica** |
 | S8 | [#9](https://github.com/atomozero/Sestriere/issues/9) | Bug | Contatti spariscono dopo auth room/repeater | ~~Media~~ DONE | **Critica** (correlato S7) |
-| S13 | [#14](https://github.com/atomozero/Sestriere/issues/14) | Bug | Messaggi DM/room appaiono criptati su altri device | Media-Alta | **Alta** |
-| S12 | [#13](https://github.com/atomozero/Sestriere/issues/13) | Bug | Room: simboli prima del testo messaggi | Media | **Alta** |
+| S13 | [#14](https://github.com/atomozero/Sestriere/issues/14) | Bug | Messaggi DM/room appaiono criptati su altri device | ~~Media-Alta~~ DONE | **Alta** |
+| S12 | [#13](https://github.com/atomozero/Sestriere/issues/13) | Bug | Room: simboli prima del testo messaggi | ~~Media~~ DONE | **Alta** |
 | S11 | [#12](https://github.com/atomozero/Sestriere/issues/12) | Bug | Network Map valori dB anomali | Media | Media |
 | S10 | [#11](https://github.com/atomozero/Sestriere/issues/11) | Bug | Telemetry non scorre con molti device | Bassa | Media |
 | S9 | [#10](https://github.com/atomozero/Sestriere/issues/10) | Bug | USB a volte non riconosciuto | Media | Media |

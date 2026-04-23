@@ -13,6 +13,15 @@ reported during 2.1.0 use.
   and rendered the compressed bytes as garbage. Channels now always go
   out as plaintext; DMs still compress between Sestriere peers.
 
+- **Room and repeater messages appearing as garbled symbols on other
+  devices ([#13](https://github.com/atomozero/Sestriere/issues/13),
+  [#14](https://github.com/atomozero/Sestriere/issues/14)).** Same
+  SMAZ issue as channels: messages sent to rooms (type 3) and
+  repeaters (type 2) are forwarded to all connected clients, most of
+  which don't speak SMAZ. Compression is now skipped for room and
+  repeater contacts. SMAZ remains active only for peer-to-peer DMs
+  where both sides are Sestriere.
+
 - **Incoming plaintext messages starting with `s:` losing their first
   two characters.** When SMAZ decompression failed, the receive path
   stripped the prefix on the assumption it was a stale marker — so a
