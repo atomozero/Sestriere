@@ -213,7 +213,8 @@ enum {
 };
 
 // Timer intervals
-static const bigtime_t kAutoConnectDelay = 1000000;     // 1 second
+static const bigtime_t kAutoConnectDelay = 2000000;     // 2 seconds
+static const int32 kAutoConnectRetries = 3;
 static const bigtime_t kStatsRefreshInterval = 10000000; // 10 seconds
 static const bigtime_t kAutoSyncDelay = 3000000;         // 3 seconds
 static const bigtime_t kAdminRefreshInterval = 15000000; // 15 seconds
@@ -539,9 +540,11 @@ MainWindow::MainWindow()
 		}
 	}
 
-	// Start auto-connect timer (will try to connect after 1 second)
+	// Start auto-connect timer — retry a few times in case USB device
+	// appears after app startup or needs time to stabilize.
 	BMessage autoConnectMsg(MSG_AUTO_CONNECT);
-	fAutoConnectTimer = new BMessageRunner(this, &autoConnectMsg, kAutoConnectDelay, 1);
+	fAutoConnectTimer = new BMessageRunner(this, &autoConnectMsg,
+		kAutoConnectDelay, kAutoConnectRetries);
 }
 
 
@@ -1827,9 +1830,17 @@ MainWindow::MessageReceived(BMessage* message)
 
 		case MSG_AUTO_CONNECT:
 		{
-			// Auto-connect on startup if port available
-			if (!fConnected && !fSelectedPort.IsEmpty()) {
-				_LogMessage("INFO", BString("Auto-connecting to ") << fSelectedPort << "...");
+			if (fConnected) {
+				// Already connected — cancel remaining retries
+				delete fAutoConnectTimer;
+				fAutoConnectTimer = NULL;
+				break;
+			}
+			// Re-scan ports in case device appeared after startup
+			_RefreshPorts();
+			if (!fSelectedPort.IsEmpty()) {
+				_LogMessage("INFO", BString("Auto-connecting to ")
+					<< fSelectedPort << "...");
 				_Connect();
 			}
 			break;

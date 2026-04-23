@@ -217,7 +217,9 @@ SerialHandler::Connect(const char* portName)
 		}
 
 		tcflush(fSerialFd, TCIOFLUSH);
-		snooze(100000);
+		// Wait for USB-to-UART bridges (CP210x, CH340) to stabilize
+		// after DTR/RTS toggle.  100ms was too short for some devices.
+		snooze(250000);
 	}
 
 	fPortName = portName;
@@ -365,7 +367,10 @@ SerialHandler::ListPorts(BMessage* outPorts)
 	if (outPorts == NULL)
 		return B_BAD_VALUE;
 
-	// Scan /dev/ports for USB serial devices
+	// Scan /dev/ports for USB serial devices.  Validate each port
+	// with a quick open()/close() — stale entries may persist briefly
+	// after a USB unplug on Haiku, causing "ghost" ports that appear
+	// in the menu but cannot be used.
 	BDirectory dir("/dev/ports");
 	if (dir.InitCheck() != B_OK)
 		return dir.InitCheck();
@@ -374,10 +379,13 @@ SerialHandler::ListPorts(BMessage* outPorts)
 	while (dir.GetNextEntry(&entry) == B_OK) {
 		BPath path;
 		if (entry.GetPath(&path) == B_OK) {
-			// Filter for USB ports (typically usb*)
 			const char* name = path.Leaf();
 			if (strncmp(name, "usb", 3) == 0) {
-				outPorts->AddString(kFieldPort, path.Path());
+				int fd = open(path.Path(), O_RDWR | O_NOCTTY | O_NONBLOCK);
+				if (fd >= 0) {
+					close(fd);
+					outPorts->AddString(kFieldPort, path.Path());
+				}
 			}
 		}
 	}
