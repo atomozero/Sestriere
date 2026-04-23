@@ -863,26 +863,29 @@ TelemetryWindow::_RebuildContent()
 
 	y += kInset;
 
-	// Set explicit min size so BScrollView's DoLayout knows the
-	// content needs this much height (even if visible area is smaller).
-	// This causes BScrollView to enable vertical scrolling properly.
+	// Resize the content view to its full height so all cards are
+	// reachable.  Then update the scrollbar range manually — Haiku R1
+	// beta5 does not reliably propagate layout changes from a
+	// manually-positioned child through BScrollView.
+	fContentView->ResizeTo(contentWidth, y);
 	fContentView->SetExplicitMinSize(BSize(B_SIZE_UNSET, y));
+	fContentView->SetExplicitPreferredSize(BSize(B_SIZE_UNSET, y));
 
-	// Also manually resize — handles case where layout pass is deferred
+	// Scrollbar: visible height may be 0 if the window hasn't laid
+	// out yet — defer to FrameResized in that case.
 	float visibleHeight = fContentScroll->Bounds().Height();
-	float totalHeight = (y > visibleHeight) ? y : visibleHeight;
-	fContentView->ResizeTo(contentWidth, totalHeight);
-
-	// Force scrollbar update as fallback
-	BScrollBar* vbar = fContentScroll->ScrollBar(B_VERTICAL);
-	if (vbar != NULL) {
-		float maxScroll = (y > visibleHeight) ? y - visibleHeight : 0;
-		vbar->SetRange(0, maxScroll);
-		vbar->SetProportion(
-			(y > 0) ? visibleHeight / y : 1.0);
+	if (visibleHeight > 0) {
+		BScrollBar* vbar = fContentScroll->ScrollBar(B_VERTICAL);
+		if (vbar != NULL) {
+			float maxScroll = (y > visibleHeight)
+				? y - visibleHeight : 0;
+			vbar->SetRange(0, maxScroll);
+			vbar->SetProportion(visibleHeight / y);
+		}
 	}
 
 	fContentScroll->InvalidateLayout();
+	fContentView->Invalidate();
 
 	// Update summary
 	char summary[64];
