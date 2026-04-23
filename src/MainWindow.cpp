@@ -5670,8 +5670,15 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 			| ((uint32)data[4] << 24);
 	}
 
-	// Clean up any remaining old contacts that weren't matched
-	fOldContacts.MakeEmpty();
+	// Contacts remaining in fOldContacts were not returned by the device.
+	// In an incremental sync they are simply unchanged — put them back.
+	// In a full sync (since==0) the device sends everyone, so leftovers
+	// are truly gone and can be discarded.
+	while (fOldContacts.CountItems() > 0) {
+		ContactInfo* old = fOldContacts.RemoveItemAt(0);
+		if (old != NULL)
+			fContacts.AddItem(old);
+	}
 
 	_UpdateContactList();
 	_UpdateNearestRepeater();
@@ -7274,8 +7281,13 @@ MainWindow::_HandlePushLoginResult(const uint8* data, size_t length)
 			}
 		}
 
+		// Force full contact sync after login.  An incremental sync
+		// (fContactsSince != 0) may return zero contacts if none changed
+		// since the last sync, but _HandleContactsStart() already moved
+		// all contacts to fOldContacts — leaving the list empty.
 		fSyncingContacts = true;
-		fProtocol->SendGetContacts(fContactsSince);
+		fContactsSince = 0;
+		fProtocol->SendGetContacts(0);
 		fProtocol->SendGetBattery();
 		fProtocol->SendGetStats();
 
