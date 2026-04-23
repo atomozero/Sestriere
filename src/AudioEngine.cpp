@@ -69,15 +69,11 @@ AudioEngine::AudioEngine()
 		return;
 	}
 
-	// Set accepted format: 8kHz mono 16-bit signed
+	// Accept any raw audio format — the hardware may provide 48kHz
+	// stereo float32; _RecordBuffer() resamples to 8kHz mono int16.
 	media_format format = {};
 	format.type = B_MEDIA_RAW_AUDIO;
-	format.u.raw_audio.frame_rate = kSampleRate;
-	format.u.raw_audio.channel_count = 1;
-	format.u.raw_audio.format = media_raw_audio_format::B_AUDIO_SHORT;
-	format.u.raw_audio.byte_order =
-		B_HOST_IS_LENDIAN ? B_MEDIA_LITTLE_ENDIAN : B_MEDIA_BIG_ENDIAN;
-	format.u.raw_audio.buffer_size = kBufferSize;
+	format.u.raw_audio = media_raw_audio_format::wildcard;
 
 	fRecorder->SetAcceptedFormat(format);
 	fRecorder->SetHooks(_RecordBuffer, NULL, this);
@@ -127,22 +123,50 @@ AudioEngine::StartRecording()
 		return B_NO_MEMORY;
 	fRecordSize = 0;
 
-	// If not already connected (via Cortex routing), try auto-connect
-	// to the system audio input
+	// If not already connected (via Cortex routing), connect to the
+	// system audio input node.  The single-arg Connect(format) targets
+	// the mixer, not the input, and fails when the mixer's native
+	// format (48kHz stereo float) doesn't match our request.  Follow
+	// the same approach as SoundRecorder: get the audio input node,
+	// accept its native format, and resample in the callback.
 	if (!fRecorder->IsConnected()) {
-		media_format format = {};
-		format.type = B_MEDIA_RAW_AUDIO;
-		format.u.raw_audio.frame_rate = kSampleRate;
-		format.u.raw_audio.channel_count = 1;
-		format.u.raw_audio.format = media_raw_audio_format::B_AUDIO_SHORT;
-		format.u.raw_audio.byte_order =
-			B_HOST_IS_LENDIAN ? B_MEDIA_LITTLE_ENDIAN : B_MEDIA_BIG_ENDIAN;
-		format.u.raw_audio.buffer_size = kBufferSize;
+		BMediaRoster* roster = BMediaRoster::Roster();
+		if (roster == NULL) {
+			delete[] fRecordBuffer;
+			fRecordBuffer = NULL;
+			return B_ERROR;
+		}
 
-		status_t err = fRecorder->Connect(format);
+		media_node audioInput;
+		status_t err = roster->GetAudioInput(&audioInput);
 		if (err != B_OK) {
-			fprintf(stderr, "[AudioEngine] No audio input — "
-				"connect a source in Cortex or plug in a microphone\n");
+			fprintf(stderr, "[AudioEngine] No audio input node — "
+				"check that a microphone is connected\n");
+			delete[] fRecordBuffer;
+			fRecordBuffer = NULL;
+			return err;
+		}
+
+		// Find a free output on the audio input node
+		media_output output;
+		int32 count = 0;
+		err = roster->GetFreeOutputsFor(audioInput, &output, 1,
+			&count, B_MEDIA_RAW_AUDIO);
+		if (err != B_OK || count < 1) {
+			fprintf(stderr, "[AudioEngine] No free output on audio input "
+				"node — another app may be using it exclusively\n");
+			delete[] fRecordBuffer;
+			fRecordBuffer = NULL;
+			return (err != B_OK) ? err : B_BUSY;
+		}
+
+		// Accept the hardware's native format (resampling happens
+		// in _RecordBuffer)
+		media_format format = output.format;
+		err = fRecorder->Connect(audioInput, &output, &format);
+		if (err != B_OK) {
+			fprintf(stderr, "[AudioEngine] Failed to connect to audio "
+				"input: %s\n", strerror(err));
 			delete[] fRecordBuffer;
 			fRecordBuffer = NULL;
 			return err;
@@ -196,6 +220,53 @@ AudioEngine::StopRecording(int16** outPcm, size_t* outSamples)
 }
 
 
+// Helper: read one sample from a raw audio buffer at the given frame
+// and channel, converting from the source format to int16.
+static inline int16
+_ReadSample(const void* data, uint32 srcFormat, size_t frameIdx,
+	uint32 channel, uint32 channelCount)
+{
+	size_t idx = frameIdx * channelCount + channel;
+	switch (srcFormat) {
+		case media_raw_audio_format::B_AUDIO_FLOAT: {
+			float val = ((const float*)data)[idx];
+			if (val > 1.0f) val = 1.0f;
+			if (val < -1.0f) val = -1.0f;
+			return (int16)(val * 32767.0f);
+		}
+		case media_raw_audio_format::B_AUDIO_SHORT:
+			return ((const int16*)data)[idx];
+		case media_raw_audio_format::B_AUDIO_INT: {
+			int32 val = ((const int32*)data)[idx];
+			return (int16)(val >> 16);
+		}
+		case media_raw_audio_format::B_AUDIO_UCHAR:
+			return (int16)(((int32)((const uint8*)data)[idx] - 128) << 8);
+		case media_raw_audio_format::B_AUDIO_CHAR:
+			return (int16)(((int32)((const int8*)data)[idx]) << 8);
+		default:
+			return 0;
+	}
+}
+
+
+// Helper: bytes per sample for a given raw audio format code
+static inline size_t
+_BytesPerSample(uint32 fmt)
+{
+	switch (fmt) {
+		case media_raw_audio_format::B_AUDIO_FLOAT:  return 4;
+		case media_raw_audio_format::B_AUDIO_INT:    return 4;
+		case media_raw_audio_format::B_AUDIO_SHORT:  return 2;
+		case media_raw_audio_format::B_AUDIO_UCHAR:  return 1;
+		case media_raw_audio_format::B_AUDIO_CHAR:   return 1;
+		default: return 2;
+	}
+}
+
+
+
+
 void
 AudioEngine::_RecordBuffer(void* cookie, bigtime_t timestamp,
 	void* data, size_t size, const media_format& format)
@@ -209,81 +280,65 @@ AudioEngine::_RecordBuffer(void* cookie, bigtime_t timestamp,
 	if (!engine->fRecording || engine->fRecordBuffer == NULL)
 		return;
 
-	// Convert to samples
-	size_t samples = size / sizeof(int16);
-	if (samples == 0)
-		return;
-
-	const int16* incoming = (const int16*)data;
-
-	// Resample if needed (simple nearest-neighbor for non-8kHz input)
+	uint32 srcFormat = format.u.raw_audio.format;
 	float srcRate = format.u.raw_audio.frame_rate;
 	uint32 srcChannels = format.u.raw_audio.channel_count;
+	if (srcChannels == 0) srcChannels = 1;
+	if (srcRate <= 0) srcRate = kSampleRate;
 
-	if (srcRate != kSampleRate || srcChannels != 1) {
-		// Calculate output samples
-		float ratio = (float)kSampleRate / srcRate;
-		size_t srcFrames = size / (srcChannels * sizeof(int16));
-		size_t outSamples = (size_t)(srcFrames * ratio);
+	size_t bytesPerFrame = _BytesPerSample(srcFormat) * srcChannels;
+	if (bytesPerFrame == 0) return;
+	size_t srcFrames = size / bytesPerFrame;
+	if (srcFrames == 0) return;
 
-		// Grow buffer if needed
-		size_t needed = engine->fRecordSize + outSamples;
-		if (needed > kMaxRecordSamples)
-			outSamples = kMaxRecordSamples - engine->fRecordSize;
-		if (outSamples == 0) {
-			engine->fRecording = false;
-			return;
-		}
+	// Calculate how many output samples (8kHz mono) this buffer yields
+	float ratio = (float)kSampleRate / srcRate;
+	size_t outSamples = (size_t)(srcFrames * ratio);
+	if (outSamples == 0) outSamples = 1;
 
-		if (needed > engine->fRecordCapacity) {
-			size_t newCap = engine->fRecordCapacity * 2;
-			if (newCap < needed) newCap = needed;
-			if (newCap > kMaxRecordSamples) newCap = kMaxRecordSamples;
-			int16* newBuf = new(std::nothrow) int16[newCap];
-			if (newBuf == NULL) return;
-			memcpy(newBuf, engine->fRecordBuffer,
-				engine->fRecordSize * sizeof(int16));
-			delete[] engine->fRecordBuffer;
-			engine->fRecordBuffer = newBuf;
-			engine->fRecordCapacity = newCap;
-		}
+	// Clamp to max recording length
+	size_t space = (kMaxRecordSamples > engine->fRecordSize)
+		? (kMaxRecordSamples - engine->fRecordSize) : 0;
+	if (outSamples > space)
+		outSamples = space;
+	if (outSamples == 0) {
+		engine->fRecording = false;
+		return;
+	}
 
-		// Resample + downmix
-		for (size_t i = 0; i < outSamples; i++) {
-			size_t srcIdx = (size_t)(i / ratio);
-			if (srcIdx >= srcFrames) srcIdx = srcFrames - 1;
-			int32 sum = 0;
-			for (uint32 ch = 0; ch < srcChannels; ch++)
-				sum += incoming[srcIdx * srcChannels + ch];
-			engine->fRecordBuffer[engine->fRecordSize++] =
-				(int16)(sum / (int32)srcChannels);
-		}
-	} else {
-		// Direct copy — format matches
-		size_t needed = engine->fRecordSize + samples;
-		if (needed > kMaxRecordSamples)
-			samples = kMaxRecordSamples - engine->fRecordSize;
-		if (samples == 0) {
-			engine->fRecording = false;
-			return;
-		}
+	// Grow buffer if needed
+	size_t needed = engine->fRecordSize + outSamples;
+	if (needed > engine->fRecordCapacity) {
+		size_t newCap = engine->fRecordCapacity * 2;
+		if (newCap < needed) newCap = needed;
+		if (newCap > kMaxRecordSamples) newCap = kMaxRecordSamples;
+		int16* newBuf = new(std::nothrow) int16[newCap];
+		if (newBuf == NULL) return;
+		memcpy(newBuf, engine->fRecordBuffer,
+			engine->fRecordSize * sizeof(int16));
+		delete[] engine->fRecordBuffer;
+		engine->fRecordBuffer = newBuf;
+		engine->fRecordCapacity = newCap;
+	}
 
-		if (needed > engine->fRecordCapacity) {
-			size_t newCap = engine->fRecordCapacity * 2;
-			if (newCap < needed) newCap = needed;
-			if (newCap > kMaxRecordSamples) newCap = kMaxRecordSamples;
-			int16* newBuf = new(std::nothrow) int16[newCap];
-			if (newBuf == NULL) return;
-			memcpy(newBuf, engine->fRecordBuffer,
-				engine->fRecordSize * sizeof(int16));
-			delete[] engine->fRecordBuffer;
-			engine->fRecordBuffer = newBuf;
-			engine->fRecordCapacity = newCap;
-		}
-
+	// If format matches exactly (8kHz mono int16), fast path
+	if (srcFormat == (uint32)media_raw_audio_format::B_AUDIO_SHORT
+		&& srcChannels == 1 && srcRate == kSampleRate) {
 		memcpy(engine->fRecordBuffer + engine->fRecordSize,
-			incoming, samples * sizeof(int16));
-		engine->fRecordSize += samples;
+			data, outSamples * sizeof(int16));
+		engine->fRecordSize += outSamples;
+		return;
+	}
+
+	// General path: resample + downmix + format-convert
+	for (size_t i = 0; i < outSamples; i++) {
+		size_t srcIdx = (size_t)(i / ratio);
+		if (srcIdx >= srcFrames) srcIdx = srcFrames - 1;
+		int32 sum = 0;
+		for (uint32 ch = 0; ch < srcChannels; ch++)
+			sum += _ReadSample(data, srcFormat, srcIdx, ch, srcChannels);
+		engine->fRecordBuffer[engine->fRecordSize++] =
+			(int16)(sum / (int32)srcChannels);
 	}
 }
 
