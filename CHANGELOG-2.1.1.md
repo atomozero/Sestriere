@@ -96,6 +96,19 @@ reported during 2.1.0 use.
   `BScrollView` wasn't getting the explicit preferred size it needs
   to compute scroll range on Haiku R1 beta5.
 
+### USB serial connection ([#10](https://github.com/atomozero/Sestriere/issues/10))
+
+- **USB device sometimes not recognized on connect.** Three issues
+  combined: (1) port enumeration listed "ghost" entries that
+  persisted in `/dev/ports/` after a USB unplug — these appeared in
+  the menu but failed to open; (2) the 100 ms DTR/RTS stabilization
+  delay was too short for some USB-to-UART bridges (CP210x, CH340);
+  (3) auto-connect was a single-shot timer — if the device wasn't
+  ready at that exact moment, no retry occurred. Fixed: validate
+  each port with `open()`/`close()` before listing, increase delay
+  to 250 ms, and retry auto-connect up to 3 times with a port
+  re-scan on each attempt.
+
 ### Device info dialog
 
 - **"Frequency: 869618.000 MHz".** `fRadioFreq` is stored in Hz; the

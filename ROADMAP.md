@@ -208,11 +208,16 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 - **Nota**: stessa causa root di S7 — risolto dalla stessa fix.
 - **Stato**: completato (v2.1.1)
 
-### S9. Collegamento USB a volte non riconosciuto — [#10](https://github.com/atomozero/Sestriere/issues/10)
+### S9. Collegamento USB a volte non riconosciuto — [#10](https://github.com/atomozero/Sestriere/issues/10) — COMPLETATO
 - **Segnalato da**: PaxForever
-- **Problema**: la connessione USB a volte non si connette automaticamente. Il device potrebbe non essere riconosciuto; disconnettere, fare refresh porte e riconnettere a una porta USB appena rilevata risolve temporaneamente.
-- **File**: SerialHandler.cpp, MainWindow.cpp (port enumeration)
-- **Difficoltà**: media
+- **Problema**: la connessione USB a volte non si connette automaticamente.
+- **Causa root**: tre problemi concorrenti:
+  1. `ListPorts()` elencava porte "fantasma" (entry `/dev/ports/usbN` persistenti dopo unplug) senza verificare l'accessibilità.
+  2. Delay di 100ms dopo DTR/RTS insufficiente per alcuni chip USB-to-UART (CP210x, CH340).
+  3. Auto-connect one-shot: un unico tentativo all'avvio, nessun retry se il device non era ancora pronto.
+- **Fix**: (1) `ListPorts()` valida ogni porta con `open()`+`close()` prima di aggiungerla alla lista. (2) Delay aumentato a 250ms. (3) Auto-connect con 3 retry ogni 2s, con re-scan porte ad ogni tentativo. Timer cancellato una volta connesso.
+- **Nota**: il bug Haiku kernel del driver CP210x (interrupt su BULK endpoint) è documentato separatamente in `HAIKU_USB_SERIAL_FIX.md` e richiede una patch al sistema.
+- **Stato**: completato (v2.1.1)
 
 ### S10. Telemetry page non scorre con molti device — [#11](https://github.com/atomozero/Sestriere/issues/11) — COMPLETATO
 - **Segnalato da**: PaxForever
@@ -439,7 +444,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 | S12 | [#13](https://github.com/atomozero/Sestriere/issues/13) | Bug | Room: simboli prima del testo messaggi | ~~Media~~ DONE | **Alta** |
 | S11 | [#12](https://github.com/atomozero/Sestriere/issues/12) | Bug | Network Map valori dB anomali | ~~Media~~ DONE | Media |
 | S10 | [#11](https://github.com/atomozero/Sestriere/issues/11) | Bug | Telemetry non scorre con molti device | ~~Bassa~~ DONE | Media |
-| S9 | [#10](https://github.com/atomozero/Sestriere/issues/10) | Bug | USB a volte non riconosciuto | Media | Media |
+| S9 | [#10](https://github.com/atomozero/Sestriere/issues/10) | Bug | USB a volte non riconosciuto | ~~Media~~ DONE | Media |
 | S6 | [#7](https://github.com/atomozero/Sestriere/issues/7) | Feature | Verifica duplicati/tipo canale alla creazione | Media | Bassa |
 | S14 | [#15](https://github.com/atomozero/Sestriere/issues/15) | Feature | Gestione region radio mancante | Media | Bassa |
 | S15 | [#16](https://github.com/atomozero/Sestriere/issues/16) | Feature | Comando "Imposta percorso" mancante | Media | Bassa |
