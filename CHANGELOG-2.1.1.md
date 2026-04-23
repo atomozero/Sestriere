@@ -1,7 +1,19 @@
-# Sestriere 2.1.1 — Bug-fix release
+# Sestriere 2.1.1 — Bug-fix & improvements release
 
-Internal beta for testing. No new features; only fixes to issues
-reported during 2.1.0 use.
+Internal beta for testing.
+
+## Improvements
+
+### Channel management ([#7](https://github.com/atomozero/Sestriere/issues/7))
+
+- **Duplicate channel names now blocked.** Case-insensitive check
+  before creation; shows a warning alert if a channel with the same
+  name already exists.
+
+- **New "Join hashtag" option in Add Channel dialog.** Three radio
+  buttons: "Create private" (random PSK), "Join private" (manual hex
+  PSK), and "Join hashtag" (PSK derived from SHA-256 of the channel
+  name, compatible with stock MeshCore hashtag channels).
 
 ## Fixes
 

@@ -187,11 +187,12 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 - **Fix**: (1) `StartRecording()` ora usa `GetAudioInput()` + `GetFreeOutputsFor()` + overload `Connect(node, &output, &format)` a 3 argomenti, come fa SoundRecorder. (2) `SetAcceptedFormat()` con wildcard per accettare qualsiasi formato. (3) `_RecordBuffer()` riscritto con conversione format-aware (float32/int32/int16/uint8/int8) + resampling + downmix.
 - **Stato**: completato (v2.1.1)
 
-### S6. Verifica duplicati e tipo canale alla creazione — [#7](https://github.com/atomozero/Sestriere/issues/7)
+### S6. Verifica duplicati e tipo canale alla creazione — [#7](https://github.com/atomozero/Sestriere/issues/7) — COMPLETATO
 - **Segnalato da**: serwin2
-- **Problema**: si possono creare canali con nomi duplicati. I canali pubblici hashtag creati via "Create new channel" generano chiavi random anziché SHA-256 del nome. Serve distinguere: canale privato nuovo (key random), join canale privato esistente (key manuale), join canale hashtag (key SHA-256).
-- **File**: AddChannelWindow.cpp, MainWindow.cpp
-- **Difficoltà**: media
+- **Problema**: canali duplicati creabili, hashtag channel con PSK random anziché derivata.
+- **Fix**: (1) Check duplicati case-insensitive prima della creazione — mostra alert se esiste già. (2) Terzo radio button "Join hashtag" in AddChannelWindow: la PSK viene derivata da SHA-256 del nome (strippando `#` iniziale), compatibile con stock MeshCore. (3) Labels radio aggiornate: "Create private" / "Join private" / "Join hashtag".
+- **File**: AddChannelWindow.cpp/h, MainWindow.cpp
+- **Stato**: completato (v2.1.1)
 
 ### S7. Login repeater causa scomparsa contatti — [#8](https://github.com/atomozero/Sestriere/issues/8) — COMPLETATO
 - **Segnalato da**: serwin2
@@ -445,7 +446,7 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 | S11 | [#12](https://github.com/atomozero/Sestriere/issues/12) | Bug | Network Map valori dB anomali | ~~Media~~ DONE | Media |
 | S10 | [#11](https://github.com/atomozero/Sestriere/issues/11) | Bug | Telemetry non scorre con molti device | ~~Bassa~~ DONE | Media |
 | S9 | [#10](https://github.com/atomozero/Sestriere/issues/10) | Bug | USB a volte non riconosciuto | ~~Media~~ DONE | Media |
-| S6 | [#7](https://github.com/atomozero/Sestriere/issues/7) | Feature | Verifica duplicati/tipo canale alla creazione | Media | Bassa |
+| S6 | [#7](https://github.com/atomozero/Sestriere/issues/7) | Feature | Verifica duplicati/tipo canale alla creazione | ~~Media~~ DONE | Bassa |
 | S14 | [#15](https://github.com/atomozero/Sestriere/issues/15) | Feature | Gestione region radio mancante | Media | Bassa |
 | S15 | [#16](https://github.com/atomozero/Sestriere/issues/16) | Feature | Comando "Imposta percorso" mancante | Media | Bassa |
 
