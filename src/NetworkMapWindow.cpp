@@ -3139,16 +3139,16 @@ NetworkMapWindow::HandleTraceData(const uint8* data, size_t length)
 		}
 	}
 
-	// Parse SNR bytes (after hop data)
+	// Parse SNR bytes (after hop data) — stored as int8 × 4 (Q6.2)
 	size_t snrOffset = hashOffset + pathLen;
 	for (uint8 i = 0; i < numHops; i++) {
 		if (snrOffset + i < length)
-			route.hops[i].snr = (int8)data[snrOffset + i];
+			route.hops[i].snr = (int8)data[snrOffset + i] / 4;
 	}
 
 	// Destination SNR (last SNR byte)
 	if (snrOffset + numHops < length)
-		route.destSnr = (int8)data[snrOffset + numHops];
+		route.destSnr = (int8)data[snrOffset + numHops] / 4;
 
 	fMapView->SetTraceRoute(route);
 
