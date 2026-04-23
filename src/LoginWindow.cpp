@@ -13,7 +13,10 @@
 #include <StringView.h>
 #include <TextControl.h>
 
+#include <cctype>
 #include <cstring>
+
+#include <String.h>
 
 #include "Constants.h"
 
@@ -72,6 +75,9 @@ LoginWindow::LoginWindow(BWindow* parent, const ContactInfo* contact)
 	fPasswordControl = new BTextControl("password", "Password:", "",
 		new BMessage(kMsgDoLogin));
 	fPasswordControl->TextView()->HideTyping(true);
+	// MeshCore password buffer is char[16] (15 usable + null). Block
+	// extra input at the UI so users see the real limit.
+	fPasswordControl->TextView()->SetMaxBytes(15);
 
 	fLoginButton = new BButton("login_button", "Login",
 		new BMessage(kMsgDoLogin));
@@ -179,12 +185,16 @@ LoginWindow::_OnLogin()
 	if (fLoggingIn)
 		return;
 
-	const char* password = fPasswordControl->Text();
-	if (password == NULL || password[0] == '\0') {
+	// Trim whitespace: copy-pasted passwords often drag in trailing
+	// spaces or newlines that silently break login on the repeater side.
+	BString trimmed(fPasswordControl->Text());
+	trimmed.Trim();
+	if (trimmed.Length() == 0) {
 		fStatusLabel->SetHighColor(kColorBad);
 		fStatusLabel->SetText("Please enter a password.");
 		return;
 	}
+	const char* password = trimmed.String();
 
 	fLoggingIn = true;
 	fLoginButton->SetEnabled(false);

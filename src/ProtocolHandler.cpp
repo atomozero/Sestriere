@@ -547,9 +547,11 @@ ProtocolHandler::SendLogin(const uint8* pubkey, const char* password)
 	if (!IsConnected())
 		return B_NOT_INITIALIZED;
 
+	// MeshCore password buffer is char[16] with null-terminating strncpy,
+	// so 15 usable chars. The firmware's sendLogin() also caps at 15.
 	size_t passLen = strlen(password);
 	if (passLen > 15)
-		passLen = 15;  // Protocol max
+		passLen = 15;
 
 	uint8 payload[128];
 	payload[0] = CMD_SEND_LOGIN;
