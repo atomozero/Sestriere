@@ -435,20 +435,35 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 | U4 | UX | Validazione tile cache | ~~Bassa~~ GIÀ FATTO |
 | U5 | UX | Admin multi-repeater | ~~Media~~ DONE |
 
-### Sprint 5 — Bug utenti aprile 2026 (v2.2)
+### Sprint 5 — Bug utenti aprile 2026 (v2.1.1) — COMPLETATO
+
+Tutti i bug segnalati risolti. Release beta1 distribuita ai tester il 2026-04-24.
+
+| ID | Issue | Tipo | Descrizione | Stato |
+|----|-------|------|-------------|-------|
+| S7 | [#8](https://github.com/atomozero/Sestriere/issues/8) | Bug | Login repeater causa scomparsa contatti | DONE |
+| S8 | [#9](https://github.com/atomozero/Sestriere/issues/9) | Bug | Contatti spariscono dopo auth room/repeater | DONE |
+| S13 | [#14](https://github.com/atomozero/Sestriere/issues/14) | Bug | Messaggi DM/room appaiono criptati su altri device | DONE |
+| S12 | [#13](https://github.com/atomozero/Sestriere/issues/13) | Bug | Room: simboli prima del testo messaggi | DONE |
+| S11 | [#12](https://github.com/atomozero/Sestriere/issues/12) | Bug | Network Map valori dB anomali | DONE |
+| S10 | [#11](https://github.com/atomozero/Sestriere/issues/11) | Bug | Telemetry non scorre con molti device | DONE |
+| S9 | [#10](https://github.com/atomozero/Sestriere/issues/10) | Bug | USB a volte non riconosciuto | DONE |
+| S5 | [#6](https://github.com/atomozero/Sestriere/issues/6) | Bug | Registrazione audio non funzionante | DONE |
+| S6 | [#7](https://github.com/atomozero/Sestriere/issues/7) | Feature | Verifica duplicati/tipo canale alla creazione | DONE |
+| B16 | — | Bug | Sestriere.rdef version out of sync | DONE |
+| B17 | — | Bug | Password cap 15 vs 16 | DONE |
+
+### Sprint 6 — Feature request + hardening (v2.2)
 
 | ID | Issue | Tipo | Descrizione | Difficoltà | Priorità |
 |----|-------|------|-------------|------------|----------|
-| S7 | [#8](https://github.com/atomozero/Sestriere/issues/8) | Bug | Login repeater causa scomparsa contatti | ~~Media-Alta~~ DONE | **Critica** |
-| S8 | [#9](https://github.com/atomozero/Sestriere/issues/9) | Bug | Contatti spariscono dopo auth room/repeater | ~~Media~~ DONE | **Critica** (correlato S7) |
-| S13 | [#14](https://github.com/atomozero/Sestriere/issues/14) | Bug | Messaggi DM/room appaiono criptati su altri device | ~~Media-Alta~~ DONE | **Alta** |
-| S12 | [#13](https://github.com/atomozero/Sestriere/issues/13) | Bug | Room: simboli prima del testo messaggi | ~~Media~~ DONE | **Alta** |
-| S11 | [#12](https://github.com/atomozero/Sestriere/issues/12) | Bug | Network Map valori dB anomali | ~~Media~~ DONE | Media |
-| S10 | [#11](https://github.com/atomozero/Sestriere/issues/11) | Bug | Telemetry non scorre con molti device | ~~Bassa~~ DONE | Media |
-| S9 | [#10](https://github.com/atomozero/Sestriere/issues/10) | Bug | USB a volte non riconosciuto | ~~Media~~ DONE | Media |
-| S6 | [#7](https://github.com/atomozero/Sestriere/issues/7) | Feature | Verifica duplicati/tipo canale alla creazione | ~~Media~~ DONE | Bassa |
-| S14 | [#15](https://github.com/atomozero/Sestriere/issues/15) | Feature | Gestione region radio mancante | Media | Bassa |
-| S15 | [#16](https://github.com/atomozero/Sestriere/issues/16) | Feature | Comando "Imposta percorso" mancante | Media | Bassa |
+| S14 | [#15](https://github.com/atomozero/Sestriere/issues/15) | Feature | Gestione region radio mancante | Media | Media |
+| S15 | [#16](https://github.com/atomozero/Sestriere/issues/16) | Feature | Comando "Imposta percorso" mancante | Media | Media |
+| G5 | — | Proto | Verificare se 0x88 è ancora supportato | Bassa | Bassa |
+| G6 | — | Proto | Channel commands non documentati — monitorare | Bassa | Bassa |
+| T1 | — | Test | Test voice/image codec (round-trip) | Bassa | Bassa |
+| T2 | — | Test | Test SerialHandler read/write (PTY pair) | Bassa | Bassa |
+| T3 | — | Test | Test health score MissionControl | Bassa | Bassa |
 
 ---
 
