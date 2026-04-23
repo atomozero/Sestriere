@@ -81,6 +81,21 @@ reported during 2.1.0 use.
   convert any sample format (float32/int32/int16/uint8/int8) to
   8kHz mono int16 in the recording callback.
 
+### Network map ([#12](https://github.com/atomozero/Sestriere/issues/12))
+
+- **SNR values on map links showing 4x actual (e.g. 53 dB instead
+  of 13 dB).** Trace route SNR bytes are stored in Q6.2 fixed-point
+  format (value × 4) in the protocol, but `HandleTraceData()` was
+  not dividing by 4 — unlike every other SNR parser in the app.
+
+### Telemetry ([#11](https://github.com/atomozero/Sestriere/issues/11))
+
+- **Sensor telemetry window not scrolling past 3-4 devices.** The
+  content view was resized to `max(contentHeight, visibleHeight)`
+  instead of always using the full content height, and the
+  `BScrollView` wasn't getting the explicit preferred size it needs
+  to compute scroll range on Haiku R1 beta5.
+
 ### Device info dialog
 
 - **"Frequency: 869618.000 MHz".** `fRadioFreq` is stored in Hz; the

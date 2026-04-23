@@ -214,17 +214,19 @@ Campo "BLE PIN" nel tab Device di SettingsWindow.
 - **File**: SerialHandler.cpp, MainWindow.cpp (port enumeration)
 - **Difficoltà**: media
 
-### S10. Telemetry page non scorre con molti device — [#11](https://github.com/atomozero/Sestriere/issues/11)
+### S10. Telemetry page non scorre con molti device — [#11](https://github.com/atomozero/Sestriere/issues/11) — COMPLETATO
 - **Segnalato da**: PaxForever
-- **Problema**: con più dispositivi che riportano telemetria, dopo 3-4 device visualizzati, la pagina non scorre verso il basso per mostrare dati aggiuntivi.
-- **File**: TelemetryWindow.cpp
-- **Difficoltà**: bassa
+- **Problema**: con molti device la pagina non scorre verso il basso.
+- **Causa root**: `_RebuildContent()` ridimensionava `fContentView` a `max(y, visibleHeight)` anziché alla piena altezza `y`. Mancava anche `SetExplicitPreferredSize` necessario al BScrollView per calcolare il range di scroll su Haiku beta5.
+- **Fix**: `ResizeTo(contentWidth, y)` usa sempre l'altezza totale. Aggiunto `SetExplicitPreferredSize`. Guardia `visibleHeight > 0`.
+- **Stato**: completato (v2.1.1)
 
-### S11. Network Map valori dB anomali — [#12](https://github.com/atomozero/Sestriere/issues/12)
+### S11. Network Map valori dB anomali — [#12](https://github.com/atomozero/Sestriere/issues/12) — COMPLETATO
 - **Segnalato da**: PaxForever
-- **Problema**: la Network Map mostra valori dB atipici quando tutti i dispositivi sono connessi (es. repeater a 53dB con companion a 12dB, room/repeater a 48dB con companion a 0dB). I valori potrebbero essere non firmati o parsati come unsigned.
-- **File**: NetworkMapWindow.cpp
-- **Difficoltà**: media
+- **Problema**: valori dB atipici (53dB, 48dB, 12dB, 0dB).
+- **Causa root**: `HandleTraceData()` parsava i bytes SNR dal frame PUSH_TRACE_DATA senza dividere per 4 (formato Q6.2 int8×4). Tutti gli altri handler (DM, channel, advert) dividono correttamente.
+- **Fix**: aggiunto `/ 4` a `route.hops[i].snr` e `route.destSnr`.
+- **Stato**: completato (v2.1.1)
 
 ### S12. Room: simboli prima del testo messaggi — [#13](https://github.com/atomozero/Sestriere/issues/13) — COMPLETATO
 - **Segnalato da**: PaxForever
@@ -435,8 +437,8 @@ Test con valori noti di SNR, RSSI, battery, uptime.
 | S8 | [#9](https://github.com/atomozero/Sestriere/issues/9) | Bug | Contatti spariscono dopo auth room/repeater | ~~Media~~ DONE | **Critica** (correlato S7) |
 | S13 | [#14](https://github.com/atomozero/Sestriere/issues/14) | Bug | Messaggi DM/room appaiono criptati su altri device | ~~Media-Alta~~ DONE | **Alta** |
 | S12 | [#13](https://github.com/atomozero/Sestriere/issues/13) | Bug | Room: simboli prima del testo messaggi | ~~Media~~ DONE | **Alta** |
-| S11 | [#12](https://github.com/atomozero/Sestriere/issues/12) | Bug | Network Map valori dB anomali | Media | Media |
-| S10 | [#11](https://github.com/atomozero/Sestriere/issues/11) | Bug | Telemetry non scorre con molti device | Bassa | Media |
+| S11 | [#12](https://github.com/atomozero/Sestriere/issues/12) | Bug | Network Map valori dB anomali | ~~Media~~ DONE | Media |
+| S10 | [#11](https://github.com/atomozero/Sestriere/issues/11) | Bug | Telemetry non scorre con molti device | ~~Bassa~~ DONE | Media |
 | S9 | [#10](https://github.com/atomozero/Sestriere/issues/10) | Bug | USB a volte non riconosciuto | Media | Media |
 | S6 | [#7](https://github.com/atomozero/Sestriere/issues/7) | Feature | Verifica duplicati/tipo canale alla creazione | Media | Bassa |
 | S14 | [#15](https://github.com/atomozero/Sestriere/issues/15) | Feature | Gestione region radio mancante | Media | Bassa |
