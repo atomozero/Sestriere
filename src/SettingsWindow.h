@@ -59,6 +59,7 @@ private:
 			void			_BuildMqttTab(BView* parent);
 			void			_BuildChannelsTab(BView* parent);
 			void			_BuildVariablesTab(BView* parent);
+			void			_BuildAdvancedTab(BView* parent);
 
 			void			_OnApply();
 			void			_OnPresetSelected(int32 preset);
@@ -122,6 +123,15 @@ private:
 			BTextControl*	fVarValueControl;
 			BButton*		fVarSetButton;
 			BButton*		fVarRefreshButton;
+
+			// Advanced tab
+			BTextControl*	fTileCacheMbControl;
+			BTextControl*	fDbRetentionControl;
+			BTextControl*	fVoiceMaxSecControl;
+			BTextControl*	fImageMaxDimControl;
+			BTextControl*	fImageQualityControl;
+			BTextControl*	fMediaMaxWidthControl;
+			BTextControl*	fMediaMaxHeightControl;
 
 			// Buttons
 			BButton*		fApplyButton;

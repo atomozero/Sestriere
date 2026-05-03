@@ -38,7 +38,9 @@ public:
 	void					RemoveContact(const uint8* pubKey);
 	void					Clear();
 
-	// Direct list access (for iteration patterns in MainWindow)
+	// Direct list access (for iteration patterns in MainWindow).
+	// Thread-safe: all callers run in MainWindow's BLooper thread,
+	// which serializes MessageReceived — no concurrent iteration possible.
 	OwningObjectList<ContactInfo>&		Contacts() { return fContacts; }
 	OwningObjectList<ContactInfo>&		OldContacts() { return fOldContacts; }
 

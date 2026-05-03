@@ -142,6 +142,13 @@ SettingsWindow::SettingsWindow(BWindow* parent)
 	tabView->AddTab(varsTab, new BTab());
 	tabView->TabAt(4)->SetLabel("Variables");
 
+	// Advanced tab
+	BView* advTab = new BView("adv_tab", 0);
+	advTab->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	_BuildAdvancedTab(advTab);
+	tabView->AddTab(advTab, new BTab());
+	tabView->TabAt(5)->SetLabel("Advanced");
+
 	// Buttons
 	fApplyButton = new BButton("apply_button", "Apply",
 		new BMessage(kMsgApplySettings));
@@ -1174,4 +1181,40 @@ SettingsWindow::SetAutoAddConfig(uint8 flags)
 		fAutoAddOverwrite->SetValue(
 			(flags & AUTO_ADD_OVERWRITE_OLDEST) != 0
 				? B_CONTROL_ON : B_CONTROL_OFF);
+}
+
+
+// =============================================================================
+// Advanced tab
+// =============================================================================
+
+void
+SettingsWindow::_BuildAdvancedTab(BView* parent)
+{
+	fTileCacheMbControl = new BTextControl("tile_cache", "Tile cache (MB):",
+		"50", NULL);
+	fDbRetentionControl = new BTextControl("db_retention",
+		"History retention (days):", "30", NULL);
+	fVoiceMaxSecControl = new BTextControl("voice_max",
+		"Max voice record (sec):", "30", NULL);
+	fImageMaxDimControl = new BTextControl("img_dim",
+		"Image max dimension (px):", "192", NULL);
+	fImageQualityControl = new BTextControl("img_quality",
+		"WebP quality (1-100):", "50", NULL);
+	fMediaMaxWidthControl = new BTextControl("media_w",
+		"Media display max width:", "250", NULL);
+	fMediaMaxHeightControl = new BTextControl("media_h",
+		"Media display max height:", "300", NULL);
+
+	BLayoutBuilder::Group<>(parent, B_VERTICAL, B_USE_HALF_ITEM_SPACING)
+		.SetInsets(B_USE_WINDOW_INSETS)
+		.Add(fTileCacheMbControl)
+		.Add(fDbRetentionControl)
+		.Add(fVoiceMaxSecControl)
+		.Add(fImageMaxDimControl)
+		.Add(fImageQualityControl)
+		.Add(fMediaMaxWidthControl)
+		.Add(fMediaMaxHeightControl)
+		.AddGlue()
+	.End();
 }
