@@ -4572,11 +4572,12 @@ MainWindow::_SendTextMessage(const char* text)
 	size_t wireLen = textLen;
 
 	bool isRoomOrRepeater = (contact->type == 2 || contact->type == 3);
-	if (!isRoomOrRepeater
-		&& textLen > 4
-		&& !GiphyClient::IsGifMessage(text)
-		&& !VoiceSessionManager::IsVoiceEnvelope(text)
-		&& !ImageSessionManager::IsImageEnvelope(text)) {
+	bool isSpecialMsg = GiphyClient::IsGifMessage(text)
+		|| VoiceSessionManager::IsVoiceEnvelope(text)
+		|| ImageSessionManager::IsImageEnvelope(text)
+		|| (textLen > 2 && text[0] == 'r' && text[1] == ':')   // reaction
+		|| (textLen > 2 && text[0] == 'S' && text[1] == ':');   // SAR marker
+	if (!isRoomOrRepeater && textLen > 4 && !isSpecialMsg) {
 		int compressed = SmazCompress(text, (int)textLen,
 			smazBuf + kSmazPrefixLen,
 			(int)(sizeof(smazBuf) - kSmazPrefixLen));
@@ -4623,6 +4624,9 @@ MainWindow::_SendTextMessage(const char* text)
 	memcpy(pending->pubKey, contact->publicKey, kPubKeySize);
 	pending->timestamp = timestamp;
 	strlcpy(pending->text, text, sizeof(pending->text));
+	// Store wire text (compressed if applicable) for retries
+	memcpy(pending->wireText, wireText, wireLen);
+	pending->wireLen = wireLen;
 	pending->txtType = txtType;
 	pending->chatViewIndex = chatViewIdx;
 
@@ -6534,26 +6538,8 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 		strlcpy(messageText, colonPos + 2, sizeof(messageText));
 	}
 
-	// Decompress SMAZ if message starts with "s:" prefix
-	if (SmazIsCompressed(messageText)) {
-		size_t msgLen = strlen(messageText);
-		if (msgLen > kSmazPrefixLen) {
-			char decoded[256];
-			int decompLen = SmazDecompress(
-				messageText + kSmazPrefixLen,
-				(int)(msgLen - kSmazPrefixLen), decoded,
-				(int)(sizeof(decoded) - 1));
-			if (decompLen > 0
-				&& decompLen < (int)sizeof(decoded)) {
-				decoded[decompLen] = '\0';
-				strlcpy(messageText, decoded,
-					sizeof(messageText));
-			}
-			// If decompression failed, leave messageText untouched:
-			// a legit plaintext message starting with "s:" from a
-			// stock client would otherwise lose its first two chars.
-		}
-	}
+	// Note: SMAZ compression is never applied to channel messages (only
+	// peer-to-peer DMs). No decompression needed here.
 
 	// Handle reaction messages (channel: senderName included in hash)
 	uint16 reactionHash;
@@ -7815,10 +7801,14 @@ MainWindow::_DrainOutbox()
 		if (pending == NULL || pending->attemptCount > 0)
 			continue;  // Already attempted — skip
 
-		size_t textLen = strlen(pending->text);
+		// Use compressed wire text if available, else fallback to plaintext
+		const char* sendText = pending->wireLen > 0
+			? pending->wireText : pending->text;
+		size_t sendLen = pending->wireLen > 0
+			? pending->wireLen : strlen(pending->text);
 		status_t result = fProtocol->SendDM(pending->pubKey,
 			pending->txtType, pending->timestamp,
-			pending->text, textLen);
+			sendText, sendLen);
 		if (result == B_OK) {
 			pending->attemptCount = 1;
 			pending->sentTime = system_time();
@@ -7880,11 +7870,15 @@ MainWindow::_RetryMessage(PendingMessage* pending)
 		fProtocol->SendResetPath(pending->pubKey);
 
 	// Re-send via protocol with attempt number (0-based on wire)
-	size_t textLen = strlen(pending->text);
+	// Use compressed wire text for retries (saves LoRa airtime)
+	const char* retryText = pending->wireLen > 0
+		? pending->wireText : pending->text;
+	size_t retryLen = pending->wireLen > 0
+		? pending->wireLen : strlen(pending->text);
 	uint8 wireAttempt = (pending->attemptCount > 1)
 		? (uint8)(pending->attemptCount - 1) : 0;
 	status_t sendResult = fProtocol->SendDM(pending->pubKey,
-		pending->txtType, pending->timestamp, pending->text, textLen,
+		pending->txtType, pending->timestamp, retryText, retryLen,
 		wireAttempt);
 	if (sendResult != B_OK) {
 		_LogMessage("ERROR", "Retry send failed — not connected");

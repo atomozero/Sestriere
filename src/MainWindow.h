@@ -67,7 +67,9 @@ struct PendingMessage {
 	char		contactKey[13] = {};	// 12 hex chars + null
 	uint8		pubKey[32] = {};		// Full 32-byte pubkey for resend
 	uint32		timestamp = 0;			// Message timestamp (for DB lookup)
-	char		text[256] = {};			// Message text (for retry)
+	char		text[256] = {};			// Original plaintext (for display/DB)
+	char		wireText[256] = {};		// Wire text (SMAZ compressed if applicable)
+	size_t		wireLen = 0;			// Wire text length
 	uint8		txtType = 0;			// TXT_TYPE_PLAIN or TXT_TYPE_CLI_DATA
 	uint8		attemptCount = 1;		// Current attempt (1-based)
 	bigtime_t	sentTime = 0;			// system_time() when sent
