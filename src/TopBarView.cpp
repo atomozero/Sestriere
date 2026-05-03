@@ -138,7 +138,7 @@ TopBarView::_LoadIcons()
 	if (res == NULL)
 		return;
 
-	int32 iconSize = (int32)kIconSize;
+	int32 iconSize = static_cast<int32>(kIconSize);
 
 	// Load "Maps" HVIF icon (resource ID 1)
 	size_t dataSize;
@@ -146,7 +146,8 @@ TopBarView::_LoadIcons()
 	if (data != NULL) {
 		fMapsIcon = new BBitmap(BRect(0, 0, iconSize - 1, iconSize - 1),
 			B_RGBA32);
-		if (BIconUtils::GetVectorIcon((const uint8*)data, dataSize,
+		if (BIconUtils::GetVectorIcon(
+				static_cast<const uint8*>(data), dataSize,
 				fMapsIcon) != B_OK) {
 			delete fMapsIcon;
 			fMapsIcon = NULL;
@@ -158,7 +159,8 @@ TopBarView::_LoadIcons()
 	if (data != NULL) {
 		fEarthIcon = new BBitmap(BRect(0, 0, iconSize - 1, iconSize - 1),
 			B_RGBA32);
-		if (BIconUtils::GetVectorIcon((const uint8*)data, dataSize,
+		if (BIconUtils::GetVectorIcon(
+				static_cast<const uint8*>(data), dataSize,
 				fEarthIcon) != B_OK) {
 			delete fEarthIcon;
 			fEarthIcon = NULL;

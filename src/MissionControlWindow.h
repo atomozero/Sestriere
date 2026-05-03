@@ -5,8 +5,8 @@
  * MissionControlWindow.h — Unified dashboard for device/radio/network overview
  */
 
-#ifndef MISSIONCONTROLWINDOW_H
-#define MISSIONCONTROLWINDOW_H
+#ifndef _MISSIONCONTROLWINDOW_H
+#define _MISSIONCONTROLWINDOW_H
 
 #include <MessageRunner.h>
 #include <Window.h>
@@ -28,7 +28,7 @@ class MiniTopoView;
 class SessionTimelineView;
 
 // Node data for mini topology
-static const int32 kSparklinePoints = 8;
+static constexpr int32 kSparklinePoints = 8;
 
 struct TopoNode {
 	char		name[32];
@@ -144,4 +144,4 @@ private:
 	BMessageRunner*			fAlertFlashTimer;
 };
 
-#endif // MISSIONCONTROLWINDOW_H
+#endif // _MISSIONCONTROLWINDOW_H

@@ -5,8 +5,8 @@
  * GiphyClient.h — GIPHY API client for GIF search and download
  */
 
-#ifndef GIPHYCLIENT_H
-#define GIPHYCLIENT_H
+#ifndef _GIPHYCLIENT_H
+#define _GIPHYCLIENT_H
 
 #include <SupportDefs.h>
 
@@ -41,4 +41,4 @@ public:
 							size_t idSize);
 };
 
-#endif // GIPHYCLIENT_H
+#endif // _GIPHYCLIENT_H

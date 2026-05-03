@@ -5,8 +5,8 @@
  * SerialMonitorWindow.h — Terminal-style serial monitor for repeater CLI
  */
 
-#ifndef SERIALMONITORWINDOW_H
-#define SERIALMONITORWINDOW_H
+#ifndef _SERIALMONITORWINDOW_H
+#define _SERIALMONITORWINDOW_H
 
 #include <Window.h>
 
@@ -42,7 +42,7 @@ private:
 			BFilePanel*		fSavePanel;
 			BHandler*		fTarget;
 
-	static const int32	kMaxOutputSize = 512 * 1024;  // 512 KB
+	static constexpr int32	kMaxOutputSize = 512 * 1024;  // 512 KB
 };
 
-#endif // SERIALMONITORWINDOW_H
+#endif // _SERIALMONITORWINDOW_H

@@ -5,8 +5,8 @@
  * SettingsWindow.h — Device and radio settings dialog
  */
 
-#ifndef SETTINGSWINDOW_H
-#define SETTINGSWINDOW_H
+#ifndef _SETTINGSWINDOW_H
+#define _SETTINGSWINDOW_H
 
 #include <Window.h>
 
@@ -132,4 +132,4 @@ private:
 			int32			fSelectedPreset;
 };
 
-#endif // SETTINGSWINDOW_H
+#endif // _SETTINGSWINDOW_H

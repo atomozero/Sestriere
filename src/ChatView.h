@@ -5,8 +5,8 @@
  * ChatView.h — Chat message display view
  */
 
-#ifndef CHATVIEW_H
-#define CHATVIEW_H
+#ifndef _CHATVIEW_H
+#define _CHATVIEW_H
 
 #include <ListView.h>
 #include "Compat.h"
@@ -52,6 +52,8 @@ public:
 			void			ScrollToBottom();
 
 private:
+			void			_LoadCachedImage(MessageView* item);
+			void			_LoadCachedGif(MessageView* item);
 
 			ContactInfo*	fCurrentContact;
 			BString			fCurrentContactName;
@@ -64,4 +66,4 @@ private:
 			OwningObjectList<ChatMessage>	fCurrentMessages;
 };
 
-#endif // CHATVIEW_H
+#endif // _CHATVIEW_H

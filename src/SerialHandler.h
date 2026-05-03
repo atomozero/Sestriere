@@ -5,8 +5,8 @@
  * SerialHandler.h — Serial communication handler using POSIX APIs
  */
 
-#ifndef SERIALHANDLER_H
-#define SERIALHANDLER_H
+#ifndef _SERIALHANDLER_H
+#define _SERIALHANDLER_H
 
 #include <Handler.h>
 #include <Locker.h>
@@ -80,4 +80,4 @@ private:
 			BLocker			fWriteLock;
 };
 
-#endif // SERIALHANDLER_H
+#endif // _SERIALHANDLER_H

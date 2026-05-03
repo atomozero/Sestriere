@@ -12,8 +12,8 @@
  *             "$timestamp$first5" (DM, senderName=NULL)
  */
 
-#ifndef REACTIONS_H
-#define REACTIONS_H
+#ifndef _REACTIONS_H
+#define _REACTIONS_H
 
 #include <stdio.h>
 #include <string.h>
@@ -209,4 +209,4 @@ ParseReaction(const char* text, uint16* outHash)
 }
 
 
-#endif	// REACTIONS_H
+#endif // _REACTIONS_H

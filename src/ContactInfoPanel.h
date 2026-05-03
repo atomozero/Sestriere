@@ -5,8 +5,8 @@
  * ContactInfoPanel.h — Right-side panel showing selected contact details
  */
 
-#ifndef CONTACTINFOPANEL_H
-#define CONTACTINFOPANEL_H
+#ifndef _CONTACTINFOPANEL_H
+#define _CONTACTINFOPANEL_H
 
 #include <View.h>
 #include <String.h>
@@ -77,4 +77,4 @@ private:
 };
 
 
-#endif // CONTACTINFOPANEL_H
+#endif // _CONTACTINFOPANEL_H

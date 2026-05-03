@@ -56,7 +56,7 @@ static void
 test_header_guard()
 {
 	TEST("ElevationService.h: header guard");
-	if (FileContains("../ElevationService.h", "#ifndef ELEVATIONSERVICE_H"))
+	if (FileContains("../ElevationService.h", "#ifndef _ELEVATIONSERVICE_H"))
 		PASS();
 	else
 		FAIL("missing header guard");

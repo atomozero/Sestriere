@@ -9,8 +9,8 @@
  * CMD_SEND_BINARY_REQ (magic 0x69) for fetch requests.
  */
 
-#ifndef IMAGESESSION_H
-#define IMAGESESSION_H
+#ifndef _IMAGESESSION_H
+#define _IMAGESESSION_H
 
 #include <OS.h>
 #include <String.h>
@@ -195,4 +195,4 @@ private:
 	uint32							fNextSessionId;
 };
 
-#endif // IMAGESESSION_H
+#endif // _IMAGESESSION_H

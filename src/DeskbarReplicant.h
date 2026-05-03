@@ -5,8 +5,8 @@
  * DeskbarReplicant.h — Deskbar tray icon replicant
  */
 
-#ifndef DESKBARREPLICANT_H
-#define DESKBARREPLICANT_H
+#ifndef _DESKBARREPLICANT_H
+#define _DESKBARREPLICANT_H
 
 #include <View.h>
 
@@ -46,4 +46,4 @@ private:
 			BBitmap*		fIconDisconnected;
 };
 
-#endif // DESKBARREPLICANT_H
+#endif // _DESKBARREPLICANT_H

@@ -5,8 +5,8 @@
  * NotificationManager.h — Desktop notification handler
  */
 
-#ifndef NOTIFICATIONMANAGER_H
-#define NOTIFICATIONMANAGER_H
+#ifndef _NOTIFICATIONMANAGER_H
+#define _NOTIFICATIONMANAGER_H
 
 #include <String.h>
 
@@ -37,4 +37,4 @@ private:
 			int32			fNotificationCount;
 };
 
-#endif // NOTIFICATIONMANAGER_H
+#endif // _NOTIFICATIONMANAGER_H

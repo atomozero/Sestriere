@@ -5,8 +5,8 @@
  * ImageCodec.h — Image compression/decompression for LoRa image sharing
  */
 
-#ifndef IMAGECODEC_H
-#define IMAGECODEC_H
+#ifndef _IMAGECODEC_H
+#define _IMAGECODEC_H
 
 #include <Bitmap.h>
 #include <SupportDefs.h>
@@ -38,4 +38,4 @@ public:
 								int32 maxFrames = 32);
 };
 
-#endif // IMAGECODEC_H
+#endif // _IMAGECODEC_H

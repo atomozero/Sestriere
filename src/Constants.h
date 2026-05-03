@@ -5,8 +5,8 @@
  * Constants.h — Application constants and message codes
  */
 
-#ifndef CONSTANTS_H
-#define CONSTANTS_H
+#ifndef _CONSTANTS_H
+#define _CONSTANTS_H
 
 #include <GraphicsDefs.h>
 #include <SupportDefs.h>
@@ -508,4 +508,4 @@ const float kFontScaleCompact = 0.833f;    // chart labels, descriptions
 const float kFontScaleSecondary = 0.917f;  // secondary text, info fields
 const float kFontScaleLarge = 1.167f;      // contact names, headers
 
-#endif // CONSTANTS_H
+#endif // _CONSTANTS_H

@@ -5,8 +5,8 @@
  * Types.h — Basic types and radio presets
  */
 
-#ifndef TYPES_H
-#define TYPES_H
+#ifndef _TYPES_H
+#define _TYPES_H
 
 #include "Compat.h"
 #include <SupportDefs.h>
@@ -54,9 +54,9 @@ static const RadioPresetInfo kRadioPresets[] = {
 };
 
 // Size constants
-static const size_t kPubKeySize = 32;
-static const size_t kPubKeyPrefixSize = 6;
-static const uint8 kPathLenDirect = 0xFF;	// Direct path (no hops)
+static constexpr size_t kPubKeySize = 32;
+static constexpr size_t kPubKeyPrefixSize = 6;
+static constexpr uint8 kPathLenDirect = 0xFF;	// Direct path (no hops)
 
 // Delivery status for outgoing messages
 enum DeliveryStatus {
@@ -69,51 +69,39 @@ enum DeliveryStatus {
 
 // Chat message for display in ChatView
 struct ChatMessage {
-	uint8	pubKeyPrefix[kPubKeyPrefixSize];
-	uint8	pathLen;			// kPathLenDirect = direct, otherwise hop count
-	int8	snr;				// Signal-to-noise ratio
-	uint32	timestamp;			// Sender timestamp
-	char	text[256];			// Message content
-	bool	isOutgoing;			// True if we sent this message
-	bool	isChannel;			// True if channel message (vs DM)
-	uint8	deliveryStatus;		// DeliveryStatus enum value
-	uint32	roundTripMs;		// Round-trip time from PUSH_SEND_CONFIRMED
-	uint8	txtType;			// 0=plain, 1=CLI data
-	uint8	retryCount;			// Number of retry attempts (0 = first try)
-	char	reactions[128];		// "emoji:count,emoji:count,..." or empty
+	uint8	pubKeyPrefix[kPubKeyPrefixSize] = {};
+	uint8	pathLen = kPathLenDirect;
+	int8	snr = 0;
+	uint32	timestamp = 0;
+	char	text[256] = {};
+	bool	isOutgoing = false;
+	bool	isChannel = false;
+	uint8	deliveryStatus = DELIVERY_SENT;
+	uint32	roundTripMs = 0;
+	uint8	txtType = 0;
+	uint8	retryCount = 0;
+	char	reactions[128] = {};
 
-	ChatMessage() : pathLen(kPathLenDirect), snr(0), timestamp(0),
-					isOutgoing(false), isChannel(false),
-					deliveryStatus(DELIVERY_SENT), roundTripMs(0),
-					txtType(0), retryCount(0) {
-		memset(pubKeyPrefix, 0, sizeof(pubKeyPrefix));
-		memset(text, 0, sizeof(text));
-		memset(reactions, 0, sizeof(reactions));
-	}
+	ChatMessage() = default;
 };
 
 // Contact information
 struct ContactInfo {
-	uint8	publicKey[kPubKeySize];
-	uint8	type;			// ADV_TYPE: 0=NONE, 1=CHAT, 2=REPEATER, 3=ROOM
-	uint8	flags;
-	int8	outPathLen;		// Outbound path length (-1 = unknown, 0xFF = direct)
-	uint8	outPath[16];	// Outbound path hashes (max 16 hops × 1 byte each)
-	uint32	lastSeen;		// timestamp
-	int32	latitude;		// GPS latitude (1e-6 degrees, 0 = unknown)
-	int32	longitude;		// GPS longitude (1e-6 degrees, 0 = unknown)
-	char	name[64];
-	bool	isValid;
+	uint8	publicKey[kPubKeySize] = {};
+	uint8	type = 0;		// ADV_TYPE: 0=NONE, 1=CHAT, 2=REPEATER, 3=ROOM
+	uint8	flags = 0;
+	int8	outPathLen = 0;	// Outbound path length (-1 = unknown, 0xFF = direct)
+	uint8	outPath[16] = {};	// Outbound path hashes (max 16 hops × 1 byte each)
+	uint32	lastSeen = 0;	// timestamp
+	int32	latitude = 0;	// GPS latitude (1e-6 degrees, 0 = unknown)
+	int32	longitude = 0;	// GPS longitude (1e-6 degrees, 0 = unknown)
+	char	name[64] = {};
+	bool	isValid = false;
 
 	// Message history for this contact (owning = true)
 	OwningObjectList<ChatMessage>	messages;
 
-	ContactInfo() : type(0), flags(0), outPathLen(0), lastSeen(0),
-					latitude(0), longitude(0), isValid(false) {
-		memset(publicKey, 0, sizeof(publicKey));
-		memset(outPath, 0, sizeof(outPath));
-		memset(name, 0, sizeof(name));
-	}
+	ContactInfo() = default;
 
 	bool HasGPS() const { return latitude != 0 || longitude != 0; }
 };
@@ -175,4 +163,4 @@ struct IncomingMessage {
 	}
 };
 
-#endif // TYPES_H
+#endif // _TYPES_H

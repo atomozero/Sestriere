@@ -5,8 +5,8 @@
  * AddChannelWindow.h — Dialog for adding/joining a channel
  */
 
-#ifndef ADDCHANNELWINDOW_H
-#define ADDCHANNELWINDOW_H
+#ifndef _ADDCHANNELWINDOW_H
+#define _ADDCHANNELWINDOW_H
 
 #include <Window.h>
 
@@ -37,4 +37,4 @@ private:
 			BButton*		fCancelButton;
 };
 
-#endif	// ADDCHANNELWINDOW_H
+#endif // _ADDCHANNELWINDOW_H

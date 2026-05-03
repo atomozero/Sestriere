@@ -9,8 +9,8 @@
  *   S:<emoji>:<lat>,<lon>:<note>                 (old format, no color)
  */
 
-#ifndef SARMARKER_H
-#define SARMARKER_H
+#ifndef _SARMARKER_H
+#define _SARMARKER_H
 
 #include <GraphicsDefs.h>
 #include <SupportDefs.h>
@@ -50,4 +50,4 @@ rgb_color		SarMarkerColor(int colorIndex);
 const char*		SarMarkerTypeName(SarMarkerType type);
 const char*		SarMarkerEmoji(SarMarkerType type);
 
-#endif // SARMARKER_H
+#endif // _SARMARKER_H

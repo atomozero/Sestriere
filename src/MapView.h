@@ -5,8 +5,8 @@
  * MapView.h — Geographic map visualization of mesh nodes
  */
 
-#ifndef MAPVIEW_H
-#define MAPVIEW_H
+#ifndef _MAPVIEW_H
+#define _MAPVIEW_H
 
 #include "Compat.h"
 #include <View.h>
@@ -180,4 +180,4 @@ private:
 	BWindow*			fParent;
 };
 
-#endif // MAPVIEW_H
+#endif // _MAPVIEW_H

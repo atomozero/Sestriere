@@ -5,8 +5,8 @@
  * TopBarView.h — Toolbar with map icons and status indicators
  */
 
-#ifndef TOPBARVIEW_H
-#define TOPBARVIEW_H
+#ifndef _TOPBARVIEW_H
+#define _TOPBARVIEW_H
 
 #include <Bitmap.h>
 #include <View.h>
@@ -102,4 +102,4 @@ private:
 		BBitmap*		fEarthIcon;
 };
 
-#endif // TOPBARVIEW_H
+#endif // _TOPBARVIEW_H

@@ -277,24 +277,26 @@ DatabaseManager::LoadMessages(const char* contactKeyHex,
 	int32 count = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
 		ChatMessage* msg = new ChatMessage();
-		msg->timestamp = (uint32)sqlite3_column_int(stmt, 0);
+		msg->timestamp = static_cast<uint32>(sqlite3_column_int(stmt, 0));
 		msg->isOutgoing = sqlite3_column_int(stmt, 1) != 0;
 		msg->isChannel = sqlite3_column_int(stmt, 2) != 0;
 
 		// Parse sender key hex
-		const char* senderHex = (const char*)sqlite3_column_text(stmt, 3);
+		const char* senderHex =
+			reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
 		if (senderHex != NULL)
 			ParseHexPrefix(msg->pubKeyPrefix, senderHex);
 
-		const char* text = (const char*)sqlite3_column_text(stmt, 4);
+		const char* text =
+			reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
 		if (text != NULL)
 			strlcpy(msg->text, text, sizeof(msg->text));
 
-		msg->pathLen = (uint8)sqlite3_column_int(stmt, 5);
-		msg->snr = (int8)sqlite3_column_int(stmt, 6);
-		msg->txtType = (uint8)sqlite3_column_int(stmt, 7);
-		msg->deliveryStatus = (uint8)sqlite3_column_int(stmt, 8);
-		msg->roundTripMs = (uint32)sqlite3_column_int(stmt, 9);
+		msg->pathLen = static_cast<uint8>(sqlite3_column_int(stmt, 5));
+		msg->snr = static_cast<int8>(sqlite3_column_int(stmt, 6));
+		msg->txtType = static_cast<uint8>(sqlite3_column_int(stmt, 7));
+		msg->deliveryStatus = static_cast<uint8>(sqlite3_column_int(stmt, 8));
+		msg->roundTripMs = static_cast<uint32>(sqlite3_column_int(stmt, 9));
 
 		outMessages.AddItem(msg);
 		count++;
@@ -331,23 +333,25 @@ DatabaseManager::LoadChannelMessages(OwningObjectList<ChatMessage>& outMessages)
 	int32 count = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
 		ChatMessage* msg = new ChatMessage();
-		msg->timestamp = (uint32)sqlite3_column_int(stmt, 0);
+		msg->timestamp = static_cast<uint32>(sqlite3_column_int(stmt, 0));
 		msg->isOutgoing = sqlite3_column_int(stmt, 1) != 0;
 		msg->isChannel = true;
 
-		const char* senderHex = (const char*)sqlite3_column_text(stmt, 2);
+		const char* senderHex =
+			reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
 		if (senderHex != NULL)
 			ParseHexPrefix(msg->pubKeyPrefix, senderHex);
 
-		const char* text = (const char*)sqlite3_column_text(stmt, 3);
+		const char* text =
+			reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
 		if (text != NULL)
 			strlcpy(msg->text, text, sizeof(msg->text));
 
-		msg->pathLen = (uint8)sqlite3_column_int(stmt, 4);
-		msg->snr = (int8)sqlite3_column_int(stmt, 5);
-		msg->txtType = (uint8)sqlite3_column_int(stmt, 6);
-		msg->deliveryStatus = (uint8)sqlite3_column_int(stmt, 7);
-		msg->roundTripMs = (uint32)sqlite3_column_int(stmt, 8);
+		msg->pathLen = static_cast<uint8>(sqlite3_column_int(stmt, 4));
+		msg->snr = static_cast<int8>(sqlite3_column_int(stmt, 5));
+		msg->txtType = static_cast<uint8>(sqlite3_column_int(stmt, 6));
+		msg->deliveryStatus = static_cast<uint8>(sqlite3_column_int(stmt, 7));
+		msg->roundTripMs = static_cast<uint32>(sqlite3_column_int(stmt, 8));
 
 		outMessages.AddItem(msg);
 		count++;
@@ -405,7 +409,7 @@ DatabaseManager::DeleteMessagesForContact(const char* contactKeyHex)
 
 	int32 deleted = 0;
 	if (sqlite3_step(stmt) == SQLITE_DONE)
-		deleted = (int32)sqlite3_changes(fDB);
+		deleted = static_cast<int32>(sqlite3_changes(fDB));
 
 	sqlite3_finalize(stmt);
 	return deleted;
@@ -474,10 +478,10 @@ DatabaseManager::LoadSNRHistory(const char* contactKeyHex,
 	int32 count = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
 		SNRDataPoint* point = new SNRDataPoint();
-		point->timestamp = (uint32)sqlite3_column_int(stmt, 0);
-		point->snr = (int8)sqlite3_column_int(stmt, 1);
-		point->rssi = (int8)sqlite3_column_int(stmt, 2);
-		point->pathLen = (uint8)sqlite3_column_int(stmt, 3);
+		point->timestamp = static_cast<uint32>(sqlite3_column_int(stmt, 0));
+		point->snr = static_cast<int8>(sqlite3_column_int(stmt, 1));
+		point->rssi = static_cast<int8>(sqlite3_column_int(stmt, 2));
+		point->pathLen = static_cast<uint8>(sqlite3_column_int(stmt, 3));
 
 		outPoints.AddItem(point);
 		count++;
@@ -519,20 +523,22 @@ DatabaseManager::SearchMessages(const char* query,
 	int32 count = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
 		ChatMessage* msg = new ChatMessage();
-		msg->timestamp = (uint32)sqlite3_column_int(stmt, 0);
+		msg->timestamp = static_cast<uint32>(sqlite3_column_int(stmt, 0));
 		msg->isOutgoing = sqlite3_column_int(stmt, 1) != 0;
 		msg->isChannel = sqlite3_column_int(stmt, 2) != 0;
 
-		const char* senderHex = (const char*)sqlite3_column_text(stmt, 3);
+		const char* senderHex =
+			reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
 		if (senderHex != NULL)
 			ParseHexPrefix(msg->pubKeyPrefix, senderHex);
 
-		const char* text = (const char*)sqlite3_column_text(stmt, 4);
+		const char* text =
+			reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
 		if (text != NULL)
 			strlcpy(msg->text, text, sizeof(msg->text));
 
-		msg->pathLen = (uint8)sqlite3_column_int(stmt, 5);
-		msg->snr = (int8)sqlite3_column_int(stmt, 6);
+		msg->pathLen = static_cast<uint8>(sqlite3_column_int(stmt, 5));
+		msg->snr = static_cast<int8>(sqlite3_column_int(stmt, 6));
 
 		outMessages.AddItem(msg);
 		count++;
@@ -734,11 +740,11 @@ DatabaseManager::LoadImage(uint32 sessionId, uint8** outJpegData,
 		// Use the smaller of blob size and recorded jpeg_size
 		int dataSize = (blobSize < jpegSize) ? blobSize : jpegSize;
 		if (blob != NULL && dataSize > 0) {
-			uint8* data = (uint8*)malloc(dataSize);
+			uint8* data = static_cast<uint8*>(malloc(dataSize));
 			if (data != NULL) {
 				memcpy(data, blob, dataSize);
 				*outJpegData = data;
-				*outSize = (size_t)dataSize;
+				*outSize = static_cast<size_t>(dataSize);
 				if (outWidth != NULL)
 					*outWidth = sqlite3_column_int(stmt, 2);
 				if (outHeight != NULL)
@@ -838,15 +844,15 @@ DatabaseManager::LoadVoiceClip(uint32 sessionId, uint8** outData,
 
 		int dataSize = (blobSize < c2Size) ? blobSize : c2Size;
 		if (blob != NULL && dataSize > 0) {
-			uint8* data = (uint8*)malloc(dataSize);
+			uint8* data = static_cast<uint8*>(malloc(dataSize));
 			if (data != NULL) {
 				memcpy(data, blob, dataSize);
 				*outData = data;
-				*outSize = (size_t)dataSize;
+				*outSize = static_cast<size_t>(dataSize);
 				if (outDuration != NULL)
-					*outDuration = (uint32)sqlite3_column_int(stmt, 2);
+					*outDuration = static_cast<uint32>(sqlite3_column_int(stmt, 2));
 				if (outMode != NULL)
-					*outMode = (uint8)sqlite3_column_int(stmt, 3);
+					*outMode = static_cast<uint8>(sqlite3_column_int(stmt, 3));
 				found = true;
 			}
 		}
@@ -925,15 +931,17 @@ DatabaseManager::LoadTopologyEdges(BMessage* outEdges)
 
 	int32 count = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
-		const char* fromKey = (const char*)sqlite3_column_text(stmt, 0);
-		const char* toKey = (const char*)sqlite3_column_text(stmt, 1);
-		int8 snr = (int8)sqlite3_column_int(stmt, 2);
-		uint32 ts = (uint32)sqlite3_column_int(stmt, 3);
+		const char* fromKey =
+			reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+		const char* toKey =
+			reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+		int8 snr = static_cast<int8>(sqlite3_column_int(stmt, 2));
+		uint32 ts = static_cast<uint32>(sqlite3_column_int(stmt, 3));
 
 		outEdges->AddString("from_key", fromKey);
 		outEdges->AddString("to_key", toKey);
 		outEdges->AddInt8("snr", snr);
-		outEdges->AddInt32("timestamp", (int32)ts);
+		outEdges->AddInt32("timestamp", static_cast<int32>(ts));
 		count++;
 	}
 	sqlite3_finalize(stmt);
@@ -1033,7 +1041,8 @@ DatabaseManager::LoadAllMuted(BMessage* outMsg)
 		return;
 
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
-		const char* key = (const char*)sqlite3_column_text(stmt, 0);
+		const char* key =
+			reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
 		if (key != NULL)
 			outMsg->AddString("muted_key", key);
 	}
@@ -1226,7 +1235,8 @@ DatabaseManager::LoadGroupMembers(const char* groupName,
 
 	int32 count = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
-		const char* key = (const char*)sqlite3_column_text(stmt, 0);
+		const char* key =
+			reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
 		if (key != NULL) {
 			outKeys.AddItem(new BString(key));
 			count++;
@@ -1328,17 +1338,18 @@ DatabaseManager::LoadTelemetryHistory(uint32 nodeId,
 
 	sqlite3_bind_int(stmt, 1, nodeId);
 	sqlite3_bind_text(stmt, 2, sensorName, -1, SQLITE_TRANSIENT);
-	sqlite3_bind_int64(stmt, 3, (int64_t)sinceTimestamp);
+	sqlite3_bind_int64(stmt, 3, static_cast<int64_t>(sinceTimestamp));
 
 	int32 count = 0;
 	while (sqlite3_step(stmt) == SQLITE_ROW) {
 		TelemetryRecord* rec = new TelemetryRecord();
-		rec->timestamp = (uint32)sqlite3_column_int(stmt, 0);
-		rec->nodeId = (uint32)sqlite3_column_int(stmt, 1);
-		rec->sensorType = (uint8)sqlite3_column_int(stmt, 2);
-		rec->value = (float)sqlite3_column_double(stmt, 3);
+		rec->timestamp = static_cast<uint32>(sqlite3_column_int(stmt, 0));
+		rec->nodeId = static_cast<uint32>(sqlite3_column_int(stmt, 1));
+		rec->sensorType = static_cast<uint8>(sqlite3_column_int(stmt, 2));
+		rec->value = static_cast<float>(sqlite3_column_double(stmt, 3));
 
-		const char* name = (const char*)sqlite3_column_text(stmt, 4);
+		const char* name =
+			reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
 		if (name != NULL)
 			strlcpy(rec->sensorName, name, sizeof(rec->sensorName));
 		else

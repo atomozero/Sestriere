@@ -5,8 +5,8 @@
  * StatsWindow.h — Device statistics window
  */
 
-#ifndef STATSWINDOW_H
-#define STATSWINDOW_H
+#ifndef _STATSWINDOW_H
+#define _STATSWINDOW_H
 
 #include <Window.h>
 
@@ -98,4 +98,4 @@ private:
 			BMessageRunner*	fRefreshTimer;
 };
 
-#endif // STATSWINDOW_H
+#endif // _STATSWINDOW_H

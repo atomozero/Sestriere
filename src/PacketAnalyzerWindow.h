@@ -5,8 +5,8 @@
  * PacketAnalyzerWindow.h — Real-time MeshCore packet analyzer window
  */
 
-#ifndef PACKETANALYZERWINDOW_H
-#define PACKETANALYZERWINDOW_H
+#ifndef _PACKETANALYZERWINDOW_H
+#define _PACKETANALYZERWINDOW_H
 
 #include <Window.h>
 #include <ColumnTypes.h>
@@ -161,4 +161,4 @@ private:
 };
 
 
-#endif // PACKETANALYZERWINDOW_H
+#endif // _PACKETANALYZERWINDOW_H

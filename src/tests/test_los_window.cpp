@@ -55,7 +55,7 @@ static void
 test_header_guard()
 {
 	TEST("LoSWindow.h: header guard");
-	if (FileContains("../LoSWindow.h", "#ifndef LOSWINDOW_H"))
+	if (FileContains("../LoSWindow.h", "#ifndef _LOSWINDOW_H"))
 		PASS();
 	else
 		FAIL("missing header guard");

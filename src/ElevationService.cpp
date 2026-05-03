@@ -38,7 +38,7 @@ _CurlWriteCallback(void* contents, size_t size, size_t nmemb, void* userp)
 
 	if (buf->size + totalSize >= buf->capacity) {
 		size_t newCap = (buf->capacity + totalSize) * 2;
-		uint8* newData = (uint8*)realloc(buf->data, newCap);
+		uint8* newData = static_cast<uint8*>(realloc(buf->data, newCap));
 		if (newData == NULL)
 			return 0;
 		buf->data = newData;
@@ -79,7 +79,7 @@ _FetchBatch(const double* lats, const double* lons, int32 count,
 
 	// Fetch via curl
 	CurlBuffer curlBuf;
-	curlBuf.data = (uint8*)malloc(4096);
+	curlBuf.data = static_cast<uint8*>(malloc(4096));
 	curlBuf.size = 0;
 	curlBuf.capacity = 4096;
 
@@ -108,7 +108,7 @@ _FetchBatch(const double* lats, const double* lons, int32 count,
 	}
 
 	// Null-terminate
-	uint8* tmp = (uint8*)realloc(curlBuf.data, curlBuf.size + 1);
+	uint8* tmp = static_cast<uint8*>(realloc(curlBuf.data, curlBuf.size + 1));
 	if (tmp == NULL) {
 		free(curlBuf.data);
 		return B_NO_MEMORY;

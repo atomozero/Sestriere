@@ -10,18 +10,18 @@
  * Compatible with meshcore-open's timeout prediction approach.
  */
 
-#ifndef TIMEOUT_PREDICTOR_H
-#define TIMEOUT_PREDICTOR_H
+#ifndef _TIMEOUT_PREDICTOR_H
+#define _TIMEOUT_PREDICTOR_H
 
 #include <SupportDefs.h>
 
 #include <string.h>
 
 
-static const int32 kMinObservations = 10;
-static const int32 kMaxObservations = 100;
-static const float kSafetyMargin = 1.5f;
-static const bigtime_t kDefaultTimeout = 15000000;  // 15s fallback
+static constexpr int32 kMinObservations = 10;
+static constexpr int32 kMaxObservations = 100;
+static constexpr float kSafetyMargin = 1.5f;
+static constexpr bigtime_t kDefaultTimeout = 15000000;  // 15s fallback
 
 
 struct DeliveryObservation {
@@ -150,4 +150,4 @@ private:
 };
 
 
-#endif	// TIMEOUT_PREDICTOR_H
+#endif // _TIMEOUT_PREDICTOR_H

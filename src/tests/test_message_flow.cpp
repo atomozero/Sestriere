@@ -564,9 +564,9 @@ TestSmazCompressionGuards()
 	assert(FileContains("MainWindow.cpp", "decompLen > 0"));
 	assert(FileContains("MainWindow.cpp", "decompLen < (int)sizeof(decoded)"));
 
-	// Fix: decompression failure now strips "s:" prefix and logs warning
+	// Fix: decompression failure leaves message as-is and logs warning
 	assert(FileContains("MainWindow.cpp", "SMAZ decompression failed"));
-	assert(FileContains("MainWindow.cpp", "memmove(text, text + kSmazPrefixLen"));
+	assert(FileContains("MainWindow.cpp", "showing message as-is"));
 
 	printf(" PASS\n");
 }

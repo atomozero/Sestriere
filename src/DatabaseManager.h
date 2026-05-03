@@ -5,8 +5,8 @@
  * DatabaseManager.h — SQLite message and SNR history persistence
  */
 
-#ifndef DATABASEMANAGER_H
-#define DATABASEMANAGER_H
+#ifndef _DATABASEMANAGER_H
+#define _DATABASEMANAGER_H
 
 #include <Locker.h>
 #include <Message.h>
@@ -161,4 +161,4 @@ private:
 			char			fCompanionKey[13];  // 12 hex + null
 };
 
-#endif // DATABASEMANAGER_H
+#endif // _DATABASEMANAGER_H

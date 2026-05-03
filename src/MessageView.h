@@ -5,8 +5,8 @@
  * MessageView.h — Individual chat message bubble display
  */
 
-#ifndef MESSAGEVIEW_H
-#define MESSAGEVIEW_H
+#ifndef _MESSAGEVIEW_H
+#define _MESSAGEVIEW_H
 
 #include <Bitmap.h>
 #include <ListItem.h>
@@ -154,4 +154,4 @@ private:
 			float			fBaselineOffset;
 };
 
-#endif // MESSAGEVIEW_H
+#endif // _MESSAGEVIEW_H

@@ -38,7 +38,7 @@ _CurlWriteCallback(void* contents, size_t size, size_t nmemb, void* userp)
 
 	if (buf->size + totalSize >= buf->capacity) {
 		size_t newCap = (buf->capacity + totalSize) * 2;
-		uint8* newData = (uint8*)realloc(buf->data, newCap);
+		uint8* newData = static_cast<uint8*>(realloc(buf->data, newCap));
 		if (newData == NULL)
 			return 0;
 		buf->data = newData;
@@ -124,7 +124,7 @@ static int32
 _FetchAndParse(const char* url, GiphyResult* results, int32 maxResults)
 {
 	CurlBuffer buf;
-	buf.data = (uint8*)malloc(4096);
+	buf.data = static_cast<uint8*>(malloc(4096));
 	buf.size = 0;
 	buf.capacity = 4096;
 
@@ -153,7 +153,7 @@ _FetchAndParse(const char* url, GiphyResult* results, int32 maxResults)
 	}
 
 	// Null-terminate for JSON parsing
-	uint8* tmp = (uint8*)realloc(buf.data, buf.size + 1);
+	uint8* tmp = static_cast<uint8*>(realloc(buf.data, buf.size + 1));
 	if (tmp == NULL) {
 		free(buf.data);
 		return 0;
@@ -215,7 +215,7 @@ GiphyClient::DownloadData(const char* url, uint8** outData, size_t* outSize)
 		return B_BAD_VALUE;
 
 	CurlBuffer buf;
-	buf.data = (uint8*)malloc(65536);
+	buf.data = static_cast<uint8*>(malloc(65536));
 	buf.size = 0;
 	buf.capacity = 65536;
 

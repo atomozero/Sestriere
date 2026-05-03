@@ -5,8 +5,8 @@
  * LoginWindow.h — Repeater/Room login dialog
  */
 
-#ifndef LOGINWINDOW_H
-#define LOGINWINDOW_H
+#ifndef _LOGINWINDOW_H
+#define _LOGINWINDOW_H
 
 #include <Window.h>
 
@@ -48,4 +48,4 @@ private:
 			BMessageRunner*	fCloseRunner;
 };
 
-#endif // LOGINWINDOW_H
+#endif // _LOGINWINDOW_H

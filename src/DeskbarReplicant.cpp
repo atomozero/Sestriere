@@ -415,7 +415,7 @@ DeskbarReplicant::_CreateIcon(bool connected)
 
 	// For disconnected state, desaturate the icon
 	if (!connected) {
-		uint8* bits = (uint8*)bitmap->Bits();
+		uint8* bits = static_cast<uint8*>(bitmap->Bits());
 		int32 length = bitmap->BitsLength();
 		for (int32 i = 0; i < length; i += 4) {
 			// B_RGBA32: [B, G, R, A]

@@ -5,8 +5,8 @@
  * DebugLogWindow.h — Separate window for debug log
  */
 
-#ifndef DEBUGLOGWINDOW_H
-#define DEBUGLOGWINDOW_H
+#ifndef _DEBUGLOGWINDOW_H
+#define _DEBUGLOGWINDOW_H
 
 #include <Window.h>
 
@@ -38,9 +38,9 @@ private:
 			BTextView*		fLogView;
 			BButton*		fClearButton;
 
-	static const int32	kMaxLogSize = 256 * 1024;  // 256 KB
+	static constexpr int32	kMaxLogSize = 256 * 1024;  // 256 KB
 
 	static	DebugLogWindow*	sInstance;
 };
 
-#endif // DEBUGLOGWINDOW_H
+#endif // _DEBUGLOGWINDOW_H

@@ -5,8 +5,8 @@
  * ProtocolHandler.h — MeshCore Companion Protocol V3 command builder
  */
 
-#ifndef PROTOCOLHANDLER_H
-#define PROTOCOLHANDLER_H
+#ifndef _PROTOCOLHANDLER_H
+#define _PROTOCOLHANDLER_H
 
 #include <SupportDefs.h>
 
@@ -108,4 +108,4 @@ private:
 };
 
 
-#endif // PROTOCOLHANDLER_H
+#endif // _PROTOCOLHANDLER_H

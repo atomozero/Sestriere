@@ -8,8 +8,8 @@
  *   Beta5:      template<class T> class BObjectList (ownership via constructor)
  *   Pre-beta6+: template<class T, bool Owning = false> class BObjectList
  */
-#ifndef COMPAT_H
-#define COMPAT_H
+#ifndef _COMPAT_H
+#define _COMPAT_H
 
 #include <BeBuild.h>
 #include <ObjectList.h>
@@ -32,4 +32,4 @@ public:
 
 #endif
 
-#endif // COMPAT_H
+#endif // _COMPAT_H

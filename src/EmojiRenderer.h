@@ -5,8 +5,8 @@
  * EmojiRenderer.h — Inline colored emoji rendering via Twemoji
  */
 
-#ifndef EMOJIRENDERER_H
-#define EMOJIRENDERER_H
+#ifndef _EMOJIRENDERER_H
+#define _EMOJIRENDERER_H
 
 #include <Font.h>
 #include <Handler.h>
@@ -48,4 +48,4 @@ public:
 							float emojiSize);
 };
 
-#endif // EMOJIRENDERER_H
+#endif // _EMOJIRENDERER_H

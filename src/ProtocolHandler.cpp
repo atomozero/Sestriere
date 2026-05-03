@@ -7,13 +7,13 @@
 
 #include "ProtocolHandler.h"
 
-#include "SerialHandler.h"
-
 #include <OS.h>
 
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+
+#include "SerialHandler.h"
 
 
 ProtocolHandler::ProtocolHandler(SerialHandler* serial)
@@ -547,7 +547,7 @@ ProtocolHandler::SendLogin(const uint8* pubkey, const char* password)
 	if (!IsConnected())
 		return B_NOT_INITIALIZED;
 
-	// MeshCore password buffer is char[16] with null-terminating strncpy,
+	// MeshCore password buffer is char[16] with null-terminated copy,
 	// so 15 usable chars. The firmware's sendLogin() also caps at 15.
 	size_t passLen = strlen(password);
 	if (passLen > 15)

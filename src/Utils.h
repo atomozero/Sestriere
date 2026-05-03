@@ -5,8 +5,8 @@
  * Utils.h — Common utility functions for protocol parsing
  */
 
-#ifndef UTILS_H
-#define UTILS_H
+#ifndef _UTILS_H
+#define _UTILS_H
 
 #include <SupportDefs.h>
 
@@ -197,4 +197,4 @@ BatteryPercent(uint16 millivolts, BatteryChemistry chemistry = BATTERY_LIPO)
 }
 
 
-#endif // UTILS_H
+#endif // _UTILS_H

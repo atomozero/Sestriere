@@ -5,8 +5,8 @@
  * ContactExportWindow.h — Contact import/export dialog
  */
 
-#ifndef CONTACTEXPORTWINDOW_H
-#define CONTACTEXPORTWINDOW_H
+#ifndef _CONTACTEXPORTWINDOW_H
+#define _CONTACTEXPORTWINDOW_H
 
 #include <Window.h>
 
@@ -46,4 +46,4 @@ private:
 			BStringView*	fStatusLabel;
 };
 
-#endif // CONTACTEXPORTWINDOW_H
+#endif // _CONTACTEXPORTWINDOW_H

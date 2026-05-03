@@ -9,8 +9,8 @@
  * CMD_SEND_BINARY_REQ (magic 0x72) for voice fetch requests.
  */
 
-#ifndef VOICESESSION_H
-#define VOICESESSION_H
+#ifndef _VOICESESSION_H
+#define _VOICESESSION_H
 
 #include <OS.h>
 #include <String.h>
@@ -208,4 +208,4 @@ private:
 	uint32							fNextSessionId;
 };
 
-#endif // VOICESESSION_H
+#endif // _VOICESESSION_H

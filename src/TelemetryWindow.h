@@ -5,8 +5,8 @@
  * TelemetryWindow.h — Sensor telemetry dashboard window (card-based redesign)
  */
 
-#ifndef TELEMETRYWINDOW_H
-#define TELEMETRYWINDOW_H
+#ifndef _TELEMETRYWINDOW_H
+#define _TELEMETRYWINDOW_H
 
 #include <Button.h>
 #include <MessageRunner.h>
@@ -149,4 +149,4 @@ private:
 };
 
 
-#endif // TELEMETRYWINDOW_H
+#endif // _TELEMETRYWINDOW_H

@@ -5,8 +5,8 @@
  * SNRChartView.h — Historical SNR line chart widget
  */
 
-#ifndef SNRCHARTVIEW_H
-#define SNRCHARTVIEW_H
+#ifndef _SNRCHARTVIEW_H
+#define _SNRCHARTVIEW_H
 
 #include "Compat.h"
 #include <View.h>
@@ -47,4 +47,4 @@ private:
 			uint32			fMaxTime;
 };
 
-#endif // SNRCHARTVIEW_H
+#endif // _SNRCHARTVIEW_H

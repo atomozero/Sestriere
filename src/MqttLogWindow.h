@@ -5,8 +5,8 @@
  * MqttLogWindow.h — Rich MQTT debug log window
  */
 
-#ifndef MQTTLOGWINDOW_H
-#define MQTTLOGWINDOW_H
+#ifndef _MQTTLOGWINDOW_H
+#define _MQTTLOGWINDOW_H
 
 #include "Compat.h"
 #include <String.h>
@@ -74,7 +74,7 @@ private:
 			time_t			fConnectTime;
 			bool			fIsConnected;
 
-	static const int32	kMaxEntries = 2000;
+	static constexpr int32	kMaxEntries = 2000;
 };
 
-#endif // MQTTLOGWINDOW_H
+#endif // _MQTTLOGWINDOW_H

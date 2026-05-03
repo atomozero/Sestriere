@@ -229,21 +229,23 @@ _ReadSample(const void* data, uint32 srcFormat, size_t frameIdx,
 	size_t idx = frameIdx * channelCount + channel;
 	switch (srcFormat) {
 		case media_raw_audio_format::B_AUDIO_FLOAT: {
-			float val = ((const float*)data)[idx];
+			float val = reinterpret_cast<const float*>(data)[idx];
 			if (val > 1.0f) val = 1.0f;
 			if (val < -1.0f) val = -1.0f;
-			return (int16)(val * 32767.0f);
+			return static_cast<int16>(val * 32767.0f);
 		}
 		case media_raw_audio_format::B_AUDIO_SHORT:
-			return ((const int16*)data)[idx];
+			return reinterpret_cast<const int16*>(data)[idx];
 		case media_raw_audio_format::B_AUDIO_INT: {
-			int32 val = ((const int32*)data)[idx];
-			return (int16)(val >> 16);
+			int32 val = reinterpret_cast<const int32*>(data)[idx];
+			return static_cast<int16>(val >> 16);
 		}
 		case media_raw_audio_format::B_AUDIO_UCHAR:
-			return (int16)(((int32)((const uint8*)data)[idx] - 128) << 8);
+			return static_cast<int16>(
+				(static_cast<int32>(reinterpret_cast<const uint8*>(data)[idx]) - 128) << 8);
 		case media_raw_audio_format::B_AUDIO_CHAR:
-			return (int16)(((int32)((const int8*)data)[idx]) << 8);
+			return static_cast<int16>(
+				static_cast<int32>(reinterpret_cast<const int8*>(data)[idx]) << 8);
 		default:
 			return 0;
 	}
@@ -292,8 +294,8 @@ AudioEngine::_RecordBuffer(void* cookie, bigtime_t timestamp,
 	if (srcFrames == 0) return;
 
 	// Calculate how many output samples (8kHz mono) this buffer yields
-	float ratio = (float)kSampleRate / srcRate;
-	size_t outSamples = (size_t)(srcFrames * ratio);
+	float ratio = static_cast<float>(kSampleRate) / srcRate;
+	size_t outSamples = static_cast<size_t>(srcFrames * ratio);
 	if (outSamples == 0) outSamples = 1;
 
 	// Clamp to max recording length
@@ -322,7 +324,7 @@ AudioEngine::_RecordBuffer(void* cookie, bigtime_t timestamp,
 	}
 
 	// If format matches exactly (8kHz mono int16), fast path
-	if (srcFormat == (uint32)media_raw_audio_format::B_AUDIO_SHORT
+	if (srcFormat == static_cast<uint32>(media_raw_audio_format::B_AUDIO_SHORT)
 		&& srcChannels == 1 && srcRate == kSampleRate) {
 		memcpy(engine->fRecordBuffer + engine->fRecordSize,
 			data, outSamples * sizeof(int16));
@@ -332,13 +334,13 @@ AudioEngine::_RecordBuffer(void* cookie, bigtime_t timestamp,
 
 	// General path: resample + downmix + format-convert
 	for (size_t i = 0; i < outSamples; i++) {
-		size_t srcIdx = (size_t)(i / ratio);
+		size_t srcIdx = static_cast<size_t>(i / ratio);
 		if (srcIdx >= srcFrames) srcIdx = srcFrames - 1;
 		int32 sum = 0;
 		for (uint32 ch = 0; ch < srcChannels; ch++)
 			sum += _ReadSample(data, srcFormat, srcIdx, ch, srcChannels);
 		engine->fRecordBuffer[engine->fRecordSize++] =
-			(int16)(sum / (int32)srcChannels);
+			static_cast<int16>(sum / static_cast<int32>(srcChannels));
 	}
 }
 
@@ -427,7 +429,7 @@ AudioEngine::_PlayBuffer(void* cookie, void* buffer, size_t size,
 		return;
 	}
 
-	int16* out = (int16*)buffer;
+	int16* out = static_cast<int16*>(buffer);
 	size_t samplesNeeded = size / sizeof(int16);
 	size_t remaining = engine->fPlaySize - engine->fPlayPosition;
 

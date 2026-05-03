@@ -5,15 +5,15 @@
  * LoSAnalysis.h — Line-of-Sight math library (header-only, no Haiku deps)
  */
 
-#ifndef LOSANALYSIS_H
-#define LOSANALYSIS_H
+#ifndef _LOSANALYSIS_H
+#define _LOSANALYSIS_H
 
 #include <cmath>
 #include <cstdint>
 
 
 // Effective Earth radius for 4/3 refraction model (meters)
-static const double kEffectiveEarthRadius = 6371000.0 * 4.0 / 3.0;
+static constexpr double kEffectiveEarthRadius = 6371000.0 * 4.0 / 3.0;
 
 
 struct TerrainPoint {
@@ -41,8 +41,8 @@ struct LoSResult {
 inline double
 HaversineDistance(double lat1, double lon1, double lat2, double lon2)
 {
-	static const double kEarthRadius = 6371000.0;
-	static const double kDegToRad = M_PI / 180.0;
+	static constexpr double kEarthRadius = 6371000.0;
+	static constexpr double kDegToRad = M_PI / 180.0;
 
 	double dLat = (lat2 - lat1) * kDegToRad;
 	double dLon = (lon2 - lon1) * kDegToRad;
@@ -61,8 +61,8 @@ inline void
 InterpolatePoints(double lat1, double lon1, double lat2, double lon2,
 	double* latOut, double* lonOut, int32_t count)
 {
-	static const double kDegToRad = M_PI / 180.0;
-	static const double kRadToDeg = 180.0 / M_PI;
+	static constexpr double kDegToRad = M_PI / 180.0;
+	static constexpr double kRadToDeg = 180.0 / M_PI;
 
 	double phi1 = lat1 * kDegToRad;
 	double lambda1 = lon1 * kDegToRad;
@@ -193,4 +193,4 @@ AnalyzeLineOfSight(const TerrainPoint* points, int32_t count,
 }
 
 
-#endif // LOSANALYSIS_H
+#endif // _LOSANALYSIS_H

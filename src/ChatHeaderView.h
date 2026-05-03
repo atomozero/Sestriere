@@ -5,8 +5,8 @@
  * ChatHeaderView.h — Chat area header showing contact info
  */
 
-#ifndef CHATHEADERVIEW_H
-#define CHATHEADERVIEW_H
+#ifndef _CHATHEADERVIEW_H
+#define _CHATHEADERVIEW_H
 
 #include <View.h>
 #include <String.h>
@@ -43,4 +43,4 @@ private:
 			int8			fSnr;
 };
 
-#endif // CHATHEADERVIEW_H
+#endif // _CHATHEADERVIEW_H

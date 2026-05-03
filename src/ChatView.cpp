@@ -435,50 +435,12 @@ ChatView::AddMessage(const ChatMessage& message, const char* senderName)
 	}
 
 	// Load saved image from DB if this is an IE2 message
-	if (item->IsImageMessage()) {
-		uint8* jpegData = NULL;
-		size_t jpegSize = 0;
-		int32 w = 0, h = 0;
-		if (DatabaseManager::Instance()->LoadImage(
-			item->ImageSessionId(), &jpegData, &jpegSize, &w, &h)) {
-			BBitmap* bitmap = ImageCodec::DecompressImageData(
-				jpegData, jpegSize);
-			if (bitmap != NULL)
-				item->SetImageBitmap(bitmap);
-			free(jpegData);
-		}
-	}
+	if (item->IsImageMessage())
+		_LoadCachedImage(item);
 
 	// Load cached GIF or trigger download
-	if (item->IsGifMessage()) {
-		BString cachePath;
-		cachePath.SetToFormat(
-			"/boot/home/config/settings/Sestriere/"
-			"gif_cache/%s.gif", item->GifId());
-		BEntry entry(cachePath.String());
-		if (entry.Exists()) {
-			off_t fileSize;
-			entry.GetSize(&fileSize);
-			if (fileSize > 0) {
-				uint8* gifData = (uint8*)malloc(fileSize);
-				if (gifData != NULL) {
-					BFile file(cachePath.String(), B_READ_ONLY);
-					if (file.Read(gifData, fileSize) == fileSize) {
-						BBitmap** frames = NULL;
-						uint32* durations = NULL;
-						int32 frameCount = 0;
-						if (ImageCodec::DecompressGifFrames(
-							gifData, fileSize, &frames,
-							&durations, &frameCount) == B_OK) {
-							item->SetGifFrames(frames,
-								durations, frameCount);
-						}
-					}
-					free(gifData);
-				}
-			}
-		}
-	}
+	if (item->IsGifMessage())
+		_LoadCachedGif(item);
 
 	AddItem(item);
 
@@ -596,54 +558,12 @@ ChatView::SetCurrentContact(ContactInfo* contact)
 				}
 
 				// Load saved image from DB if this is an IE2 message
-				if (item->IsImageMessage()) {
-					uint8* jpegData = NULL;
-					size_t jpegSize = 0;
-					int32 w = 0, h = 0;
-					if (DatabaseManager::Instance()->LoadImage(
-						item->ImageSessionId(), &jpegData, &jpegSize,
-						&w, &h)) {
-						BBitmap* bitmap = ImageCodec::DecompressImageData(
-							jpegData, jpegSize);
-						if (bitmap != NULL)
-							item->SetImageBitmap(bitmap);
-						free(jpegData);
-					}
-				}
+				if (item->IsImageMessage())
+					_LoadCachedImage(item);
 
 				// Load cached GIF if this is a GIF message
-				if (item->IsGifMessage()) {
-					BString cachePath;
-					cachePath.SetToFormat(
-						"/boot/home/config/settings/Sestriere/"
-						"gif_cache/%s.gif", item->GifId());
-					BEntry entry(cachePath.String());
-					if (entry.Exists()) {
-						off_t fileSize;
-						entry.GetSize(&fileSize);
-						if (fileSize > 0) {
-							uint8* gifData = (uint8*)malloc(fileSize);
-							if (gifData != NULL) {
-								BFile file(cachePath.String(),
-									B_READ_ONLY);
-								if (file.Read(gifData, fileSize)
-									== fileSize) {
-									BBitmap** frames = NULL;
-									uint32* durations = NULL;
-									int32 frameCount = 0;
-									if (ImageCodec::DecompressGifFrames(
-										gifData, fileSize, &frames,
-										&durations, &frameCount)
-										== B_OK) {
-										item->SetGifFrames(frames,
-											durations, frameCount);
-									}
-								}
-								free(gifData);
-							}
-						}
-					}
-				}
+				if (item->IsGifMessage())
+					_LoadCachedGif(item);
 
 				AddItem(item);
 
@@ -707,4 +627,54 @@ ChatView::ScrollToBottom()
 	Select(lastIndex);
 	ScrollToSelection();
 	Deselect(lastIndex);
+}
+
+
+void
+ChatView::_LoadCachedImage(MessageView* item)
+{
+	uint8* jpegData = NULL;
+	size_t jpegSize = 0;
+	int32 w = 0, h = 0;
+	if (DatabaseManager::Instance()->LoadImage(
+		item->ImageSessionId(), &jpegData, &jpegSize, &w, &h)) {
+		BBitmap* bitmap = ImageCodec::DecompressImageData(jpegData, jpegSize);
+		if (bitmap != NULL)
+			item->SetImageBitmap(bitmap);
+		free(jpegData);
+	}
+}
+
+
+void
+ChatView::_LoadCachedGif(MessageView* item)
+{
+	BString cachePath;
+	cachePath.SetToFormat(
+		"/boot/home/config/settings/Sestriere/gif_cache/%s.gif",
+		item->GifId());
+	BEntry entry(cachePath.String());
+	if (!entry.Exists())
+		return;
+
+	off_t fileSize;
+	entry.GetSize(&fileSize);
+	if (fileSize <= 0)
+		return;
+
+	uint8* gifData = static_cast<uint8*>(malloc(fileSize));
+	if (gifData == NULL)
+		return;
+
+	BFile file(cachePath.String(), B_READ_ONLY);
+	if (file.Read(gifData, fileSize) == fileSize) {
+		BBitmap** frames = NULL;
+		uint32* durations = NULL;
+		int32 frameCount = 0;
+		if (ImageCodec::DecompressGifFrames(gifData, fileSize,
+			&frames, &durations, &frameCount) == B_OK) {
+			item->SetGifFrames(frames, durations, frameCount);
+		}
+	}
+	free(gifData);
 }

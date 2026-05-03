@@ -11,12 +11,12 @@
  * Data defined in CoastlineData.cpp to avoid bloating every translation unit.
  */
 
-#ifndef COASTLINE_DATA_H
-#define COASTLINE_DATA_H
+#ifndef _COASTLINE_DATA_H
+#define _COASTLINE_DATA_H
 
 
 extern const float kCoastlineData[];
 extern const int kCoastlinePointCount;
 
 
-#endif // COASTLINE_DATA_H
+#endif // _COASTLINE_DATA_H

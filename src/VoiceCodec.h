@@ -5,8 +5,8 @@
  * VoiceCodec.h — Codec2 encoding/decoding wrapper for voice messages
  */
 
-#ifndef VOICECODEC_H
-#define VOICECODEC_H
+#ifndef _VOICECODEC_H
+#define _VOICECODEC_H
 
 #include <SupportDefs.h>
 
@@ -39,4 +39,4 @@ public:
 };
 
 
-#endif // VOICECODEC_H
+#endif // _VOICECODEC_H

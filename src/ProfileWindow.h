@@ -5,8 +5,8 @@
  * ProfileWindow.h — Profile export/import dialog (JSON format)
  */
 
-#ifndef PROFILEWINDOW_H
-#define PROFILEWINDOW_H
+#ifndef _PROFILEWINDOW_H
+#define _PROFILEWINDOW_H
 
 #include <Window.h>
 
@@ -187,4 +187,4 @@ private:
 };
 
 
-#endif // PROFILEWINDOW_H
+#endif // _PROFILEWINDOW_H

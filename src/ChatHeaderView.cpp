@@ -188,7 +188,7 @@ ChatHeaderView::Draw(BRect updateRect)
 
 		// Last seen
 		if (fContact->lastSeen > 0) {
-			uint32 now = (uint32)time(NULL);
+			uint32 now = static_cast<uint32>(time(NULL));
 			uint32 age = (now > fContact->lastSeen)
 				? (now - fContact->lastSeen) : 0;
 			char ageBuf[24];

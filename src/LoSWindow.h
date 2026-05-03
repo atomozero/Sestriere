@@ -5,8 +5,8 @@
  * LoSWindow.h — Line-of-Sight terrain profile analysis window
  */
 
-#ifndef LOSWINDOW_H
-#define LOSWINDOW_H
+#ifndef _LOSWINDOW_H
+#define _LOSWINDOW_H
 
 #include <Window.h>
 #include "Compat.h"
@@ -59,4 +59,4 @@ private:
 };
 
 
-#endif // LOSWINDOW_H
+#endif // _LOSWINDOW_H

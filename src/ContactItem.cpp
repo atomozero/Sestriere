@@ -405,7 +405,7 @@ ContactItem::_StatusColor() const
 	if (!fContact.isValid || fContact.lastSeen == 0)
 		return kOfflineColor;
 
-	uint32 now = (uint32)time(NULL);
+	uint32 now = static_cast<uint32>(time(NULL));
 	uint32 age = (now > fContact.lastSeen) ? (now - fContact.lastSeen) : 0;
 
 	if (age < 300)        // < 5 minutes

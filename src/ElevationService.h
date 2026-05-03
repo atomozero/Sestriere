@@ -5,8 +5,8 @@
  * ElevationService.h — Open-Meteo elevation API client
  */
 
-#ifndef ELEVATIONSERVICE_H
-#define ELEVATIONSERVICE_H
+#ifndef _ELEVATIONSERVICE_H
+#define _ELEVATIONSERVICE_H
 
 #include <SupportDefs.h>
 
@@ -31,4 +31,4 @@ public:
 };
 
 
-#endif // ELEVATIONSERVICE_H
+#endif // _ELEVATIONSERVICE_H

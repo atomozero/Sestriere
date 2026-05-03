@@ -338,7 +338,7 @@ ContactInfoPanel::Draw(BRect updateRect)
 
 	rgb_color lastSeenColor = kOfflineColor;
 	if (fContact->lastSeen > 0) {
-		uint32 now = (uint32)time(NULL);
+		uint32 now = static_cast<uint32>(time(NULL));
 		uint32 age = (now > fContact->lastSeen) ? (now - fContact->lastSeen) : 0;
 		if (age < 300)
 			lastSeenColor = kOnlineColor;
@@ -566,7 +566,7 @@ ContactInfoPanel::_FormatLastSeen(char* buffer, size_t size) const
 
 	time_t now = time(NULL);
 	time_t seen = (time_t)fContact->lastSeen;
-	uint32 age = (now > seen) ? (uint32)(now - seen) : 0;
+	uint32 age = (now > seen) ? static_cast<uint32>(now - seen) : 0;
 
 	if (age < 86400) {
 		FormatTimeAgo(buffer, size, age);
@@ -612,7 +612,7 @@ ContactInfoPanel::_UpdateSNRChart()
 		snprintf(contactHex + i * 2, 3, "%02x", fContact->publicKey[i]);
 
 	// Load last 24 hours of SNR data
-	uint32 since = (uint32)time(NULL) - 86400;
+	uint32 since = static_cast<uint32>(time(NULL)) - 86400;
 	OwningObjectList<SNRDataPoint> points(100);
 	DatabaseManager::Instance()->LoadSNRHistory(contactHex, since, points);
 

@@ -5,8 +5,8 @@
  * MqttClient.h — MQTT client for meshcoreitalia.it integration
  */
 
-#ifndef MQTTCLIENT_H
-#define MQTTCLIENT_H
+#ifndef _MQTTCLIENT_H
+#define _MQTTCLIENT_H
 
 #include <Locker.h>
 #include <Looper.h>
@@ -124,4 +124,4 @@ private:
 			bool			fInitialized;
 };
 
-#endif // MQTTCLIENT_H
+#endif // _MQTTCLIENT_H

@@ -9,8 +9,8 @@
  * See: https://github.com/antirez/smaz
  */
 
-#ifndef SMAZ_H
-#define SMAZ_H
+#ifndef _SMAZ_H
+#define _SMAZ_H
 
 #include <string.h>
 
@@ -231,4 +231,4 @@ SmazDecompress(const char* in, int inlen, char* out, int outlen)
 }
 
 
-#endif	// SMAZ_H
+#endif // _SMAZ_H

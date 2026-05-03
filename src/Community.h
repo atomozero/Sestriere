@@ -8,8 +8,8 @@
  * QR/JSON payload: {"v":1,"type":"meshcore_community","name":"...","k":"base64url"}
  */
 
-#ifndef COMMUNITY_H
-#define COMMUNITY_H
+#ifndef _COMMUNITY_H
+#define _COMMUNITY_H
 
 #include <String.h>
 #include <SupportDefs.h>
@@ -54,4 +54,4 @@ bool FormatCommunityJson(const CommunityInfo* info, char* outJson,
 	size_t outSize);
 
 
-#endif	// COMMUNITY_H
+#endif // _COMMUNITY_H

@@ -10,8 +10,8 @@
  * Uses BSoundPlayer for playback (8kHz 16-bit mono PCM).
  */
 
-#ifndef AUDIOENGINE_H
-#define AUDIOENGINE_H
+#ifndef _AUDIOENGINE_H
+#define _AUDIOENGINE_H
 
 #include <Handler.h>
 #include <Locker.h>
@@ -75,4 +75,4 @@ private:
 };
 
 
-#endif // AUDIOENGINE_H
+#endif // _AUDIOENGINE_H

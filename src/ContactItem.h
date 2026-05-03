@@ -5,8 +5,8 @@
  * ContactItem.h — Telegram-style contact list item
  */
 
-#ifndef CONTACTITEM_H
-#define CONTACTITEM_H
+#ifndef _CONTACTITEM_H
+#define _CONTACTITEM_H
 
 #include <ListItem.h>
 #include <String.h>
@@ -57,4 +57,4 @@ private:
 			float			fBaselineOffset;
 };
 
-#endif // CONTACTITEM_H
+#endif // _CONTACTITEM_H

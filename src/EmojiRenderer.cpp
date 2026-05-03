@@ -191,7 +191,7 @@ EmojiRenderer::GetBitmap(const char* hexCode)
 	if (fileSize <= 0)
 		return NULL;
 
-	uint8* pngData = (uint8*)malloc(fileSize);
+	uint8* pngData = static_cast<uint8*>(malloc(fileSize));
 	if (pngData == NULL)
 		return NULL;
 

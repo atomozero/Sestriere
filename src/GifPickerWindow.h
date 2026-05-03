@@ -5,8 +5,8 @@
  * GifPickerWindow.h — GIPHY GIF search and selection window
  */
 
-#ifndef GIFPICKERWINDOW_H
-#define GIFPICKERWINDOW_H
+#ifndef _GIFPICKERWINDOW_H
+#define _GIFPICKERWINDOW_H
 
 #include <Window.h>
 
@@ -40,4 +40,4 @@ private:
 			int32			fResultCount;
 };
 
-#endif // GIFPICKERWINDOW_H
+#endif // _GIFPICKERWINDOW_H

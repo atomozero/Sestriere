@@ -5,8 +5,8 @@
  * NetworkMapWindow.h — Dynamic network topology visualization
  */
 
-#ifndef NETWORKMAPWINDOW_H
-#define NETWORKMAPWINDOW_H
+#ifndef _NETWORKMAPWINDOW_H
+#define _NETWORKMAPWINDOW_H
 
 #include <Window.h>
 #include <View.h>
@@ -226,7 +226,7 @@ private:
 			OwningObjectList<TopologyEdge>	fEdges;
 
 			// Packet flow animations
-			static const int32 kMaxPacketFlows = 32;
+			static constexpr int32 kMaxPacketFlows = 32;
 			PacketFlowAnim	fPacketFlows[32];
 			int32			fPacketFlowCount;
 			char			fSelfHexId[8];
@@ -289,4 +289,4 @@ private:
 			bool			fHasPendingTrace;
 };
 
-#endif // NETWORKMAPWINDOW_H
+#endif // _NETWORKMAPWINDOW_H

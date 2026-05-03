@@ -5,8 +5,8 @@
  * GrowingTextView.h — Auto-growing text input that sends a message on Enter
  */
 
-#ifndef GROWINGTEXTVIEW_H
-#define GROWINGTEXTVIEW_H
+#ifndef _GROWINGTEXTVIEW_H
+#define _GROWINGTEXTVIEW_H
 
 #include <TextView.h>
 
@@ -41,4 +41,4 @@ private:
 			float		fMaxHeight;
 };
 
-#endif // GROWINGTEXTVIEW_H
+#endif // _GROWINGTEXTVIEW_H

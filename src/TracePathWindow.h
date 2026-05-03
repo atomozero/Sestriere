@@ -5,8 +5,8 @@
  * TracePathWindow.h — Trace path visualization window
  */
 
-#ifndef TRACEPATHWINDOW_H
-#define TRACEPATHWINDOW_H
+#ifndef _TRACEPATHWINDOW_H
+#define _TRACEPATHWINDOW_H
 
 #include <Window.h>
 #include "Compat.h"
@@ -79,4 +79,4 @@ private:
 			int32			fElapsedSec;
 };
 
-#endif // TRACEPATHWINDOW_H
+#endif // _TRACEPATHWINDOW_H

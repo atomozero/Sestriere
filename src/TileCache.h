@@ -5,8 +5,8 @@
  * TileCache.h — Asynchronous OSM tile fetcher and cache
  */
 
-#ifndef TILE_CACHE_H
-#define TILE_CACHE_H
+#ifndef _TILE_CACHE_H
+#define _TILE_CACHE_H
 
 #include <Bitmap.h>
 #include <Handler.h>
@@ -25,7 +25,7 @@ enum {
 	MSG_TILES_READY		= 'tlrd',
 };
 
-static const off_t kMaxDiskCacheBytes = 50 * 1024 * 1024;	// 50 MB
+static constexpr off_t kMaxDiskCacheBytes = 50 * 1024 * 1024;	// 50 MB
 
 
 struct TileEntry {
@@ -88,4 +88,4 @@ private:
 };
 
 
-#endif // TILE_CACHE_H
+#endif // _TILE_CACHE_H
