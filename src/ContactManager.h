@@ -33,8 +33,14 @@ public:
 	bool					IsSyncing() const { return fSyncing; }
 
 	// Direct manipulation
+	void					AddItem(ContactInfo* contact);
+	ContactInfo*			RemoveItemAt(int32 index);
 	void					RemoveContact(const uint8* pubKey);
 	void					Clear();
+
+	// Direct list access (for iteration patterns in MainWindow)
+	OwningObjectList<ContactInfo>&		Contacts() { return fContacts; }
+	OwningObjectList<ContactInfo>&		OldContacts() { return fOldContacts; }
 
 	// Key helpers
 	static void				PubKeyToHex(const uint8* pubKey,

@@ -318,9 +318,7 @@ private:
 			int32			fSelectedContact;
 			bool			fConnected;
 
-			// Contacts (owning = true)
-			OwningObjectList<ContactInfo>	fContacts;
-			OwningObjectList<ContactInfo>	fOldContacts;  // Temp storage during sync
+			// Contacts (owned by fContactManager)
 			bool			fSyncingContacts;
 			uint32			fContactsSince;
 			bool			fSyncingMessages;

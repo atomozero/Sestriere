@@ -107,6 +107,22 @@ ContactManager::EndSync()
 
 
 void
+ContactManager::AddItem(ContactInfo* contact)
+{
+	BAutolock lock(fLock);
+	fContacts.AddItem(contact);
+}
+
+
+ContactInfo*
+ContactManager::RemoveItemAt(int32 index)
+{
+	BAutolock lock(fLock);
+	return fContacts.RemoveItemAt(index);
+}
+
+
+void
 ContactManager::RemoveContact(const uint8* pubKey)
 {
 	BAutolock lock(fLock);

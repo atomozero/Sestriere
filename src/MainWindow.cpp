@@ -296,8 +296,6 @@ MainWindow::MainWindow()
 	fSelectedPort(""),
 	fSelectedContact(-1),
 	fConnected(false),
-	fContacts(20),
-	fOldContacts(20),
 	fSyncingContacts(false),
 	fContactsSince(0),
 	fSyncingMessages(false),
@@ -1269,7 +1267,7 @@ MainWindow::MessageReceived(BMessage* message)
 				_ShowWindow(fNetworkMapWindow);
 			}
 			if (fNetworkMapWindow->LockLooper()) {
-				fNetworkMapWindow->UpdateFromContacts(&fContacts);
+				fNetworkMapWindow->UpdateFromContacts(&fContactManager->Contacts());
 				fNetworkMapWindow->UnlockLooper();
 			}
 			break;
@@ -1280,7 +1278,7 @@ MainWindow::MessageReceived(BMessage* message)
 			// Update map data without showing/activating the window
 			if (fNetworkMapWindow != NULL) {
 				if (fNetworkMapWindow->LockLooper()) {
-					fNetworkMapWindow->UpdateFromContacts(&fContacts);
+					fNetworkMapWindow->UpdateFromContacts(&fContactManager->Contacts());
 					fNetworkMapWindow->UnlockLooper();
 				}
 			}
@@ -1669,7 +1667,7 @@ MainWindow::MessageReceived(BMessage* message)
 
 					if (fTracePathWindow->LockLooper()) {
 						fTracePathWindow->StartExternalTrace(contact);
-						fTracePathWindow->ResolveHopNames(&fContacts);
+						fTracePathWindow->ResolveHopNames(&fContactManager->Contacts());
 						fTracePathWindow->UnlockLooper();
 					}
 				}
@@ -1699,8 +1697,8 @@ MainWindow::MessageReceived(BMessage* message)
 			}
 			int traceable = 0;
 			int skipped = 0;
-			for (int32 i = 0; i < fContacts.CountItems(); i++) {
-				ContactInfo* c = fContacts.ItemAt(i);
+			for (int32 i = 0; i < fContactManager->Contacts().CountItems(); i++) {
+				ContactInfo* c = fContactManager->Contacts().ItemAt(i);
 				if (c == NULL || !c->isValid)
 					continue;
 				if (c->outPathLen < 0) {
@@ -1724,8 +1722,8 @@ MainWindow::MessageReceived(BMessage* message)
 		{
 			int32 startIdx = 0;
 			message->FindInt32("index", &startIdx);
-			for (int32 i = startIdx; i < fContacts.CountItems(); i++) {
-				ContactInfo* c = fContacts.ItemAt(i);
+			for (int32 i = startIdx; i < fContactManager->Contacts().CountItems(); i++) {
+				ContactInfo* c = fContactManager->Contacts().ItemAt(i);
 				if (c == NULL || !c->isValid || c->outPathLen < 0)
 					continue;
 				// Send trace for this contact
@@ -2094,8 +2092,8 @@ MainWindow::MessageReceived(BMessage* message)
 
 			// Count valid contacts (exclude channel)
 			int32 total = 0;
-			for (int32 i = 0; i < fContacts.CountItems(); i++) {
-				ContactInfo* c = fContacts.ItemAt(i);
+			for (int32 i = 0; i < fContactManager->Contacts().CountItems(); i++) {
+				ContactInfo* c = fContactManager->Contacts().ItemAt(i);
 				if (c != NULL && c->isValid && c->type != 0)
 					total++;
 			}
@@ -2144,8 +2142,8 @@ MainWindow::MessageReceived(BMessage* message)
 			message->FindInt32("index", &startIdx);
 
 			// Find next valid contact
-			for (int32 i = startIdx; i < fContacts.CountItems(); i++) {
-				ContactInfo* c = fContacts.ItemAt(i);
+			for (int32 i = startIdx; i < fContactManager->Contacts().CountItems(); i++) {
+				ContactInfo* c = fContactManager->Contacts().ItemAt(i);
 				if (c == NULL || !c->isValid || c->type == 0)
 					continue;
 
@@ -2791,8 +2789,8 @@ MainWindow::MessageReceived(BMessage* message)
 			} else if (message->FindString("contact_key", &key) == B_OK) {
 				contactKey = key;
 				// Clear in-memory contact messages
-				for (int32 i = 0; i < fContacts.CountItems(); i++) {
-					ContactInfo* c = fContacts.ItemAt(i);
+				for (int32 i = 0; i < fContactManager->Contacts().CountItems(); i++) {
+					ContactInfo* c = fContactManager->Contacts().ItemAt(i);
 					if (c == NULL)
 						continue;
 					char hex[kContactHexSize];
@@ -3208,7 +3206,7 @@ MainWindow::MessageReceived(BMessage* message)
 								msg.String());
 						}
 						msg.SetToFormat("Contacts: %d total",
-							(int)fContacts.CountItems());
+							(int)fContactManager->Contacts().CountItems());
 						fMissionControlWindow->AddActivityEvent("SYS",
 							msg.String());
 					} else {
@@ -3392,7 +3390,7 @@ MainWindow::MessageReceived(BMessage* message)
 				_LogMessage("ERROR", "Not connected");
 				break;
 			}
-			if (fContacts.CountItems() == 0) {
+			if (fContactManager->Contacts().CountItems() == 0) {
 				_LogMessage("WARN", "No contacts to poll");
 				break;
 			}
@@ -3417,8 +3415,8 @@ MainWindow::MessageReceived(BMessage* message)
 				break;
 
 			// Find next valid contact to poll
-			while (fTelemetryPollIndex < fContacts.CountItems()) {
-				ContactInfo* contact = fContacts.ItemAt(fTelemetryPollIndex);
+			while (fTelemetryPollIndex < fContactManager->Contacts().CountItems()) {
+				ContactInfo* contact = fContactManager->Contacts().ItemAt(fTelemetryPollIndex);
 				fTelemetryPollIndex++;
 				if (contact != NULL && contact->type != 0) {
 					// Skip channel-only contacts (type 0)
@@ -3426,14 +3424,14 @@ MainWindow::MessageReceived(BMessage* message)
 					BString logMsg;
 					logMsg.SetToFormat("Requesting telemetry from %s (%d/%d)",
 						contact->name, (int)fTelemetryPollIndex,
-						(int)fContacts.CountItems());
+						(int)fContactManager->Contacts().CountItems());
 					_LogMessage("INFO", logMsg.String());
 					break;
 				}
 			}
 
 			// Check if we've finished polling all contacts
-			if (fTelemetryPollIndex >= fContacts.CountItems()) {
+			if (fTelemetryPollIndex >= fContactManager->Contacts().CountItems()) {
 				delete fTelemetryPollTimer;
 				fTelemetryPollTimer = NULL;
 				_LogMessage("INFO", "Telemetry poll complete");
@@ -3452,7 +3450,7 @@ MainWindow::MessageReceived(BMessage* message)
 						(float)fMqttSettings.longitude,
 						fDeviceName[0] != '\0' ? fDeviceName : "Self");
 				}
-				fMapWindow->UpdateFromContacts(&fContacts,
+				fMapWindow->UpdateFromContacts(&fContactManager->Contacts(),
 					fMqttSettings.latitude, fMqttSettings.longitude);
 				fMapWindow->Show();
 			} else {
@@ -3566,7 +3564,7 @@ MainWindow::MessageReceived(BMessage* message)
 
 		case MSG_EXPORT_GPX:
 		{
-			if (fContacts.CountItems() == 0) {
+			if (fContactManager->Contacts().CountItems() == 0) {
 				_LogMessage("WARN", "No contacts to export");
 				break;
 			}
@@ -3619,7 +3617,7 @@ MainWindow::MessageReceived(BMessage* message)
 				// Window not yet shown — safe to call without lock
 				fProfileWindow->SetDeviceInfo(fDeviceName, fPublicKey,
 					fDeviceFirmware);
-				fProfileWindow->SetContacts(fContacts);
+				fProfileWindow->SetContacts(fContactManager->Contacts());
 				fProfileWindow->SetChannels(fChannels);
 				if (fHasRadioParams)
 					fProfileWindow->SetRadioParams(fRadioFreq, fRadioBw,
@@ -3629,7 +3627,7 @@ MainWindow::MessageReceived(BMessage* message)
 			} else if (fProfileWindow->LockLooper()) {
 				fProfileWindow->SetDeviceInfo(fDeviceName, fPublicKey,
 					fDeviceFirmware);
-				fProfileWindow->SetContacts(fContacts);
+				fProfileWindow->SetContacts(fContactManager->Contacts());
 				fProfileWindow->SetChannels(fChannels);
 				if (fHasRadioParams)
 					fProfileWindow->SetRadioParams(fRadioFreq, fRadioBw,
@@ -4213,11 +4211,11 @@ MainWindow::_SelectContact(int32 index)
 
 		// Pass network stats to channel info panel
 		{
-			int32 totalContacts = fContacts.CountItems();
+			int32 totalContacts = fContactManager->Contacts().CountItems();
 			int32 onlineCount = 0;
 			uint32 now = (uint32)time(NULL);
 			for (int32 ci = 0; ci < totalContacts; ci++) {
-				ContactInfo* c = fContacts.ItemAt(ci);
+				ContactInfo* c = fContactManager->Contacts().ItemAt(ci);
 				if (c != NULL && c->lastSeen > 0
 					&& (now - c->lastSeen) < 300)
 					onlineCount++;
@@ -5619,11 +5617,11 @@ MainWindow::_HandleContactsStart(const uint8* data, size_t length)
 
 	// Move existing contacts to temporary storage to preserve message history
 	// They will be matched with incoming contacts in _HandleContact
-	fOldContacts.MakeEmpty();
-	while (fContacts.CountItems() > 0) {
-		ContactInfo* contact = fContacts.RemoveItemAt(0);
+	fContactManager->OldContacts().MakeEmpty();
+	while (fContactManager->Contacts().CountItems() > 0) {
+		ContactInfo* contact = fContactManager->Contacts().RemoveItemAt(0);
 		if (contact != NULL)
-			fOldContacts.AddItem(contact);
+			fContactManager->OldContacts().AddItem(contact);
 	}
 }
 
@@ -5659,8 +5657,8 @@ MainWindow::_HandleContact(const uint8* data, size_t length)
 	contact->isValid = true;
 
 	// Look for existing contact to preserve message history
-	for (int32 i = 0; i < fOldContacts.CountItems(); i++) {
-		ContactInfo* old = fOldContacts.ItemAt(i);
+	for (int32 i = 0; i < fContactManager->OldContacts().CountItems(); i++) {
+		ContactInfo* old = fContactManager->OldContacts().ItemAt(i);
 		if (old != NULL && memcmp(old->publicKey, contact->publicKey, kPubKeyPrefixSize) == 0) {
 			// Transfer message history from old contact
 			while (old->messages.CountItems() > 0) {
@@ -5669,13 +5667,13 @@ MainWindow::_HandleContact(const uint8* data, size_t length)
 					contact->messages.AddItem(msg);
 			}
 			// Remove old contact from temp list (will be deleted at end)
-			fOldContacts.RemoveItemAt(i);
+			fContactManager->OldContacts().RemoveItemAt(i);
 			delete old;
 			break;
 		}
 	}
 
-	fContacts.AddItem(contact);
+	fContactManager->Contacts().AddItem(contact);
 
 	// Save as Haiku People file
 	_SaveContactAsPerson(contact);
@@ -5717,23 +5715,23 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 	// In an incremental sync they are simply unchanged — put them back.
 	// In a full sync (since==0) the device sends everyone, so leftovers
 	// are truly gone and can be discarded.
-	while (fOldContacts.CountItems() > 0) {
-		ContactInfo* old = fOldContacts.RemoveItemAt(0);
+	while (fContactManager->OldContacts().CountItems() > 0) {
+		ContactInfo* old = fContactManager->OldContacts().RemoveItemAt(0);
 		if (old != NULL)
-			fContacts.AddItem(old);
+			fContactManager->Contacts().AddItem(old);
 	}
 
 	_UpdateContactList();
 	_UpdateNearestRepeater();
 	_LogMessage("OK", BString().SetToFormat("Received %d contacts",
-		(int)fContacts.CountItems()));
+		(int)fContactManager->Contacts().CountItems()));
 
 	// Load saved messages after contacts are available.
 	// On re-sync, messages were already transferred from fOldContacts —
 	// skip DB load to avoid duplicates.
 	bool hasExistingMessages = false;
-	for (int32 i = 0; i < fContacts.CountItems(); i++) {
-		ContactInfo* c = fContacts.ItemAt(i);
+	for (int32 i = 0; i < fContactManager->Contacts().CountItems(); i++) {
+		ContactInfo* c = fContactManager->Contacts().ItemAt(i);
 		if (c != NULL && c->messages.CountItems() > 0) {
 			hasExistingMessages = true;
 			break;
@@ -5769,11 +5767,11 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 	// Forward contact counts to Mission Control
 	if (_LockIfVisible(fMissionControlWindow)) {
 		uint32 now = (uint32)time(NULL);
-		int32 total = fContacts.CountItems();
+		int32 total = fContactManager->Contacts().CountItems();
 		int32 online = 0;
 		int32 recent = 0;
 		for (int32 i = 0; i < total; i++) {
-			ContactInfo* c = fContacts.ItemAt(i);
+			ContactInfo* c = fContactManager->Contacts().ItemAt(i);
 			if (c != NULL && c->lastSeen > 0) {
 				uint32 age = (now > c->lastSeen) ? (now - c->lastSeen) : 0;
 				if (age < 300)
@@ -5793,7 +5791,7 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 			uint8* statuses = new uint8[heatmapCount];
 
 			for (int32 i = 0; i < (total < 50 ? total : 50); i++) {
-				ContactInfo* c = fContacts.ItemAt(i);
+				ContactInfo* c = fContactManager->Contacts().ItemAt(i);
 				if (c == NULL) continue;
 
 				uint32 age = (now > c->lastSeen)
@@ -5877,7 +5875,7 @@ MainWindow::_HandleContactsEnd(const uint8* data, size_t length)
 	{
 		WindowLocker mapLock(fNetworkMapWindow);
 		if (mapLock.IsLocked())
-			fNetworkMapWindow->UpdateFromContacts(&fContacts);
+			fNetworkMapWindow->UpdateFromContacts(&fContactManager->Contacts());
 	}
 }
 
@@ -6509,8 +6507,8 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 
 	// Try to find contact by name to get pubkey prefix
 	ContactInfo* sender = NULL;
-	for (int32 i = 0; i < fContacts.CountItems(); i++) {
-		ContactInfo* c = fContacts.ItemAt(i);
+	for (int32 i = 0; i < fContactManager->Contacts().CountItems(); i++) {
+		ContactInfo* c = fContactManager->Contacts().ItemAt(i);
 		if (c != NULL && strcmp(c->name, senderName.String()) == 0) {
 			sender = c;
 			sender->lastSeen = (uint32)time(NULL);
@@ -7000,8 +6998,8 @@ MainWindow::_HandlePushAdvert(const uint8* data, size_t length)
 	int8 rssi = (length >= 9) ? (int8)data[8] : fLastRssi;
 
 	// Update lastSeen for this contact
-	for (int32 i = 0; i < fContacts.CountItems(); i++) {
-		ContactInfo* contact = fContacts.ItemAt(i);
+	for (int32 i = 0; i < fContactManager->Contacts().CountItems(); i++) {
+		ContactInfo* contact = fContactManager->Contacts().ItemAt(i);
 		if (contact != NULL && memcmp(contact->publicKey, pubKeyPrefix, kPubKeyPrefixSize) == 0) {
 			contact->lastSeen = now;
 			_LogMessage("DEBUG", BString().SetToFormat("Updated lastSeen for %s (SNR:%d RSSI:%d)",
@@ -7099,7 +7097,7 @@ MainWindow::_HandlePushTraceData(const uint8* data, size_t length)
 	} else if (_LockIfVisible(fTracePathWindow)) {
 		_LogMessage("INFO", "Forwarding trace data to TracePathWindow");
 		fTracePathWindow->ParseTraceData(data, length);
-		fTracePathWindow->ResolveHopNames(&fContacts);
+		fTracePathWindow->ResolveHopNames(&fContactManager->Contacts());
 		fTracePathWindow->UnlockLooper();
 	} else {
 		_LogMessage("WARN", "TracePathWindow not visible or could not lock");
@@ -7661,8 +7659,8 @@ MainWindow::_UpdateNearestRepeater()
 	double minDist = 1e9;
 	const char* nearestName = NULL;
 
-	for (int32 i = 0; i < fContacts.CountItems(); i++) {
-		ContactInfo* contact = fContacts.ItemAt(i);
+	for (int32 i = 0; i < fContactManager->Contacts().CountItems(); i++) {
+		ContactInfo* contact = fContactManager->Contacts().ItemAt(i);
 		if (contact == NULL || contact->type != 2)
 			continue;  // Only repeaters
 		if (!contact->HasGPS())
@@ -7968,8 +7966,8 @@ MainWindow::_OnDisconnected()
 	}
 
 	// --- Multi-companion: clear all state for clean reconnect ---
-	fContacts.MakeEmpty();
-	fOldContacts.MakeEmpty();
+	fContactManager->Contacts().MakeEmpty();
+	fContactManager->OldContacts().MakeEmpty();
 	fContactsSince = 0;
 	_UpdateContactList();
 	fChatView->ClearMessages();
@@ -8080,7 +8078,7 @@ MainWindow::_UpdateContactList()
 
 	// Update network map if open
 	if (_LockIfVisible(fNetworkMapWindow)) {
-		fNetworkMapWindow->UpdateFromContacts(&fContacts);
+		fNetworkMapWindow->UpdateFromContacts(&fContactManager->Contacts());
 		fNetworkMapWindow->UnlockLooper();
 	}
 }
@@ -8144,7 +8142,7 @@ MainWindow::_FilterContacts(const char* filter)
 
 	if (hasGroups) {
 		// Track which contacts have been added (by index in fContacts)
-		int32 contactCount = fContacts.CountItems();
+		int32 contactCount = fContactManager->Contacts().CountItems();
 		bool* added = new bool[contactCount];
 		memset(added, 0, contactCount * sizeof(bool));
 
@@ -8177,7 +8175,7 @@ MainWindow::_FilterContacts(const char* filter)
 				for (int32 c = 0; c < contactCount; c++) {
 					if (added[c])
 						continue;
-					ContactInfo* contact = fContacts.ItemAt(c);
+					ContactInfo* contact = fContactManager->Contacts().ItemAt(c);
 					if (contact == NULL || !contact->isValid)
 						continue;
 					// Type filter
@@ -8225,7 +8223,7 @@ MainWindow::_FilterContacts(const char* filter)
 				for (int32 c = 0; c < contactCount; c++) {
 					if (added[c])
 						continue;
-					ContactInfo* contact = fContacts.ItemAt(c);
+					ContactInfo* contact = fContactManager->Contacts().ItemAt(c);
 					if (contact == NULL || !contact->isValid)
 						continue;
 					if ((contact->type == 2 && !showRepeaters)
@@ -8261,7 +8259,7 @@ MainWindow::_FilterContacts(const char* filter)
 		for (int32 c = 0; c < contactCount; c++) {
 			if (added[c])
 				continue;
-			ContactInfo* contact = fContacts.ItemAt(c);
+			ContactInfo* contact = fContactManager->Contacts().ItemAt(c);
 			if (contact == NULL || !contact->isValid)
 				continue;
 			if ((contact->type == 2 && !showRepeaters)
@@ -8293,8 +8291,8 @@ MainWindow::_FilterContacts(const char* filter)
 		delete[] added;
 	} else {
 		// No groups — flat list (original behavior)
-		for (int32 i = 0; i < fContacts.CountItems(); i++) {
-			ContactInfo* contact = fContacts.ItemAt(i);
+		for (int32 i = 0; i < fContactManager->Contacts().CountItems(); i++) {
+			ContactInfo* contact = fContactManager->Contacts().ItemAt(i);
 			if (contact == NULL || !contact->isValid)
 				continue;
 
@@ -8345,8 +8343,8 @@ MainWindow::_FindContactItemByPrefix(const uint8* prefix)
 ContactInfo*
 MainWindow::_FindContactByPrefix(const uint8* prefix, size_t prefixLen)
 {
-	for (int32 i = 0; i < fContacts.CountItems(); i++) {
-		ContactInfo* contact = fContacts.ItemAt(i);
+	for (int32 i = 0; i < fContactManager->Contacts().CountItems(); i++) {
+		ContactInfo* contact = fContactManager->Contacts().ItemAt(i);
 		if (contact != NULL && contact->isValid) {
 			if (memcmp(contact->publicKey, prefix, prefixLen) == 0)
 				return contact;
@@ -8532,8 +8530,8 @@ MainWindow::_LoadMessages()
 
 	// Load DM messages for each contact
 	int32 loadedDM = 0;
-	for (int32 i = 0; i < fContacts.CountItems(); i++) {
-		ContactInfo* contact = fContacts.ItemAt(i);
+	for (int32 i = 0; i < fContactManager->Contacts().CountItems(); i++) {
+		ContactInfo* contact = fContactManager->Contacts().ItemAt(i);
 		if (contact == NULL)
 			continue;
 
@@ -8878,8 +8876,8 @@ MainWindow::_LoadPeopleContacts()
 
 		// Check if contact already exists (by pubkey)
 		bool exists = false;
-		for (int32 i = 0; i < fContacts.CountItems(); i++) {
-			ContactInfo* existing = fContacts.ItemAt(i);
+		for (int32 i = 0; i < fContactManager->Contacts().CountItems(); i++) {
+			ContactInfo* existing = fContactManager->Contacts().ItemAt(i);
 			if (existing != NULL &&
 				memcmp(existing->publicKey, contact->publicKey, 32) == 0) {
 				exists = true;
@@ -8888,7 +8886,7 @@ MainWindow::_LoadPeopleContacts()
 		}
 
 		if (!exists) {
-			fContacts.AddItem(contact);
+			fContactManager->Contacts().AddItem(contact);
 			loaded++;
 		} else {
 			delete contact;
@@ -8918,8 +8916,8 @@ MainWindow::_ExportGPX(const char* path)
 		<< "  xmlns=\"http://www.topografix.com/GPX/1/1\">\n";
 
 	int32 exported = 0;
-	for (int32 i = 0; i < fContacts.CountItems(); i++) {
-		ContactInfo* contact = fContacts.ItemAt(i);
+	for (int32 i = 0; i < fContactManager->Contacts().CountItems(); i++) {
+		ContactInfo* contact = fContactManager->Contacts().ItemAt(i);
 		if (contact == NULL || !contact->HasGPS())
 			continue;
 
