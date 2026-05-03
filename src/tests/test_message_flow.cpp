@@ -670,24 +670,17 @@ TestImageEnvelopeSession()
 {
 	printf("  TestImageEnvelopeSession...");
 
-	// Fix: fImageEnvelopeWaiting replaced with fImageEnvelopeSession (uint32)
-	// Tracks which session ID is waiting for envelope ACK.
-	// PUSH_SEND_CONFIRMED now matches session ID before starting fragments.
-
-	// Verify session-based tracking (not boolean)
-	assert(FileContains("MainWindow.h", "fImageEnvelopeSession"));
-	assert(FileContains("MainWindow.h", "fVoiceEnvelopeSession"));
-
-	// Verify it's uint32, not bool
-	assert(FileContains("MainWindow.h", "uint32") &&
-		   FileContains("MainWindow.h", "fImageEnvelopeSession"));
+	// Envelope session tracking moved to MediaHandler
+	// Verify session-based tracking exists in MediaHandler
+	assert(FileContains("MediaHandler.h", "fImageEnvelopeSession"));
+	assert(FileContains("MediaHandler.h", "fVoiceEnvelopeSession"));
 
 	// Old boolean should be gone
 	assert(!FileContains("MainWindow.h", "fImageEnvelopeWaiting"));
 	assert(!FileContains("MainWindow.h", "fVoiceEnvelopeWaiting"));
 
-	// Verify session comparison in PUSH_SEND_CONFIRMED handler
-	assert(FileContains("MainWindow.cpp", "fImageEnvelopeSession == fCurrentSendSession"));
+	// MainWindow routes confirmation to MediaHandler
+	assert(FileContains("MainWindow.cpp", "MSG_MEDIA_ENVELOPE_CONFIRMED"));
 
 	printf(" PASS\n");
 }

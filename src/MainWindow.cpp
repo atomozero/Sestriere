@@ -346,25 +346,13 @@ MainWindow::MainWindow()
 	fVoiceSessions(NULL),
 	fAudioEngine(NULL),
 	fVoiceButton(NULL),
-	fVoiceFragmentTimer(NULL),
-	fCurrentVoiceSendSession(0),
-	fCurrentVoiceSendIndex(0),
-	fRecordingVoice(false),
-	fVoiceRecordTimer(NULL),
-	fVoicePlayPcm(NULL),
-	fVoicePlayPcmSize(0),
 	fImageSessions(NULL),
 	fImageOpenPanel(NULL),
 	fImageSavePanel(NULL),
 	fSaveBitmap(NULL),
 	fAttachButton(NULL),
 	fGifButton(NULL),
-	fImageFragmentTimer(NULL),
-	fImageExpireTimer(NULL),
-	fCurrentSendSession(0),
-	fCurrentSendIndex(0),
-	fImageEnvelopeSession(0),
-	fVoiceEnvelopeSession(0)
+	fImageExpireTimer(NULL)
 {
 	// Initialize device info
 	memset(fDeviceName, 0, sizeof(fDeviceName));
@@ -384,8 +372,7 @@ MainWindow::MainWindow()
 	fPingAllTotal = 0;
 	fPingAllResponded = 0;
 	fHasDeviceInfo = false;
-	fImageSessions = new ImageSessionManager();
-	fVoiceSessions = new VoiceSessionManager();
+	// Session managers assigned after MediaHandler creation (see below)
 	fAudioEngine = new AudioEngine();
 	if (fAudioEngine->InitCheck() != B_OK) {
 		fprintf(stderr, "[MainWindow] Media services unavailable — "
@@ -422,6 +409,8 @@ MainWindow::MainWindow()
 	AddHandler(fFrameParser);
 	fMediaHandler = new MediaHandler(this, fProtocol, fAudioEngine);
 	AddHandler(fMediaHandler);
+	fImageSessions = fMediaHandler->ImageSessions();
+	fVoiceSessions = fMediaHandler->VoiceSessions();
 	fContactManager = new ContactManager();
 
 	// MQTT client is created lazily when needed
@@ -519,18 +508,10 @@ MainWindow::~MainWindow()
 
 	delete fGpxSavePanel;
 
-	// Voice message cleanup
-	delete fVoiceSessions;
+	// Voice/Image cleanup (sessions owned by MediaHandler)
 	delete fAudioEngine;
-	delete fVoiceFragmentTimer;
-	delete fVoiceRecordTimer;
-	delete[] fVoicePlayPcm;
-
-	// Image sharing cleanup
-	delete fImageSessions;
 	delete fImageOpenPanel;
 	delete fImageSavePanel;
-	delete fImageFragmentTimer;
 	delete fImageExpireTimer;
 
 	// Child windows and singletons are destroyed in QuitRequested()
@@ -5018,31 +4999,11 @@ MainWindow::_HandleFrameMessage(BMessage* message)
 					_StopDeliveryTimer();
 			}
 
-			// Start image fragment transmission if envelope was just confirmed
-			if (fImageEnvelopeSession != 0
-				&& fImageEnvelopeSession == fCurrentSendSession) {
-				fImageEnvelopeSession = 0;
-				delete fImageFragmentTimer;
-				BMessage fragMsg(MSG_IMAGE_SEND_NEXT);
-				// 4s interval to match LoRa airtime
-				fImageFragmentTimer = new BMessageRunner(this, &fragMsg,
-					4000000, -1);
-				_LogMessage("IMG", BString().SetToFormat(
-					"Envelope delivered — starting fragment transmission "
-					"for session %08x", fCurrentSendSession));
-			}
-			// Same for voice
-			if (fVoiceEnvelopeSession != 0
-				&& fVoiceEnvelopeSession == fCurrentVoiceSendSession) {
-				fVoiceEnvelopeSession = 0;
-				delete fVoiceFragmentTimer;
-				BMessage fragMsg(MSG_VOICE_SEND_NEXT);
-				fVoiceFragmentTimer = new BMessageRunner(this, &fragMsg,
-					4000000, -1);
-				_LogMessage("VOICE", BString().SetToFormat(
-					"Envelope delivered — starting voice fragment "
-					"transmission for session %08x",
-					fCurrentVoiceSendSession));
+			// Notify MediaHandler that envelope was delivered
+			if (fMediaHandler->ImageEnvelopeSession() != 0
+				|| fMediaHandler->VoiceEnvelopeSession() != 0) {
+				BMessenger(fMediaHandler, this).SendMessage(
+					MSG_MEDIA_ENVELOPE_CONFIRMED);
 			}
 			break;
 		}

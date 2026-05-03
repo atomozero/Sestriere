@@ -437,33 +437,19 @@ private:
 			// Contact groups
 			OwningObjectList<BString>	fGroupNames;
 
-			// Voice messages
-			VoiceSessionManager*	fVoiceSessions;
+			// Voice/Image (sessions owned by MediaHandler)
+			VoiceSessionManager*	fVoiceSessions;  // non-owning
 			AudioEngine*	fAudioEngine;
 			MicIconView*	fVoiceButton;
-			BMessageRunner*	fVoiceFragmentTimer;
-			uint32			fCurrentVoiceSendSession;
-			uint8			fCurrentVoiceSendIndex;
-			bool			fRecordingVoice;
-			BMessageRunner*	fVoiceRecordTimer;
 
-			// Decoded PCM for current playing voice message (owned)
-			int16*			fVoicePlayPcm;
-			size_t			fVoicePlayPcmSize;
-
-			// Image sharing
-			ImageSessionManager*	fImageSessions;
+			// Image sharing UI
+			ImageSessionManager*	fImageSessions;  // non-owning
 			BFilePanel*		fImageOpenPanel;
 			BFilePanel*		fImageSavePanel;
-			const BBitmap*	fSaveBitmap;  // Bitmap to save (non-owning)
+			const BBitmap*	fSaveBitmap;
 			BButton*		fAttachButton;
 			BButton*		fGifButton;
-			BMessageRunner*	fImageFragmentTimer;
 			BMessageRunner*	fImageExpireTimer;
-			uint32			fCurrentSendSession;
-			uint8			fCurrentSendIndex;
-			uint32			fImageEnvelopeSession;  // Session awaiting envelope ACK (0=none)
-			uint32			fVoiceEnvelopeSession;  // Session awaiting envelope ACK (0=none)
 };
 
 
