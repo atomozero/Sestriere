@@ -53,6 +53,22 @@ static const RadioPresetInfo kRadioPresets[] = {
 	{ "Fast",                868000000, 250000,  7, 5 },
 };
 
+// Detect which preset matches given radio parameters (returns PRESET_CUSTOM if none match)
+static inline int32
+DetectRadioPreset(uint32 freqHz, uint32 bwHz, uint8 sf, uint8 cr)
+{
+	for (int i = 1; i < PRESET_COUNT; i++) {
+		const RadioPresetInfo& p = kRadioPresets[i];
+		// Allow 1kHz tolerance on frequency for rounding
+		uint32 freqDiff = (freqHz > p.frequency)
+			? (freqHz - p.frequency) : (p.frequency - freqHz);
+		if (freqDiff <= 1000 && bwHz == p.bandwidth
+			&& sf == p.spreadingFactor && cr == p.codingRate)
+			return i;
+	}
+	return PRESET_CUSTOM;
+}
+
 // Size constants
 static constexpr size_t kPubKeySize = 32;
 static constexpr size_t kPubKeyPrefixSize = 6;

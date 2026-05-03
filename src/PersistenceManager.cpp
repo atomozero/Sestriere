@@ -171,9 +171,12 @@ PersistenceManager::SaveDeviceSettings(const BMessage& archive)
 
 	int32 battType = 0;
 	archive.FindInt32("battery_type", &battType);
+	int32 radioPreset = 0;
+	archive.FindInt32("radio_preset", &radioPreset);
 
 	BString content;
 	content << "battery_type=" << battType << "\n";
+	content << "radio_preset=" << radioPreset << "\n";
 	file.Write(content.String(), content.Length());
 	return B_OK;
 }
@@ -211,6 +214,8 @@ PersistenceManager::LoadDeviceSettings(BMessage* outArchive)
 			*eq = '\0';
 			if (strcmp(line, "battery_type") == 0)
 				outArchive->AddInt32("battery_type", atoi(eq + 1));
+			else if (strcmp(line, "radio_preset") == 0)
+				outArchive->AddInt32("radio_preset", atoi(eq + 1));
 		}
 		line = strtok_r(NULL, "\n", &saveptr);
 	}

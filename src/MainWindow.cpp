@@ -1329,6 +1329,7 @@ MainWindow::MessageReceived(BMessage* message)
 				if (fHasRadioParams) {
 					fSettingsWindow->SetRadioParams(fRadioFreq, fRadioBw,
 						fRadioSf, fRadioCr, fRadioTxPower);
+					fSettingsWindow->SetRadioPreset(fSelectedPreset);
 				}
 				fSettingsWindow->SetMqttSettings(fMqttSettings);
 				fSettingsWindow->SetBatteryType(fBatteryType);
@@ -1345,6 +1346,7 @@ MainWindow::MessageReceived(BMessage* message)
 					if (fHasRadioParams) {
 						fSettingsWindow->SetRadioParams(fRadioFreq, fRadioBw,
 							fRadioSf, fRadioCr, fRadioTxPower);
+						fSettingsWindow->SetRadioPreset(fSelectedPreset);
 					}
 					fSettingsWindow->SetBatteryType(fBatteryType);
 					fSettingsWindow->SetDevicePin(fDevicePin);
@@ -3037,6 +3039,8 @@ MainWindow::MessageReceived(BMessage* message)
 					fRadioSf = sf;
 					fRadioCr = cr;
 					fHasRadioParams = true;
+					fSelectedPreset = DetectRadioPreset(freq, bw, sf, cr);
+					_SaveDeviceSettings();
 				}
 			}
 
@@ -5972,9 +5976,17 @@ MainWindow::_HandleSelfInfo(const uint8* data, size_t length)
 		fRadioSf = data[56];
 		fRadioCr = data[57];
 		fHasRadioParams = true;
+
+		// Auto-detect region preset from device params
+		int32 detected = DetectRadioPreset(fRadioFreq, fRadioBw,
+			fRadioSf, fRadioCr);
+		if (detected != PRESET_CUSTOM)
+			fSelectedPreset = detected;
+
 		_LogMessage("INFO", BString().SetToFormat(
-			"Radio: %.3f MHz, %.1f kHz BW, SF%u, CR%u",
-			fRadioFreq / 1000000.0, fRadioBw / 1000.0, fRadioSf, fRadioCr));
+			"Radio: %.3f MHz, %.1f kHz BW, SF%u, CR%u [%s]",
+			fRadioFreq / 1000000.0, fRadioBw / 1000.0, fRadioSf, fRadioCr,
+			kRadioPresets[fSelectedPreset].name));
 	}
 
 	if (length > 58) {
@@ -8434,6 +8446,7 @@ MainWindow::_SaveDeviceSettings()
 {
 	BMessage archive;
 	archive.AddInt32("battery_type", (int32)fBatteryType);
+	archive.AddInt32("radio_preset", fSelectedPreset);
 	PersistenceManager::Instance()->SaveDeviceSettings(archive);
 }
 
@@ -8450,8 +8463,14 @@ MainWindow::_LoadDeviceSettings()
 		&& type >= 0 && type < BATTERY_CHEMISTRY_COUNT)
 		fBatteryType = (uint8)type;
 
-	fprintf(stderr, "[MainWindow] Device settings loaded (battery=%s)\n",
-		kBatteryChemistryNames[fBatteryType]);
+	int32 preset = PRESET_EU_UK_NARROW;
+	if (archive.FindInt32("radio_preset", &preset) == B_OK
+		&& preset >= 0 && preset < PRESET_COUNT)
+		fSelectedPreset = preset;
+
+	fprintf(stderr, "[MainWindow] Device settings loaded (battery=%s, preset=%s)\n",
+		kBatteryChemistryNames[fBatteryType],
+		kRadioPresets[fSelectedPreset].name);
 }
 
 
