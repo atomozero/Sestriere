@@ -182,11 +182,15 @@ TestSendChannelMsgReturnChecked()
 static void
 TestSendRawDataReturnChecked()
 {
-	const char* file = "MainWindow.cpp";
+	// Media protocol logic moved to MediaHandler.cpp
+	const char* main = "MainWindow.cpp";
+	const char* media = "MediaHandler.cpp";
 
-	// SendRawData should have != B_OK checks
-	int sendCount = CountOccurrences(file, "->SendRawData(");
-	int checkedCount = CountOccurrences(file, "SendRawData(packet, pktLen) != B_OK");
+	// SendRawData should have != B_OK checks (across both files)
+	int sendCount = CountOccurrences(main, "->SendRawData(")
+		+ CountOccurrences(media, "->SendRawData(");
+	int checkedCount = CountOccurrences(main, "SendRawData(packet, pktLen) != B_OK")
+		+ CountOccurrences(media, "SendRawData(packet, pktLen) != B_OK");
 
 	assert(sendCount >= 6);
 	assert(checkedCount >= 6);
@@ -230,7 +234,8 @@ TestContactManagementReturnChecked()
 static void
 TestMediaAbortOnFailure()
 {
-	const char* file = "MainWindow.cpp";
+	// Media protocol logic moved to MediaHandler.cpp
+	const char* file = "MediaHandler.cpp";
 
 	// Image transfer should set IMAGE_FAILED on send error
 	assert(FileContains(file, "session->state = IMAGE_FAILED"));

@@ -5,8 +5,8 @@
  * MainWindow.h — Main application window with Telegram-style layout
  */
 
-#ifndef MAINWINDOW_H
-#define MAINWINDOW_H
+#ifndef _MAINWINDOW_H
+#define _MAINWINDOW_H
 
 #include <Window.h>
 #include "Compat.h"
@@ -21,6 +21,9 @@ class BFilePanel;
 #include "VoiceSession.h"
 
 class AudioEngine;
+class ContactManager;
+class FrameParser;
+class MediaHandler;
 
 class BButton;
 class BCheckBox;
@@ -61,28 +64,20 @@ class LoSWindow;
 
 // Pending outgoing message tracked for delivery status
 struct PendingMessage {
-	char		contactKey[13];		// 12 hex chars + null
-	uint8		pubKey[32];			// Full 32-byte pubkey for resend
-	uint32		timestamp;			// Message timestamp (for DB lookup)
-	char		text[256];			// Message text (for retry)
-	uint8		txtType;			// TXT_TYPE_PLAIN or TXT_TYPE_CLI_DATA
-	uint8		attemptCount;		// Current attempt (1-based)
-	bigtime_t	sentTime;			// system_time() when sent
-	bool		gotRspSent;			// True after RSP_SENT received
-	uint32		expectedAck;		// ackCode from RSP_SENT for matching CONFIRMED
-	bool		inGracePeriod;		// True = waiting for late ACK after max retries
-	bigtime_t	graceStartTime;		// system_time() when grace period started
-	int32		chatViewIndex;		// Index in ChatView (-1 if not visible)
+	char		contactKey[13] = {};	// 12 hex chars + null
+	uint8		pubKey[32] = {};		// Full 32-byte pubkey for resend
+	uint32		timestamp = 0;			// Message timestamp (for DB lookup)
+	char		text[256] = {};			// Message text (for retry)
+	uint8		txtType = 0;			// TXT_TYPE_PLAIN or TXT_TYPE_CLI_DATA
+	uint8		attemptCount = 1;		// Current attempt (1-based)
+	bigtime_t	sentTime = 0;			// system_time() when sent
+	bool		gotRspSent = false;		// True after RSP_SENT received
+	uint32		expectedAck = 0;		// ackCode from RSP_SENT for matching CONFIRMED
+	bool		inGracePeriod = false;	// True = waiting for late ACK after max retries
+	bigtime_t	graceStartTime = 0;		// system_time() when grace period started
+	int32		chatViewIndex = -1;		// Index in ChatView (-1 if not visible)
 
-	PendingMessage()
-		: timestamp(0), txtType(0), attemptCount(1), sentTime(0),
-		  gotRspSent(false), expectedAck(0),
-		  inGracePeriod(false), graceStartTime(0),
-		  chatViewIndex(-1) {
-		memset(contactKey, 0, sizeof(contactKey));
-		memset(pubKey, 0, sizeof(pubKey));
-		memset(text, 0, sizeof(text));
-	}
+	PendingMessage() = default;
 };
 
 class MainWindow : public BWindow {
@@ -116,6 +111,7 @@ private:
 			void			_OnFrameReceived(BMessage* message);
 			void			_OnFrameSent(BMessage* message);
 			void			_ParseFrame(const uint8* data, size_t length);
+			void			_HandleFrameMessage(BMessage* message);
 
 			// Protocol responses
 			void			_HandleDeviceInfo(const uint8* data, size_t length);
@@ -185,12 +181,14 @@ private:
 			// Message persistence
 			void			_SaveMessages();
 			void			_LoadMessages();
-			BString			_GetSettingsPath();
 
 			// Message search
 			void			_ToggleSearchBar();
 			void			_PerformSearch(const char* query);
 			void			_CloseSearch();
+
+			// Media handler context
+			void			_UpdateMediaContext();
 
 			// Input char counter
 			void			_UpdateCharCounter();
@@ -249,36 +247,21 @@ private:
 								const char* senderName);
 			void			_ShowSarMarkerDialog();
 
-			// GIF sharing
-			void			_HandleGifSelected(BMessage* msg);
+			// GIF sharing (download thread still in MainWindow for UI access)
 			void			_DownloadAndDisplayGif(const char* gifId,
 								int32 chatViewIndex);
 	static	int32			_GifDownloadThread(void* data);
 
-			// Voice messages
-			void			_StartVoiceRecord();
-			void			_StopVoiceRecord();
-			void			_HandleIncomingVoiceFragment(const uint8* payload,
-								size_t length);
-			void			_HandleIncomingVoiceFetch(const uint8* payload,
-								size_t length);
-			void			_StartVoiceFetch(uint32 sessionId);
-			void			_SendNextVoiceFragment();
+			// Image/Voice UI helpers (protocol logic in MediaHandler)
 			void			_UpdateVoiceMessageView(uint32 sessionId);
-			void			_HandleVoicePlayRequest(uint32 sessionId);
-
-			// Image sharing
-			void			_HandleImageSelected(BMessage* message);
-			void			_SendNextImageFragment();
-			void			_HandleIncomingImageFragment(const uint8* payload,
-								size_t length);
-			void			_HandleIncomingFetchRequest(const uint8* payload,
-								size_t length);
 			void			_StartImageFetch(uint32 sessionId);
 			void			_UpdateImageMessageView(uint32 sessionId);
 
 			SerialHandler*	fSerialHandler;
 			ProtocolHandler* fProtocol;
+			FrameParser*	fFrameParser;
+			MediaHandler*	fMediaHandler;
+			ContactManager*	fContactManager;
 
 			// Menu bar and status bar
 			BMenuBar*		fMenuBar;
@@ -484,4 +467,4 @@ private:
 };
 
 
-#endif // MAINWINDOW_H
+#endif // _MAINWINDOW_H

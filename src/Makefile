@@ -7,6 +7,11 @@ TYPE = APP
 SRCS = \
 	Sestriere.cpp \
 	MainWindow.cpp \
+	MicIconView.cpp \
+	FrameParser.cpp \
+	MediaHandler.cpp \
+	ContactManager.cpp \
+	PersistenceManager.cpp \
 	AddChannelWindow.cpp \
 	Community.cpp \
 	SerialHandler.cpp \

@@ -93,79 +93,11 @@
 #include "VoiceSession.h"
 
 
-// Clickable microphone icon (no button chrome)
-class MicIconView : public BView {
-public:
-	MicIconView(BMessage* clickMsg)
-		: BView("mic_icon", B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE),
-		  fClickMsg(clickMsg), fEnabled(false), fRecording(false)
-	{
-		SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-		SetToolTip("Record voice message");
-		float em = be_plain_font->Size();
-		SetExplicitSize(BSize(em * 3.0, em * 3.0));
-	}
-
-	~MicIconView() { delete fClickMsg; }
-
-	void Draw(BRect updateRect)
-	{
-		BRect r = Bounds();
-		const char* icon = fRecording
-			? "\xE2\x97\xBC"     // ◼ stop
-			: "\xF0\x9F\x8E\x99"; // 🎙 microphone
-
-		BFont font(be_plain_font);
-		font.SetSize(be_plain_font->Size() * 2.0);
-		SetFont(&font);
-
-		if (fEnabled) {
-			if (fRecording)
-				SetHighColor(200, 40, 40);  // red when recording
-			else
-				SetHighUIColor(B_PANEL_TEXT_COLOR);
-		} else {
-			SetHighColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR),
-				B_DARKEN_1_TINT));
-		}
-
-		font_height fh;
-		font.GetHeight(&fh);
-		float tw = font.StringWidth(icon);
-		float x = (r.Width() - tw) / 2.0;
-		float y = (r.Height() + fh.ascent - fh.descent) / 2.0;
-		DrawString(icon, BPoint(x, y));
-	}
-
-	void MouseDown(BPoint where)
-	{
-		if (fEnabled && fClickMsg != NULL && Window() != NULL)
-			Window()->PostMessage(fClickMsg);
-	}
-
-	void SetEnabled(bool enabled)
-	{
-		if (fEnabled != enabled) {
-			fEnabled = enabled;
-			Invalidate();
-		}
-	}
-
-	void SetRecording(bool recording)
-	{
-		if (fRecording != recording) {
-			fRecording = recording;
-			Invalidate();
-		}
-	}
-
-	bool IsEnabled() const { return fEnabled; }
-
-private:
-	BMessage*	fClickMsg;
-	bool		fEnabled;
-	bool		fRecording;
-};
+#include "ContactManager.h"
+#include "FrameParser.h"
+#include "MediaHandler.h"
+#include "MicIconView.h"
+#include "PersistenceManager.h"
 
 
 // MainWindow-private message codes
@@ -478,15 +410,19 @@ MainWindow::MainWindow()
 	_BuildUI();
 
 	// Initialize SQLite database
-	BString settingsDir = _GetSettingsPath();
-	if (!settingsDir.IsEmpty()) {
+	BString settingsDir = PersistenceManager::Instance()->SettingsDir();
+	if (!settingsDir.IsEmpty())
 		DatabaseManager::Instance()->Open(settingsDir.String());
-	}
 
-	// Create serial handler and protocol handler
+	// Create serial handler, protocol handler, and frame parser
 	fSerialHandler = new SerialHandler(this);
 	fSerialHandler->Run();
 	fProtocol = new ProtocolHandler(fSerialHandler);
+	fFrameParser = new FrameParser(this);
+	AddHandler(fFrameParser);
+	fMediaHandler = new MediaHandler(this, fProtocol, fAudioEngine);
+	AddHandler(fMediaHandler);
+	fContactManager = new ContactManager();
 
 	// MQTT client is created lazily when needed
 	fprintf(stderr, "[MainWindow] MQTT will be initialized on demand\n");
@@ -3854,18 +3790,35 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 
 		case MSG_IMAGE_SELECTED:
-			_HandleImageSelected(message);
+		{
+			// Forward to MediaHandler with path
+			entry_ref ref;
+			if (message->FindRef("refs", &ref) == B_OK) {
+				BPath path;
+				BEntry entry(&ref);
+				if (entry.GetPath(&path) == B_OK) {
+					BMessage fwd(MSG_MEDIA_IMAGE_SELECTED);
+					fwd.AddString("path", path.Path());
+					_UpdateMediaContext();
+					BMessenger(fMediaHandler, this).SendMessage(&fwd);
+				}
+			}
 			break;
+		}
 
 		case MSG_IMAGE_SEND_NEXT:
-			_SendNextImageFragment();
+			BMessenger(fMediaHandler, this).SendMessage(
+				new BMessage(MSG_MEDIA_SEND_NEXT_IMG));
 			break;
 
 		case MSG_IMAGE_FETCH_REQ:
 		{
 			uint32 sid;
-			if (message->FindUInt32("session_id", &sid) == B_OK)
-				_StartImageFetch(sid);
+			if (message->FindUInt32("session_id", &sid) == B_OK) {
+				BMessage fwd(MSG_MEDIA_START_IMG_FETCH);
+				fwd.AddUInt32("session_id", sid);
+				BMessenger(fMediaHandler, this).SendMessage(&fwd);
+			}
 			break;
 		}
 
@@ -3943,21 +3896,30 @@ MainWindow::MessageReceived(BMessage* message)
 
 		// --- Voice messages ---
 		case MSG_VOICE_RECORD:
-			if (fRecordingVoice)
-				_StopVoiceRecord();
-			else
-				_StartVoiceRecord();
+		{
+			_UpdateMediaContext();
+			uint32 what = fMediaHandler->IsRecording()
+				? MSG_MEDIA_VOICE_RECORD_STOP
+				: MSG_MEDIA_VOICE_RECORD_START;
+			BMessenger(fMediaHandler, this).SendMessage(what);
+			// Update button state
+			fVoiceButton->SetRecording(!fMediaHandler->IsRecording());
 			break;
+		}
 
 		case MSG_VOICE_SEND_NEXT:
-			_SendNextVoiceFragment();
+			BMessenger(fMediaHandler, this).SendMessage(
+				new BMessage(MSG_MEDIA_SEND_NEXT_VOICE));
 			break;
 
 		case MSG_VOICE_PLAY_REQ:
 		{
 			uint32 sid;
-			if (message->FindUInt32("session_id", &sid) == B_OK)
-				_HandleVoicePlayRequest(sid);
+			if (message->FindUInt32("session_id", &sid) == B_OK) {
+				BMessage fwd(MSG_MEDIA_VOICE_PLAY);
+				fwd.AddUInt32("session_id", sid);
+				BMessenger(fMediaHandler, this).SendMessage(&fwd);
+			}
 			break;
 		}
 
@@ -3981,9 +3943,11 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 
 		case MSG_VOICE_RECORD_TIMEOUT:
-			if (fRecordingVoice) {
+			if (fMediaHandler->IsRecording()) {
 				_LogMessage("VOICE", "Max recording duration reached (30s)");
-				_StopVoiceRecord();
+				BMessenger(fMediaHandler, this).SendMessage(
+					MSG_MEDIA_VOICE_RECORD_STOP);
+				fVoiceButton->SetRecording(false);
 			}
 			break;
 
@@ -4009,8 +3973,15 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 
 		case MSG_GIF_SELECTED:
-			_HandleGifSelected(message);
+		{
+			_UpdateMediaContext();
+			BMessage fwd(MSG_MEDIA_GIF_SELECTED);
+			const char* gifId;
+			if (message->FindString("gif_id", &gifId) == B_OK)
+				fwd.AddString("gif_id", gifId);
+			BMessenger(fMediaHandler, this).SendMessage(&fwd);
 			break;
+		}
 
 		case MSG_GIF_DOWNLOAD_REQ:
 		{
@@ -4070,8 +4041,53 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		// MediaHandler responses
+		case MSG_MEDIA_LOG:
+		{
+			const char* prefix = NULL;
+			const char* text = NULL;
+			if (message->FindString("prefix", &prefix) == B_OK
+				&& message->FindString("text", &text) == B_OK)
+				_LogMessage(prefix, text);
+			break;
+		}
+
+		case MSG_MEDIA_SEND_TEXT:
+		{
+			const char* text = NULL;
+			bool toChannel = false;
+			if (message->FindString("text", &text) == B_OK) {
+				message->FindBool("channel", &toChannel);
+				if (toChannel)
+					_SendChannelMessage(text);
+				else
+					_SendTextMessage(text);
+			}
+			break;
+		}
+
+		case MSG_MEDIA_UPDATE_IMAGE:
+		{
+			uint32 sid;
+			if (message->FindUInt32("session_id", &sid) == B_OK)
+				_UpdateImageMessageView(sid);
+			break;
+		}
+
+		case MSG_MEDIA_UPDATE_VOICE:
+		{
+			uint32 sid;
+			if (message->FindUInt32("session_id", &sid) == B_OK)
+				_UpdateVoiceMessageView(sid);
+			break;
+		}
+
 		default:
-			BWindow::MessageReceived(message);
+			// Route FrameParser messages to the legacy handler bridge
+			if (message->what >= 'fp00' && message->what <= 'fp99')
+				_HandleFrameMessage(message);
+			else
+				BWindow::MessageReceived(message);
 			break;
 	}
 }
@@ -4755,6 +4771,22 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 		}
 	}
 
+	// Delegate frame decoding to FrameParser — it posts MSG_FRAME_* back to us
+	fFrameParser->ParseFrame(data, length);
+}
+
+
+void
+MainWindow::_HandleFrameMessage(BMessage* message)
+{
+	const void* rawPtr = NULL;
+	ssize_t rawSize = 0;
+	if (message->FindData("raw", B_RAW_TYPE, &rawPtr, &rawSize) != B_OK
+		|| rawSize < 1)
+		return;
+
+	const uint8* data = static_cast<const uint8*>(rawPtr);
+	size_t length = static_cast<size_t>(rawSize);
 	uint8 cmd = data[0];
 
 	switch (cmd) {
@@ -5106,7 +5138,8 @@ MainWindow::_ParseFrame(const uint8* data, size_t length)
 			break;
 
 		default:
-			_LogMessage("WARN", BString().SetToFormat("Unknown response: 0x%02X", cmd));
+			_LogMessage("WARN", BString().SetToFormat(
+				"Unknown response: 0x%02X", data[0]));
 			break;
 	}
 }
@@ -5249,20 +5282,23 @@ MainWindow::_HandlePushRawData(const uint8* data, size_t length)
 	size_t payloadLen = length - 4;
 	float snrDb = snr / 4.0f;
 
-	// Check magic byte for image protocol
+	// Check magic byte for image/voice protocol — forward to MediaHandler
 	if (payloadLen > 0) {
 		const uint8* payload = data + 4;
-		if (payload[0] == kImageMagic) {
-			_HandleIncomingImageFragment(payload, payloadLen);
-			return;
-		} else if (payload[0] == kFetchMagic) {
-			_HandleIncomingFetchRequest(payload, payloadLen);
-			return;
-		} else if (payload[0] == kVoiceMagic) {
-			_HandleIncomingVoiceFragment(payload, payloadLen);
-			return;
-		} else if (payload[0] == kVoiceFetchMagic) {
-			_HandleIncomingVoiceFetch(payload, payloadLen);
+		uint32 msgWhat = 0;
+		if (payload[0] == kImageMagic)
+			msgWhat = MSG_MEDIA_IMAGE_FRAGMENT;
+		else if (payload[0] == kFetchMagic)
+			msgWhat = MSG_MEDIA_IMAGE_FETCH_REQ;
+		else if (payload[0] == kVoiceMagic)
+			msgWhat = MSG_MEDIA_VOICE_FRAGMENT;
+		else if (payload[0] == kVoiceFetchMagic)
+			msgWhat = MSG_MEDIA_VOICE_FETCH_REQ;
+
+		if (msgWhat != 0) {
+			BMessage fwd(msgWhat);
+			fwd.AddData("payload", B_RAW_TYPE, payload, payloadLen);
+			BMessenger(fMediaHandler, this).SendMessage(&fwd);
 			return;
 		}
 	}
@@ -7965,8 +8001,10 @@ MainWindow::_OnDisconnected()
 	fHandshakeTimer = NULL;
 
 	// Stop active voice recording if in progress
-	if (fRecordingVoice)
-		_StopVoiceRecord();
+	if (fMediaHandler->IsRecording()) {
+		BMessenger(fMediaHandler, this).SendMessage(MSG_MEDIA_VOICE_RECORD_STOP);
+		fVoiceButton->SetRecording(false);
+	}
 
 	// --- Multi-companion: clear all state for clean reconnect ---
 	fContacts.MakeEmpty();
@@ -8405,131 +8443,27 @@ MainWindow::_ForwardFrameToSerialMonitor(const char* direction,
 }
 
 
-BString
-MainWindow::_GetSettingsPath()
-{
-	BPath path;
-	if (find_directory(B_USER_SETTINGS_DIRECTORY, &path) != B_OK)
-		return "";
-
-	path.Append("Sestriere");
-
-	// Create directory if it doesn't exist
-	BDirectory dir(path.Path());
-	if (dir.InitCheck() != B_OK) {
-		create_directory(path.Path(), 0755);
-	}
-
-	return BString(path.Path());
-}
 
 
 void
 MainWindow::_SaveMqttSettings()
 {
-	BString settingsPath = _GetSettingsPath();
-	if (settingsPath.IsEmpty())
-		return;
-
-	BString filePath = settingsPath;
-	filePath.Append("/mqtt.settings");
-
-	BFile file(filePath.String(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
-	if (file.InitCheck() != B_OK) {
+	if (PersistenceManager::Instance()->SaveMqttSettings(fMqttSettings) == B_OK)
+		_LogMessage("INFO", "MQTT settings saved");
+	else
 		_LogMessage("WARN", "Failed to save MQTT settings");
-		return;
-	}
-
-	// Write as simple key=value format
-	BString content;
-	content << "enabled=" << (fMqttSettings.enabled ? "1" : "0") << "\n";
-	content << "latitude=" << fMqttSettings.latitude << "\n";
-	content << "longitude=" << fMqttSettings.longitude << "\n";
-	content << "iata=" << fMqttSettings.iataCode << "\n";
-	content << "broker=" << fMqttSettings.broker << "\n";
-	content << "port=" << fMqttSettings.port << "\n";
-	content << "username=" << fMqttSettings.username << "\n";
-	content << "password=" << fMqttSettings.password << "\n";
-
-	file.Write(content.String(), content.Length());
-	_LogMessage("INFO", "MQTT settings saved");
 }
 
 
 void
 MainWindow::_LoadMqttSettings()
 {
-	BString settingsPath = _GetSettingsPath();
-	if (settingsPath.IsEmpty())
+	if (PersistenceManager::Instance()->LoadMqttSettings(&fMqttSettings) != B_OK)
 		return;
-
-	BString filePath = settingsPath;
-	filePath.Append("/mqtt.settings");
-
-	BFile file(filePath.String(), B_READ_ONLY);
-	if (file.InitCheck() != B_OK) {
-		// No settings file, use defaults
-		return;
-	}
-
-	// Read entire file
-	off_t size;
-	file.GetSize(&size);
-	if (size <= 0 || size > 4096)
-		return;
-
-	char* buffer = new char[size + 1];
-	ssize_t bytesRead = file.Read(buffer, size);
-	if (bytesRead <= 0) {
-		delete[] buffer;
-		return;
-	}
-	buffer[bytesRead] = '\0';
-
-	// Parse key=value pairs
-	char* saveptr = NULL;
-	char* line = strtok_r(buffer, "\n", &saveptr);
-	while (line != NULL) {
-		char* eq = strchr(line, '=');
-		if (eq != NULL) {
-			*eq = '\0';
-			char* key = line;
-			char* value = eq + 1;
-
-			if (strcmp(key, "enabled") == 0)
-				fMqttSettings.enabled = (atoi(value) != 0);
-			else if (strcmp(key, "latitude") == 0)
-				fMqttSettings.latitude = atof(value);
-			else if (strcmp(key, "longitude") == 0)
-				fMqttSettings.longitude = atof(value);
-			else if (strcmp(key, "iata") == 0)
-				strlcpy(fMqttSettings.iataCode, value, sizeof(fMqttSettings.iataCode));
-			else if (strcmp(key, "broker") == 0)
-				strlcpy(fMqttSettings.broker, value, sizeof(fMqttSettings.broker));
-			else if (strcmp(key, "port") == 0)
-				fMqttSettings.port = atoi(value);
-			else if (strcmp(key, "username") == 0)
-				strlcpy(fMqttSettings.username, value, sizeof(fMqttSettings.username));
-			else if (strcmp(key, "password") == 0)
-				strlcpy(fMqttSettings.password, value, sizeof(fMqttSettings.password));
-		}
-		line = strtok_r(NULL, "\n", &saveptr);
-	}
-
-	delete[] buffer;
-
-	// Validate loaded settings
-	if (fMqttSettings.port < 1 || fMqttSettings.port > 65535)
-		fMqttSettings.port = 1883;
-	if (fMqttSettings.latitude < -90.0 || fMqttSettings.latitude > 90.0)
-		fMqttSettings.latitude = 0.0;
-	if (fMqttSettings.longitude < -180.0 || fMqttSettings.longitude > 180.0)
-		fMqttSettings.longitude = 0.0;
 
 	// Apply to MQTT client if it exists
-	if (fMqttClient != NULL) {
+	if (fMqttClient != NULL)
 		fMqttClient->SetSettings(fMqttSettings);
-	}
 
 	fprintf(stderr, "[MainWindow] MQTT settings loaded (enabled=%s, lat=%.4f, lon=%.4f)\n",
 		fMqttSettings.enabled ? "yes" : "no", fMqttSettings.latitude, fMqttSettings.longitude);
@@ -8539,69 +8473,24 @@ MainWindow::_LoadMqttSettings()
 void
 MainWindow::_SaveDeviceSettings()
 {
-	BString settingsPath = _GetSettingsPath();
-	if (settingsPath.IsEmpty())
-		return;
-
-	BString filePath = settingsPath;
-	filePath.Append("/device.settings");
-
-	BFile file(filePath.String(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
-	if (file.InitCheck() != B_OK)
-		return;
-
-	BString content;
-	content << "battery_type=" << (int)fBatteryType << "\n";
-	file.Write(content.String(), content.Length());
+	BMessage archive;
+	archive.AddInt32("battery_type", (int32)fBatteryType);
+	PersistenceManager::Instance()->SaveDeviceSettings(archive);
 }
 
 
 void
 MainWindow::_LoadDeviceSettings()
 {
-	BString settingsPath = _GetSettingsPath();
-	if (settingsPath.IsEmpty())
+	BMessage archive;
+	if (PersistenceManager::Instance()->LoadDeviceSettings(&archive) != B_OK)
 		return;
 
-	BString filePath = settingsPath;
-	filePath.Append("/device.settings");
+	int32 type = 0;
+	if (archive.FindInt32("battery_type", &type) == B_OK
+		&& type >= 0 && type < BATTERY_CHEMISTRY_COUNT)
+		fBatteryType = (uint8)type;
 
-	BFile file(filePath.String(), B_READ_ONLY);
-	if (file.InitCheck() != B_OK)
-		return;
-
-	off_t size;
-	file.GetSize(&size);
-	if (size <= 0 || size > 1024)
-		return;
-
-	char* buffer = new char[size + 1];
-	ssize_t bytesRead = file.Read(buffer, size);
-	if (bytesRead <= 0) {
-		delete[] buffer;
-		return;
-	}
-	buffer[bytesRead] = '\0';
-
-	char* saveptr = NULL;
-	char* line = strtok_r(buffer, "\n", &saveptr);
-	while (line != NULL) {
-		char* eq = strchr(line, '=');
-		if (eq != NULL) {
-			*eq = '\0';
-			char* key = line;
-			char* value = eq + 1;
-
-			if (strcmp(key, "battery_type") == 0) {
-				int type = atoi(value);
-				if (type >= 0 && type < BATTERY_CHEMISTRY_COUNT)
-					fBatteryType = (uint8)type;
-			}
-		}
-		line = strtok_r(NULL, "\n", &saveptr);
-	}
-
-	delete[] buffer;
 	fprintf(stderr, "[MainWindow] Device settings loaded (battery=%s)\n",
 		kBatteryChemistryNames[fBatteryType]);
 }
@@ -8610,92 +8499,44 @@ MainWindow::_LoadDeviceSettings()
 void
 MainWindow::_SaveUISettings()
 {
-	BString settingsPath = _GetSettingsPath();
-	if (settingsPath.IsEmpty())
-		return;
-
-	BString filePath = settingsPath;
-	filePath.Append("/ui.settings");
-
-	BFile file(filePath.String(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
-	if (file.InitCheck() != B_OK)
-		return;
-
-	BString content;
-	content << "show_chats=" << (fShowChats->Value() == B_CONTROL_ON ? "1" : "0") << "\n";
-	content << "show_repeaters=" << (fShowRepeaters->Value() == B_CONTROL_ON ? "1" : "0") << "\n";
-	content << "show_rooms=" << (fShowRooms->Value() == B_CONTROL_ON ? "1" : "0") << "\n";
-
-	// Save split view weights
+	BMessage archive;
+	archive.AddBool("show_chats", fShowChats->Value() == B_CONTROL_ON);
+	archive.AddBool("show_repeaters", fShowRepeaters->Value() == B_CONTROL_ON);
+	archive.AddBool("show_rooms", fShowRooms->Value() == B_CONTROL_ON);
 	if (fMainSplit != NULL) {
-		BString weights;
-		weights.SetToFormat("split_weights=%.4f,%.4f,%.4f\n",
-			fMainSplit->ItemWeight((int32)0),
-			fMainSplit->ItemWeight(1),
-			fMainSplit->ItemWeight(2));
-		content << weights;
+		archive.AddFloat("weight0", fMainSplit->ItemWeight((int32)0));
+		archive.AddFloat("weight1", fMainSplit->ItemWeight(1));
+		archive.AddFloat("weight2", fMainSplit->ItemWeight(2));
 	}
-
-	file.Write(content.String(), content.Length());
+	PersistenceManager::Instance()->SaveUISettings(archive);
 }
 
 
 void
 MainWindow::_LoadUISettings()
 {
-	BString settingsPath = _GetSettingsPath();
-	if (settingsPath.IsEmpty())
+	BMessage archive;
+	if (PersistenceManager::Instance()->LoadUISettings(&archive) != B_OK)
 		return;
 
-	BString filePath = settingsPath;
-	filePath.Append("/ui.settings");
+	bool val;
+	if (archive.FindBool("show_chats", &val) == B_OK)
+		fShowChats->SetValue(val ? B_CONTROL_ON : B_CONTROL_OFF);
+	if (archive.FindBool("show_repeaters", &val) == B_OK)
+		fShowRepeaters->SetValue(val ? B_CONTROL_ON : B_CONTROL_OFF);
+	if (archive.FindBool("show_rooms", &val) == B_OK)
+		fShowRooms->SetValue(val ? B_CONTROL_ON : B_CONTROL_OFF);
 
-	BFile file(filePath.String(), B_READ_ONLY);
-	if (file.InitCheck() != B_OK)
-		return;
-
-	off_t size;
-	file.GetSize(&size);
-	if (size <= 0 || size > 1024)
-		return;
-
-	char* buffer = new char[size + 1];
-	ssize_t bytesRead = file.Read(buffer, size);
-	if (bytesRead <= 0) {
-		delete[] buffer;
-		return;
-	}
-	buffer[bytesRead] = '\0';
-
-	char* saveptr = NULL;
-	char* line = strtok_r(buffer, "\n", &saveptr);
-	while (line != NULL) {
-		char* eq = strchr(line, '=');
-		if (eq != NULL) {
-			*eq = '\0';
-			char* key = line;
-			char* value = eq + 1;
-
-			if (strcmp(key, "show_chats") == 0)
-				fShowChats->SetValue(atoi(value) ? B_CONTROL_ON : B_CONTROL_OFF);
-			else if (strcmp(key, "show_repeaters") == 0)
-				fShowRepeaters->SetValue(atoi(value) ? B_CONTROL_ON : B_CONTROL_OFF);
-			else if (strcmp(key, "show_rooms") == 0)
-				fShowRooms->SetValue(atoi(value) ? B_CONTROL_ON : B_CONTROL_OFF);
-			else if (strcmp(key, "split_weights") == 0
-				&& fMainSplit != NULL) {
-				float w0, w1, w2;
-				if (sscanf(value, "%f,%f,%f", &w0, &w1, &w2) == 3) {
-					fMainSplit->SetItemWeight((int32)0, w0, true);
-					fMainSplit->SetItemWeight(1, w1, true);
-					fMainSplit->SetItemWeight(2, w2, true);
-				}
-			}
-		}
-		line = strtok_r(NULL, "\n", &saveptr);
+	float w0, w1, w2;
+	if (fMainSplit != NULL
+		&& archive.FindFloat("weight0", &w0) == B_OK
+		&& archive.FindFloat("weight1", &w1) == B_OK
+		&& archive.FindFloat("weight2", &w2) == B_OK) {
+		fMainSplit->SetItemWeight((int32)0, w0, true);
+		fMainSplit->SetItemWeight(1, w1, true);
+		fMainSplit->SetItemWeight(2, w2, true);
 	}
 
-	delete[] buffer;
 	fprintf(stderr, "[MainWindow] UI settings loaded (chats=%d, repeaters=%d, rooms=%d)\n",
 		fShowChats->Value() == B_CONTROL_ON,
 		fShowRepeaters->Value() == B_CONTROL_ON,
@@ -8859,6 +8700,18 @@ MainWindow::_CloseSearch()
 				fChatView->SetCurrentContact(contact);
 		}
 	}
+}
+
+
+void
+MainWindow::_UpdateMediaContext()
+{
+	const uint8* recipKey = NULL;
+	if (fChatView != NULL && fChatView->CurrentContact() != NULL)
+		recipKey = fChatView->CurrentContact()->publicKey;
+	fMediaHandler->SetConnected(fConnected);
+	fMediaHandler->SetProtocol(fProtocol);
+	fMediaHandler->SetSendContext(fSendingToChannel, recipKey, fPublicKey);
 }
 
 
@@ -9355,37 +9208,6 @@ struct GifDownloadContext {
 	BWindow*	targetWindow;
 };
 
-
-void
-MainWindow::_HandleGifSelected(BMessage* msg)
-{
-	const char* gifId = NULL;
-	if (msg->FindString("gif_id", &gifId) != B_OK || gifId == NULL)
-		return;
-
-	// Compose g:ID text and send as normal message
-	BString gifText;
-	gifText.SetToFormat("g:%s", gifId);
-
-	if (fSendingToChannel || fSelectedChannelIdx >= 0)
-		_SendChannelMessage(gifText.String());
-	else
-		_SendTextMessage(gifText.String());
-
-	// The message was just added to chat — find it and start download
-	int32 lastIndex = fChatView->CountItems() - 1;
-	if (lastIndex >= 0) {
-		MessageView* mv = dynamic_cast<MessageView*>(
-			fChatView->ItemAt(lastIndex));
-		if (mv != NULL && mv->IsGifMessage()) {
-			mv->SetGifLoadState(1);  // loading
-			fChatView->InvalidateItem(lastIndex);
-			_DownloadAndDisplayGif(gifId, lastIndex);
-		}
-	}
-}
-
-
 void
 MainWindow::_DownloadAndDisplayGif(const char* gifId, int32 chatViewIndex)
 {
@@ -9488,319 +9310,6 @@ MainWindow::_GifDownloadThread(void* data)
 	return 0;
 }
 
-
-void
-MainWindow::_HandleImageSelected(BMessage* message)
-{
-	entry_ref ref;
-	if (message->FindRef("refs", &ref) != B_OK)
-		return;
-
-	BPath path;
-	BEntry entry(&ref);
-	if (entry.GetPath(&path) != B_OK)
-		return;
-
-	if (!fConnected) {
-		_LogMessage("WARN", "Cannot send image: not connected");
-		return;
-	}
-
-	// Compress image
-	uint8* jpegData = NULL;
-	size_t jpegSize = 0;
-	int32 w = 0, h = 0;
-	status_t status = ImageCodec::CompressImageFile(path.Path(),
-		&jpegData, &jpegSize, &w, &h);
-	if (status != B_OK) {
-		_LogMessage("ERROR", BString().SetToFormat(
-			"Failed to compress image: %s", strerror(status)));
-		return;
-	}
-
-	_LogMessage("IMG", BString().SetToFormat(
-		"Compressed %s → %zd bytes (%ldx%ld color WebP)",
-		path.Leaf(), jpegSize, (long)w, (long)h));
-
-	// Get self key prefix for envelope
-	uint8 selfKey[6];
-	for (int i = 0; i < 6 && fPublicKey[i * 2] != '\0'; i++) {
-		unsigned int byte;
-		if (sscanf(fPublicKey + i * 2, "%2x", &byte) == 1)
-			selfKey[i] = (uint8)byte;
-	}
-
-	// Create outgoing session
-	uint32 sid = fImageSessions->CreateOutgoing(jpegData, jpegSize,
-		w, h, selfKey);
-	free(jpegData);
-
-	ImageSession* session = fImageSessions->FindSession(sid);
-	if (session == NULL) {
-		_LogMessage("ERROR", "Failed to create image session");
-		return;
-	}
-
-	// Store recipient pubkey for routed fragment delivery
-	if (!fSendingToChannel && fChatView->CurrentContact() != NULL)
-		memcpy(session->recipientKey,
-			fChatView->CurrentContact()->publicKey, 32);
-
-	// Format and send IE2 envelope as a text message
-	BString envelope = ImageSessionManager::FormatEnvelope(sid,
-		session->format, session->totalFragments, w, h,
-		(uint32)session->jpegSize, selfKey,
-		session->timestamp);
-
-	// Send envelope as regular text (this adds it to chat view too)
-	if (fSendingToChannel)
-		_SendChannelMessage(envelope.String());
-	else
-		_SendTextMessage(envelope.String());
-
-	// Set decoded bitmap on the outgoing MessageView so it's visible immediately
-	BBitmap* previewBitmap = ImageCodec::DecompressImageData(
-		session->jpegData, session->jpegSize);
-	if (previewBitmap != NULL) {
-		for (int32 i = fChatView->CountItems() - 1; i >= 0; i--) {
-			MessageView* mv = dynamic_cast<MessageView*>(
-				fChatView->ItemAt(i));
-			if (mv != NULL && mv->IsImageMessage()
-				&& mv->ImageSessionId() == sid) {
-				mv->SetImageBitmap(previewBitmap);
-				BFont font;
-				fChatView->GetFont(&font);
-				mv->Update(fChatView, &font);
-				fChatView->InvalidateItem(i);
-				fChatView->ScrollToBottom();
-				break;
-			}
-		}
-	}
-
-	// Save image to DB
-	if (fChatView->CurrentContact() != NULL) {
-		char contactKey[13];
-		for (int i = 0; i < 6; i++)
-			snprintf(contactKey + i * 2, 3, "%02x",
-				fChatView->CurrentContact()->publicKey[i]);
-		DatabaseManager::Instance()->InsertImage(contactKey, sid,
-			w, h, session->jpegData, session->jpegSize);
-	}
-
-	// Set session to LOADING so sender bubble shows progress immediately
-	session->state = IMAGE_LOADING;
-	session->receivedCount = 0;
-	_UpdateImageMessageView(sid);
-
-	// Wait for delivery confirmation before sending fragments.
-	// The receiver needs to process the IE2 envelope text and create
-	// a session BEFORE fragments arrive, otherwise they get dropped.
-	fCurrentSendSession = sid;
-	fCurrentSendIndex = 0;
-	fImageEnvelopeSession = sid;
-
-	// Fallback: start fragments after 10s even if PUSH_SEND_CONFIRMED
-	// never arrives (e.g. delivery failed, radio unresponsive)
-	delete fImageFragmentTimer;
-	BMessage timerMsg(MSG_IMAGE_SEND_NEXT);
-	fImageFragmentTimer = new BMessageRunner(this, &timerMsg, 10000000, 1);
-
-	_LogMessage("IMG", BString().SetToFormat(
-		"Waiting for envelope delivery before sending %d fragments (session %08x)",
-		(int)session->totalFragments, sid));
-}
-
-
-void
-MainWindow::_SendNextImageFragment()
-{
-	ImageSession* session = fImageSessions->FindSession(fCurrentSendSession);
-	if (session == NULL || fCurrentSendIndex >= session->totalFragments) {
-		// Done sending — update bubble to show complete image with ✓✓
-		delete fImageFragmentTimer;
-		fImageFragmentTimer = NULL;
-		if (session != NULL) {
-			session->state = IMAGE_COMPLETE;
-			_LogMessage("IMG", BString().SetToFormat(
-				"All %d fragments sent for session %08x",
-				(int)session->totalFragments, fCurrentSendSession));
-			_UpdateImageMessageView(fCurrentSendSession);
-		}
-		return;
-	}
-
-	// Build fragment packet
-	uint8 packet[kImageHeaderSize + kMaxFragmentPayload];
-	ImageFragment& frag = session->fragments[fCurrentSendIndex];
-	size_t pktLen = ImageSessionManager::BuildFragmentPacket(packet,
-		session->sessionId, session->format, fCurrentSendIndex,
-		session->totalFragments, frag.data, frag.length);
-
-	// Send via CMD_SEND_RAW_DATA (broadcast).
-	if (fProtocol == NULL || fProtocol->SendRawData(packet, pktLen) != B_OK) {
-		_LogMessage("IMG", "Send failed — aborting image transfer");
-		session->state = IMAGE_FAILED;
-		_UpdateImageMessageView(fCurrentSendSession);
-		delete fImageFragmentTimer;
-		fImageFragmentTimer = NULL;
-		return;
-	}
-
-	fCurrentSendIndex++;
-
-	// Update sender bubble with fragment progress
-	session->receivedCount = fCurrentSendIndex;
-	session->state = IMAGE_LOADING;
-	_UpdateImageMessageView(fCurrentSendSession);
-
-	// If called from fallback timer (one-shot), switch to repeating
-	if (fImageEnvelopeSession != 0) {
-		fImageEnvelopeSession = 0;
-		_LogMessage("IMG", "Fallback: starting fragments without delivery "
-			"confirmation");
-		delete fImageFragmentTimer;
-		BMessage fragMsg(MSG_IMAGE_SEND_NEXT);
-		fImageFragmentTimer = new BMessageRunner(this, &fragMsg,
-			4000000, -1);
-	}
-}
-
-
-void
-MainWindow::_HandleIncomingImageFragment(const uint8* payload, size_t length)
-{
-	if (length < kImageHeaderSize)
-		return;
-
-	// Parse header: [magic:1][sid:4][fmt:1][idx:1][total:1][data...]
-	uint32 sid = (uint32)payload[1]
-		| ((uint32)payload[2] << 8)
-		| ((uint32)payload[3] << 16)
-		| ((uint32)payload[4] << 24);
-	uint8 idx = payload[6];
-	uint8 total = payload[7];
-
-	const uint8* fragData = payload + kImageHeaderSize;
-	uint16 fragLen = (uint16)(length - kImageHeaderSize);
-
-	// If session doesn't exist yet, create a stub (envelope might arrive later)
-	ImageSession* session = fImageSessions->FindSession(sid);
-	if (session == NULL) {
-		// Create a minimal session stub
-		ImageSession* stub = new ImageSession();
-		stub->sessionId = sid;
-		stub->format = payload[5];
-		stub->totalFragments = total;
-		stub->state = IMAGE_LOADING;
-		stub->createdTime = system_time();
-		// Can't add to manager directly — just wait for envelope
-		delete stub;
-		_LogMessage("IMG", BString().SetToFormat(
-			"Fragment %d/%d for unknown session %08x (waiting for envelope)",
-			idx + 1, total, sid));
-		return;
-	}
-
-	bool complete = fImageSessions->AddFragment(sid, idx, fragData, fragLen);
-
-	_LogMessage("IMG", BString().SetToFormat(
-		"Fragment %d/%d for session %08x (%d/%d received)",
-		idx + 1, total, sid,
-		(int)session->receivedCount, (int)session->totalFragments));
-
-	// Update the message view
-	_UpdateImageMessageView(sid);
-
-	if (complete) {
-		session->state = IMAGE_COMPLETE;
-		if (session->Reassemble()) {
-			_LogMessage("IMG", BString().SetToFormat(
-				"Session %08x complete, %zu bytes JPEG",
-				sid, session->jpegSize));
-
-			// Decompress and assign bitmap to message view
-			BBitmap* bitmap = ImageCodec::DecompressImageData(
-				session->jpegData, session->jpegSize);
-			if (bitmap != NULL) {
-				// Find the MessageView for this session and set bitmap
-				for (int32 i = 0; i < fChatView->CountItems(); i++) {
-					MessageView* mv = dynamic_cast<MessageView*>(
-						fChatView->ItemAt(i));
-					if (mv != NULL && mv->IsImageMessage()
-						&& mv->ImageSessionId() == sid) {
-						mv->SetImageBitmap(bitmap);
-						BFont font;
-						fChatView->GetFont(&font);
-						mv->Update(fChatView, &font);
-						fChatView->InvalidateItem(i);
-						// Scroll to show full image if near bottom
-						if (i >= fChatView->CountItems() - 3)
-							fChatView->ScrollToBottom();
-						break;
-					}
-				}
-			}
-
-			// Save to DB
-			if (fChatView->CurrentContact() != NULL) {
-				char contactKey[13];
-				for (int i = 0; i < 6; i++)
-					snprintf(contactKey + i * 2, 3, "%02x",
-						fChatView->CurrentContact()->publicKey[i]);
-				DatabaseManager::Instance()->InsertImage(contactKey, sid,
-					session->width, session->height,
-					session->jpegData, session->jpegSize);
-			}
-		}
-	}
-}
-
-
-void
-MainWindow::_HandleIncomingFetchRequest(const uint8* payload, size_t length)
-{
-	if (length < 6)
-		return;
-
-	// Parse: [magic:1][sid:4][count:1][indices...]
-	uint32 sid = (uint32)payload[1]
-		| ((uint32)payload[2] << 8)
-		| ((uint32)payload[3] << 16)
-		| ((uint32)payload[4] << 24);
-	uint8 count = payload[5];
-
-	ImageSession* session = fImageSessions->FindSession(sid);
-	if (session == NULL || session->state != IMAGE_SENDING) {
-		_LogMessage("IMG", BString().SetToFormat(
-			"Fetch request for unknown/non-outgoing session %08x", sid));
-		return;
-	}
-
-	_LogMessage("IMG", BString().SetToFormat(
-		"Fetch request: %d fragments for session %08x", (int)count, sid));
-
-	// Resend requested fragments
-	for (uint8 i = 0; i < count && (size_t)(6 + i) < length; i++) {
-		uint8 idx = payload[6 + i];
-		if (idx >= session->totalFragments)
-			continue;
-
-		uint8 packet[kImageHeaderSize + kMaxFragmentPayload];
-		ImageFragment& frag = session->fragments[idx];
-		size_t pktLen = ImageSessionManager::BuildFragmentPacket(packet,
-			sid, session->format, idx, session->totalFragments,
-			frag.data, frag.length);
-
-		if (fProtocol == NULL
-			|| fProtocol->SendRawData(packet, pktLen) != B_OK) {
-			_LogMessage("IMG", "Resend failed — not connected");
-			break;
-		}
-	}
-}
-
-
 void
 MainWindow::_StartImageFetch(uint32 sessionId)
 {
@@ -9808,7 +9317,6 @@ MainWindow::_StartImageFetch(uint32 sessionId)
 	if (session == NULL)
 		return;
 
-	// Build list of missing fragments
 	uint8 missing[255];
 	uint8 count = 0;
 	for (uint8 i = 0; i < session->totalFragments && count < 255; i++) {
@@ -9821,15 +9329,10 @@ MainWindow::_StartImageFetch(uint32 sessionId)
 		return;
 	}
 
-	// Build fetch request
 	uint8 packet[6 + 255];
 	size_t pktLen = ImageSessionManager::BuildFetchRequest(packet,
 		sessionId, missing, count);
 
-	// Send fetch request via CMD_SEND_RAW_DATA (broadcast).
-	// CMD_SEND_BINARY_REQ does NOT deliver decrypted data on current
-	// firmware — arrives as PUSH_LOG_RX_DATA (0x88) which the
-	// sender can't process. SendRawData delivers as PUSH_RAW_DATA (0x84).
 	if (fProtocol == NULL
 		|| fProtocol->SendRawData(packet, pktLen) != B_OK) {
 		_LogMessage("IMG", "Cannot fetch: not connected");
@@ -9868,338 +9371,6 @@ MainWindow::_UpdateImageMessageView(uint32 sid)
 // Voice messages
 // =============================================================================
 
-
-void
-MainWindow::_StartVoiceRecord()
-{
-	if (fRecordingVoice || fAudioEngine == NULL)
-		return;
-
-	status_t err = fAudioEngine->StartRecording();
-	if (err != B_OK) {
-		_LogMessage("VOICE", BString().SetToFormat(
-			"Failed to start recording: %s", strerror(err)));
-		BAlert* alert = new BAlert("Voice",
-			"Could not start recording.\n"
-			"Check that a microphone is connected.",
-			"OK", NULL, NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
-		alert->Go(NULL);
-		return;
-	}
-
-	fRecordingVoice = true;
-	fVoiceButton->SetRecording(true);
-
-	// Safety timer: auto-stop after 30 seconds (max recording length)
-	delete fVoiceRecordTimer;
-	BMessage timerMsg(MSG_VOICE_RECORD_TIMEOUT);
-	fVoiceRecordTimer = new BMessageRunner(BMessenger(this),
-		&timerMsg, 30000000, 1);  // 30 seconds, single shot
-
-	_LogMessage("VOICE", "Recording started");
-}
-
-
-void
-MainWindow::_StopVoiceRecord()
-{
-	if (!fRecordingVoice || fAudioEngine == NULL)
-		return;
-
-	// Cancel recording timeout timer
-	delete fVoiceRecordTimer;
-	fVoiceRecordTimer = NULL;
-
-	int16* pcm = NULL;
-	size_t sampleCount = 0;
-	fAudioEngine->StopRecording(&pcm, &sampleCount);
-	fRecordingVoice = false;
-	fVoiceButton->SetRecording(false);
-
-	if (pcm == NULL || sampleCount == 0) {
-		_LogMessage("VOICE", "No audio recorded");
-		delete[] pcm;
-		return;
-	}
-
-	_LogMessage("VOICE", BString().SetToFormat(
-		"Recorded %zu samples (%.1f seconds)",
-		sampleCount, sampleCount / 8000.0f));
-
-	// Encode to Codec2
-	uint8* codec2Data = NULL;
-	size_t codec2Size = 0;
-	status_t err = VoiceCodec::Encode(pcm, sampleCount, VOICE_MODE_1300,
-		&codec2Data, &codec2Size);
-	delete[] pcm;
-
-	if (err != B_OK || codec2Data == NULL) {
-		_LogMessage("VOICE", "Failed to encode audio");
-		return;
-	}
-
-	uint32 durationSec = VoiceCodec::DurationSec(codec2Size,
-		VOICE_MODE_1300);
-	if (durationSec == 0)
-		durationSec = 1;
-
-	// Get self key prefix
-	uint8 selfKey[6];
-	for (int i = 0; i < 6 && fPublicKey[i * 2] != '\0'; i++) {
-		unsigned int byte;
-		if (sscanf(fPublicKey + i * 2, "%2x", &byte) == 1)
-			selfKey[i] = (uint8)byte;
-	}
-
-	// Create outgoing session
-	uint32 sid = fVoiceSessions->CreateOutgoing(codec2Data, codec2Size,
-		VOICE_MODE_1300, durationSec, selfKey);
-	free(codec2Data);
-
-	VoiceSession* session = fVoiceSessions->FindSession(sid);
-	if (session == NULL) {
-		_LogMessage("ERROR", "Failed to create voice session");
-		return;
-	}
-
-	// Store recipient pubkey for routed fragment delivery
-	if (!fSendingToChannel && fChatView->CurrentContact() != NULL)
-		memcpy(session->recipientKey,
-			fChatView->CurrentContact()->publicKey, 32);
-
-	// Format and send VE2 envelope as a text message
-	BString envelope = VoiceSessionManager::FormatEnvelope(sid,
-		VOICE_MODE_1300, session->totalFragments, durationSec,
-		selfKey, session->timestamp);
-
-	// Send envelope as regular text
-	if (fSendingToChannel)
-		_SendChannelMessage(envelope.String());
-	else
-		_SendTextMessage(envelope.String());
-
-	// Save to DB
-	if (fChatView->CurrentContact() != NULL) {
-		char contactKey[13];
-		for (int i = 0; i < 6; i++)
-			snprintf(contactKey + i * 2, 3, "%02x",
-				fChatView->CurrentContact()->publicKey[i]);
-		DatabaseManager::Instance()->InsertVoiceClip(contactKey, sid,
-			durationSec, (uint8)VOICE_MODE_1300,
-			session->codec2Data, session->codec2Size);
-	}
-
-	// Wait for delivery confirmation before sending fragments
-	fCurrentVoiceSendSession = sid;
-	fCurrentVoiceSendIndex = 0;
-	fVoiceEnvelopeSession = sid;
-
-	// Fallback: start fragments after 10s even without confirmation
-	delete fVoiceFragmentTimer;
-	BMessage timerMsg(MSG_VOICE_SEND_NEXT);
-	fVoiceFragmentTimer = new BMessageRunner(this, &timerMsg, 10000000, 1);
-
-	_LogMessage("VOICE", BString().SetToFormat(
-		"Waiting for envelope delivery before sending %d voice fragments "
-		"(session %08x)", (int)session->totalFragments, sid));
-}
-
-
-void
-MainWindow::_SendNextVoiceFragment()
-{
-	VoiceSession* session = fVoiceSessions->FindSession(
-		fCurrentVoiceSendSession);
-	if (session == NULL
-		|| fCurrentVoiceSendIndex >= session->totalFragments) {
-		// Done sending
-		delete fVoiceFragmentTimer;
-		fVoiceFragmentTimer = NULL;
-		if (session != NULL) {
-			session->state = VOICE_COMPLETE;
-			_LogMessage("VOICE", BString().SetToFormat(
-				"All %d fragments sent for voice session %08x",
-				(int)session->totalFragments, fCurrentVoiceSendSession));
-		}
-		return;
-	}
-
-	// Build fragment packet
-	uint8 packet[kVoiceHeaderSize + kMaxVoiceFragmentPayload];
-	VoiceFragment& frag = session->fragments[fCurrentVoiceSendIndex];
-	size_t pktLen = VoiceSessionManager::BuildFragmentPacket(packet,
-		session->sessionId, session->mode, fCurrentVoiceSendIndex,
-		session->totalFragments, frag.data, frag.length);
-
-	// Send via CMD_SEND_RAW_DATA (broadcast) — see _SendNextImageFragment
-	if (fProtocol == NULL || fProtocol->SendRawData(packet, pktLen) != B_OK) {
-		_LogMessage("VOICE", "Send failed — aborting voice transfer");
-		session->state = VOICE_FAILED;
-		_UpdateVoiceMessageView(fCurrentVoiceSendSession);
-		delete fVoiceFragmentTimer;
-		fVoiceFragmentTimer = NULL;
-		return;
-	}
-
-	fCurrentVoiceSendIndex++;
-
-	// If called from fallback timer (one-shot), switch to repeating
-	if (fVoiceEnvelopeSession != 0) {
-		fVoiceEnvelopeSession = 0;
-		_LogMessage("VOICE", "Fallback: starting fragments without delivery "
-			"confirmation");
-		delete fVoiceFragmentTimer;
-		BMessage fragMsg(MSG_VOICE_SEND_NEXT);
-		fVoiceFragmentTimer = new BMessageRunner(this, &fragMsg,
-			4000000, -1);
-	}
-}
-
-
-void
-MainWindow::_HandleIncomingVoiceFragment(const uint8* payload, size_t length)
-{
-	if (length < kVoiceHeaderSize)
-		return;
-
-	// Parse header: [magic:1][sid:4][mode:1][idx:1][total:1][data...]
-	uint32 sid = (uint32)payload[1]
-		| ((uint32)payload[2] << 8)
-		| ((uint32)payload[3] << 16)
-		| ((uint32)payload[4] << 24);
-	uint8 idx = payload[6];
-	uint8 total = payload[7];
-
-	const uint8* fragData = payload + kVoiceHeaderSize;
-	uint16 fragLen = (uint16)(length - kVoiceHeaderSize);
-
-	VoiceSession* session = fVoiceSessions->FindSession(sid);
-	if (session == NULL) {
-		_LogMessage("VOICE", BString().SetToFormat(
-			"Fragment %d/%d for unknown voice session %08x",
-			idx + 1, total, sid));
-		return;
-	}
-
-	bool complete = fVoiceSessions->AddFragment(sid, idx, fragData, fragLen);
-
-	_LogMessage("VOICE", BString().SetToFormat(
-		"Voice fragment %d/%d for session %08x (%d/%d received)",
-		idx + 1, total, sid,
-		(int)session->receivedCount, (int)session->totalFragments));
-
-	_UpdateVoiceMessageView(sid);
-
-	if (complete) {
-		session->state = VOICE_COMPLETE;
-		if (session->Reassemble()) {
-			_LogMessage("VOICE", BString().SetToFormat(
-				"Voice session %08x complete, %zu bytes Codec2",
-				sid, session->codec2Size));
-
-			// Save to DB
-			if (fChatView->CurrentContact() != NULL) {
-				char contactKey[13];
-				for (int i = 0; i < 6; i++)
-					snprintf(contactKey + i * 2, 3, "%02x",
-						fChatView->CurrentContact()->publicKey[i]);
-				DatabaseManager::Instance()->InsertVoiceClip(contactKey,
-					sid, session->durationSec, (uint8)session->mode,
-					session->codec2Data, session->codec2Size);
-			}
-		}
-		_UpdateVoiceMessageView(sid);
-	}
-}
-
-
-void
-MainWindow::_HandleIncomingVoiceFetch(const uint8* payload, size_t length)
-{
-	// VR2: [magic:1][sid:4][flags:1][key6:6][ts:4][count:1][indices...]
-	if (length < 17)
-		return;
-
-	uint32 sid = (uint32)payload[1]
-		| ((uint32)payload[2] << 8)
-		| ((uint32)payload[3] << 16)
-		| ((uint32)payload[4] << 24);
-	uint8 count = payload[16];
-
-	VoiceSession* session = fVoiceSessions->FindSession(sid);
-	if (session == NULL || session->state != VOICE_SENDING) {
-		_LogMessage("VOICE", BString().SetToFormat(
-			"Voice fetch for unknown/non-outgoing session %08x", sid));
-		return;
-	}
-
-	_LogMessage("VOICE", BString().SetToFormat(
-		"Voice fetch request: %d fragments for session %08x",
-		(int)count, sid));
-
-	// Resend requested fragments
-	for (uint8 i = 0; i < count && (size_t)(17 + i) < length; i++) {
-		uint8 idx = payload[17 + i];
-		if (idx >= session->totalFragments)
-			continue;
-
-		uint8 packet[kVoiceHeaderSize + kMaxVoiceFragmentPayload];
-		VoiceFragment& frag = session->fragments[idx];
-		size_t pktLen = VoiceSessionManager::BuildFragmentPacket(packet,
-			sid, session->mode, idx, session->totalFragments,
-			frag.data, frag.length);
-
-		if (fProtocol == NULL
-			|| fProtocol->SendRawData(packet, pktLen) != B_OK) {
-			_LogMessage("VOICE", "Resend failed — not connected");
-			break;
-		}
-	}
-}
-
-
-void
-MainWindow::_StartVoiceFetch(uint32 sessionId)
-{
-	VoiceSession* session = fVoiceSessions->FindSession(sessionId);
-	if (session == NULL)
-		return;
-
-	// Build list of missing fragments
-	uint8 missing[255];
-	uint8 count = 0;
-	for (uint8 i = 0; i < session->totalFragments && count < 255; i++) {
-		if (!session->fragments[i].received)
-			missing[count++] = i;
-	}
-
-	if (count == 0) {
-		_LogMessage("VOICE", "No missing voice fragments to fetch");
-		return;
-	}
-
-	// Build VR2 fetch request
-	uint8 packet[17 + 255];
-	size_t pktLen = VoiceSessionManager::BuildFetchRequest(packet,
-		sessionId, 1, session->senderKey, session->timestamp,
-		missing, count);
-
-	// Send via CMD_SEND_RAW_DATA (broadcast) — see _StartImageFetch
-	if (fProtocol == NULL
-		|| fProtocol->SendRawData(packet, pktLen) != B_OK) {
-		_LogMessage("VOICE", "Cannot fetch: not connected");
-		return;
-	}
-
-	session->state = VOICE_LOADING;
-	_UpdateVoiceMessageView(sessionId);
-
-	_LogMessage("VOICE", BString().SetToFormat(
-		"Sent voice fetch request for %d fragments of session %08x",
-		(int)count, sessionId));
-}
-
-
 void
 MainWindow::_UpdateVoiceMessageView(uint32 sid)
 {
@@ -10219,94 +9390,3 @@ MainWindow::_UpdateVoiceMessageView(uint32 sid)
 	}
 }
 
-
-void
-MainWindow::_HandleVoicePlayRequest(uint32 sessionId)
-{
-	VoiceSession* session = fVoiceSessions->FindSession(sessionId);
-
-	// If session not found or not complete, try loading from DB
-	if (session == NULL || session->state != VOICE_COMPLETE) {
-		if (session != NULL && session->state == VOICE_PENDING) {
-			// Need to fetch fragments first
-			_StartVoiceFetch(sessionId);
-			return;
-		}
-
-		// Try loading from database
-		uint8* c2Data = NULL;
-		size_t c2Size = 0;
-		uint32 dur = 0;
-		uint8 mode = 0;
-		if (DatabaseManager::Instance()->LoadVoiceClip(sessionId,
-			&c2Data, &c2Size, &dur, &mode)) {
-			// Decode and play directly
-			int16* pcm = NULL;
-			size_t pcmSamples = 0;
-			if (VoiceCodec::Decode(c2Data, c2Size,
-				(VoicePacketMode)mode, &pcm, &pcmSamples) == B_OK) {
-				delete[] fVoicePlayPcm;
-				fVoicePlayPcm = pcm;
-				fVoicePlayPcmSize = pcmSamples;
-
-				// Mark playing in message view
-				for (int32 i = 0; i < fChatView->CountItems(); i++) {
-					MessageView* mv = dynamic_cast<MessageView*>(
-						fChatView->ItemAt(i));
-					if (mv != NULL && mv->IsVoiceMessage()
-						&& mv->VoiceSessionId() == sessionId) {
-						mv->SetVoicePlaying(true);
-						fChatView->InvalidateItem(i);
-						break;
-					}
-				}
-
-				fAudioEngine->Play(fVoicePlayPcm, fVoicePlayPcmSize,
-					this);
-			}
-			free(c2Data);
-			return;
-		}
-
-		_LogMessage("VOICE", "Voice clip not available");
-		return;
-	}
-
-	// Session is complete — decode and play
-	if (session->codec2Data == NULL || session->codec2Size == 0) {
-		if (!session->Reassemble()) {
-			_LogMessage("VOICE", "Failed to reassemble voice data");
-			return;
-		}
-	}
-
-	int16* pcm = NULL;
-	size_t pcmSamples = 0;
-	if (VoiceCodec::Decode(session->codec2Data, session->codec2Size,
-		session->mode, &pcm, &pcmSamples) != B_OK) {
-		_LogMessage("VOICE", "Failed to decode Codec2 data");
-		return;
-	}
-
-	// Store PCM so it stays valid during playback
-	delete[] fVoicePlayPcm;
-	fVoicePlayPcm = pcm;
-	fVoicePlayPcmSize = pcmSamples;
-
-	// Mark playing in message view
-	for (int32 i = 0; i < fChatView->CountItems(); i++) {
-		MessageView* mv = dynamic_cast<MessageView*>(
-			fChatView->ItemAt(i));
-		if (mv != NULL && mv->IsVoiceMessage()
-			&& mv->VoiceSessionId() == sessionId) {
-			mv->SetVoicePlaying(true);
-			fChatView->InvalidateItem(i);
-			break;
-		}
-	}
-
-	fAudioEngine->Play(fVoicePlayPcm, fVoicePlayPcmSize, this);
-	_LogMessage("VOICE", BString().SetToFormat(
-		"Playing voice session %08x (%zu samples)",
-		sessionId, pcmSamples));
-}
