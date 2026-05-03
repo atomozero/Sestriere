@@ -554,6 +554,9 @@ MainWindow::_BuildMenuBar()
 	deviceMenu->AddItem(new BMenuItem("Request Telemetry",
 		new BMessage(MSG_REQUEST_TELEMETRY)));
 	deviceMenu->AddSeparatorItem();
+	deviceMenu->AddItem(new BMenuItem("Export Identity Key",
+		new BMessage(MSG_EXPORT_KEY)));
+	deviceMenu->AddSeparatorItem();
 	deviceMenu->AddItem(new BMenuItem("Device Info",
 		new BMessage(MSG_DEVICE_QUERY)));
 	deviceMenu->AddItem(new BMenuItem("Battery Status",
@@ -1058,6 +1061,13 @@ MainWindow::MessageReceived(BMessage* message)
 
 		case MSG_SEND_ADVERT:
 			fProtocol->SendSelfAdvert();
+			break;
+
+		case MSG_EXPORT_KEY:
+			if (fConnected)
+				fProtocol->SendExportPrivateKey();
+			else
+				_LogMessage("WARN", "Not connected — cannot export key");
 			break;
 
 		case MSG_DEVICE_QUERY:
@@ -1893,6 +1903,19 @@ MainWindow::MessageReceived(BMessage* message)
 					ctxItem->GetContact().publicKey, kPubKeySize);
 				menu->AddItem(new BMenuItem("Reset Path", resetMsg));
 
+				BMessage* discoverMsg = new BMessage(MSG_PATH_DISCOVERY);
+				discoverMsg->AddData("pubkey", B_RAW_TYPE,
+					ctxItem->GetContact().publicKey, kPubKeySize);
+				menu->AddItem(new BMenuItem("Discover Path", discoverMsg));
+
+				// Logout (only shown if logged into this contact)
+				if (_IsLoggedInto(ctxItem->GetContact().publicKey)) {
+					BMessage* logoutMsg = new BMessage(MSG_CONTACT_LOGOUT);
+					logoutMsg->AddData("pubkey", B_RAW_TYPE,
+						ctxItem->GetContact().publicKey, kPubKeySize);
+					menu->AddItem(new BMenuItem("Logout", logoutMsg));
+				}
+
 				BMessage* clearMsg = new BMessage(MSG_CLEAR_CHAT);
 				clearMsg->AddString("contact_key", contactHex);
 				menu->AddItem(new BMenuItem("Clear Chat", clearMsg));
@@ -2206,6 +2229,47 @@ MainWindow::MessageReceived(BMessage* message)
 				&& keySize >= (ssize_t)kPubKeySize) {
 				if (fProtocol->SendResetPath((const uint8*)keyData) != B_OK)
 					_LogMessage("ERROR", "Failed to send reset path");
+			}
+			break;
+		}
+
+		case MSG_CONTACT_LOGOUT:
+		{
+			const void* keyData;
+			ssize_t keySize;
+			if (message->FindData("pubkey", B_RAW_TYPE, &keyData, &keySize) == B_OK
+				&& keySize >= (ssize_t)kPubKeySize) {
+				const uint8* key = (const uint8*)keyData;
+				if (fProtocol->SendLogout(key) == B_OK) {
+					// Remove admin session
+					for (int32 i = 0; i < fAdminSessions.CountItems(); i++) {
+						AdminSession* s = fAdminSessions.ItemAt(i);
+						if (memcmp(s->key, key, sizeof(s->key)) == 0) {
+							fAdminSessions.RemoveItemAt(i);
+							delete s;
+							break;
+						}
+					}
+					_ShowAdminToolbar(false);
+					_LogMessage("INFO", "Logged out from repeater/room");
+				} else {
+					_LogMessage("ERROR", "Failed to send logout");
+				}
+			}
+			break;
+		}
+
+		case MSG_PATH_DISCOVERY:
+		{
+			const void* keyData;
+			ssize_t keySize;
+			if (message->FindData("pubkey", B_RAW_TYPE, &keyData, &keySize) == B_OK
+				&& keySize >= (ssize_t)kPubKeySize) {
+				if (fProtocol->SendPathDiscoveryReq(
+					(const uint8*)keyData) != B_OK)
+					_LogMessage("ERROR", "Failed to send path discovery");
+				else
+					_LogMessage("INFO", "Path discovery request sent");
 			}
 			break;
 		}
@@ -5071,10 +5135,30 @@ MainWindow::_HandleFrameMessage(BMessage* message)
 			break;
 
 		case RSP_PRIVATE_KEY:
-			_LogMessage("INFO", BString().SetToFormat(
-				"Private key export received (%zu bytes)",
-				length > 1 ? length - 1 : (size_t)0));
+		{
+			size_t keyLen = (length > 1) ? length - 1 : 0;
+			if (keyLen > 0) {
+				BString hexKey;
+				for (size_t i = 0; i < keyLen; i++)
+					hexKey << BString().SetToFormat("%02x", data[1 + i]);
+				_LogMessage("KEY", BString().SetToFormat(
+					"Private key exported (%zu bytes): %s",
+					keyLen, hexKey.String()));
+
+				// Copy to clipboard
+				if (be_clipboard->Lock()) {
+					be_clipboard->Clear();
+					BMessage* clip = be_clipboard->Data();
+					clip->AddData("text/plain", B_MIME_TYPE,
+						hexKey.String(), hexKey.Length());
+					be_clipboard->Commit();
+					be_clipboard->Unlock();
+					_LogMessage("INFO",
+						"Private key copied to clipboard");
+				}
+			}
 			break;
+		}
 
 		case RSP_SIGN_START:
 			_HandleSignResponse(data, length, true);

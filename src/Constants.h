@@ -63,9 +63,16 @@ const uint8 CMD_DEVICE_QUERY = 22;
 const uint8 CMD_GET_CHANNEL = 31;
 const uint8 CMD_SET_CHANNEL = 32;
 const uint8 CMD_SEND_RAW_DATA = 25;
+const uint8 CMD_SEND_CHANNEL_DATA = 62;	// Binary datagram on channel (type16 + channelIdx + payload)
+const uint8 CMD_EXPORT_PRIVATE_KEY = 23;
+const uint8 CMD_IMPORT_PRIVATE_KEY = 24;
 const uint8 CMD_SEND_LOGIN = 26;
+const uint8 CMD_HAS_CONNECTION = 28;
+const uint8 CMD_LOGOUT = 29;
+const uint8 CMD_GET_CONTACT_BY_KEY = 30;
 const uint8 CMD_SEND_STATUS_REQ = 27;
 const uint8 CMD_SEND_TRACE_PATH = 36;
+const uint8 CMD_SEND_PATH_DISCOVERY_REQ = 52;
 const uint8 CMD_SET_DEVICE_PIN = 37;
 const uint8 CMD_SET_OTHER_PARAMS = 38;
 const uint8 CMD_SEND_TELEMETRY_REQ = 39;
@@ -355,6 +362,9 @@ enum {
 
 	// Mute toggle
 	MSG_CONTACT_MUTE_TOGGLE = 'cmut',
+	MSG_CONTACT_LOGOUT = 'clgt',
+	MSG_PATH_DISCOVERY = 'pdsc',
+	MSG_EXPORT_KEY = 'expk',
 
 	// Raw serial data (non-protocol text from device)
 	MSG_RAW_SERIAL_DATA = 'raws',

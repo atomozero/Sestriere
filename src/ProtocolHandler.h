@@ -73,9 +73,16 @@ public:
 							uint32 timestamp, const char* text,
 							size_t textLen);
 
+		// Identity backup/restore
+		status_t		SendExportPrivateKey();
+		status_t		SendImportPrivateKey(const uint8* key,
+							size_t keyLen);
+
 		// Login and admin
 		status_t		SendLogin(const uint8* pubkey,
 							const char* password);
+		status_t		SendLogout(const uint8* pubkey);
+		status_t		SendPathDiscoveryReq(const uint8* pubkey);
 		status_t		SendStatusRequest(const uint8* pubkey);
 		status_t		SendTelemetryRequest(const uint8* pubkey);
 		status_t		SendTracePath(const ContactInfo* contact);
@@ -88,6 +95,9 @@ public:
 
 		// Advanced
 		status_t		SendRawData(const uint8* payload,
+							size_t length);
+		status_t		SendChannelData(uint8 channelIdx,
+							uint16 dataType, const uint8* payload,
 							size_t length);
 		status_t		SendGetCustomVars();
 		status_t		SendSetCustomVar(const char* nameValue);
