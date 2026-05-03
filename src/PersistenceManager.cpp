@@ -31,6 +31,8 @@ PersistenceManager::Instance()
 
 PersistenceManager::PersistenceManager()
 {
+	// Load advanced settings on construction
+	LoadAdvancedSettings(&fAdvanced);
 }
 
 
@@ -370,4 +372,86 @@ PersistenceManager::LoadContactGroups(BMessage* outGroups)
 	if (file.InitCheck() != B_OK)
 		return file.InitCheck();
 	return outGroups->Unflatten(&file);
+}
+
+
+// =============================================================================
+// Advanced settings
+// =============================================================================
+
+status_t
+PersistenceManager::SaveAdvancedSettings(const AdvancedSettings& s)
+{
+	BString path = SettingsPath("advanced.settings");
+	if (path.IsEmpty())
+		return B_ERROR;
+
+	BFile file(path.String(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+	if (file.InitCheck() != B_OK)
+		return file.InitCheck();
+
+	BString content;
+	content << "tile_cache_mb=" << s.tileCacheMb << "\n";
+	content << "db_retention_days=" << s.dbRetentionDays << "\n";
+	content << "voice_max_sec=" << s.voiceMaxSec << "\n";
+	content << "image_max_dim=" << s.imageMaxDim << "\n";
+	content << "image_quality=" << s.imageQuality << "\n";
+	content << "media_max_width=" << s.mediaMaxWidth << "\n";
+	content << "media_max_height=" << s.mediaMaxHeight << "\n";
+
+	file.Write(content.String(), content.Length());
+	return B_OK;
+}
+
+
+status_t
+PersistenceManager::LoadAdvancedSettings(AdvancedSettings* out)
+{
+	BString path = SettingsPath("advanced.settings");
+	if (path.IsEmpty())
+		return B_ERROR;
+
+	BFile file(path.String(), B_READ_ONLY);
+	if (file.InitCheck() != B_OK)
+		return file.InitCheck();
+
+	off_t size;
+	file.GetSize(&size);
+	if (size <= 0 || size > 1024)
+		return B_ERROR;
+
+	char* buffer = new char[size + 1];
+	ssize_t bytesRead = file.Read(buffer, size);
+	if (bytesRead <= 0) {
+		delete[] buffer;
+		return B_ERROR;
+	}
+	buffer[bytesRead] = '\0';
+
+	char* saveptr = NULL;
+	char* line = strtok_r(buffer, "\n", &saveptr);
+	while (line != NULL) {
+		char* eq = strchr(line, '=');
+		if (eq != NULL) {
+			*eq = '\0';
+			int val = atoi(eq + 1);
+			if (strcmp(line, "tile_cache_mb") == 0 && val > 0)
+				out->tileCacheMb = val;
+			else if (strcmp(line, "db_retention_days") == 0 && val > 0)
+				out->dbRetentionDays = val;
+			else if (strcmp(line, "voice_max_sec") == 0 && val > 0)
+				out->voiceMaxSec = val;
+			else if (strcmp(line, "image_max_dim") == 0 && val > 0)
+				out->imageMaxDim = val;
+			else if (strcmp(line, "image_quality") == 0 && val > 0 && val <= 100)
+				out->imageQuality = val;
+			else if (strcmp(line, "media_max_width") == 0 && val > 0)
+				out->mediaMaxWidth = val;
+			else if (strcmp(line, "media_max_height") == 0 && val > 0)
+				out->mediaMaxHeight = val;
+		}
+		line = strtok_r(NULL, "\n", &saveptr);
+	}
+	delete[] buffer;
+	return B_OK;
 }

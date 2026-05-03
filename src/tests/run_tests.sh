@@ -24,14 +24,25 @@ for src in test_*.cpp; do
 		continue
 	fi
 
-	# Determine libraries
+	# Determine libraries and extra object files
 	LIBS=""
+	OBJS=""
 	case "$SQLITE_TESTS" in
 		*"$name"*) LIBS="-lsqlite3" ;;
 	esac
+	case "$name" in
+		test_frame_parser)
+			LIBS="-lbe"
+			OBJS="../objects.x86_64-cc13-debug/FrameParser.o"
+			;;
+		test_media_codec)
+			LIBS="-lbe"
+			OBJS="../objects.x86_64-cc13-debug/ImageSession.o ../objects.x86_64-cc13-debug/VoiceSession.o"
+			;;
+	esac
 
 	# Build
-	if ! g++ -o "$name" "$src" -I../ $LIBS -lm 2>/dev/null; then
+	if ! g++ -o "$name" "$src" $OBJS -I../ $LIBS -lm 2>/dev/null; then
 		printf "  SKIP: %-40s (build failed)\n" "$name"
 		SKIP=$((SKIP + 1))
 		continue

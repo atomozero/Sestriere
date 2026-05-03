@@ -30,6 +30,7 @@
 
 #include "Constants.h"
 #include "MqttClient.h"
+#include "PersistenceManager.h"
 #include "Utils.h"
 
 
@@ -832,6 +833,18 @@ SettingsWindow::_OnApply()
 		fParent->PostMessage(&mqttMsg);
 	}
 
+	// Save advanced settings
+	AdvancedSettings adv;
+	adv.tileCacheMb = atoi(fTileCacheMbControl->Text());
+	adv.dbRetentionDays = atoi(fDbRetentionControl->Text());
+	adv.voiceMaxSec = atoi(fVoiceMaxSecControl->Text());
+	adv.imageMaxDim = atoi(fImageMaxDimControl->Text());
+	adv.imageQuality = atoi(fImageQualityControl->Text());
+	adv.mediaMaxWidth = atoi(fMediaMaxWidthControl->Text());
+	adv.mediaMaxHeight = atoi(fMediaMaxHeightControl->Text());
+	PersistenceManager::Instance()->SetAdvanced(adv);
+	PersistenceManager::Instance()->SaveAdvancedSettings(adv);
+
 	fSettingsChanged = false;
 	fApplyButton->SetEnabled(false);
 	fRevertButton->SetEnabled(false);
@@ -1205,6 +1218,24 @@ SettingsWindow::_BuildAdvancedTab(BView* parent)
 		"Media display max width:", "250", NULL);
 	fMediaMaxHeightControl = new BTextControl("media_h",
 		"Media display max height:", "300", NULL);
+
+	// Load current values from settings
+	const AdvancedSettings& adv = PersistenceManager::Instance()->Advanced();
+	char buf[16];
+	snprintf(buf, sizeof(buf), "%d", (int)adv.tileCacheMb);
+	fTileCacheMbControl->SetText(buf);
+	snprintf(buf, sizeof(buf), "%d", (int)adv.dbRetentionDays);
+	fDbRetentionControl->SetText(buf);
+	snprintf(buf, sizeof(buf), "%d", (int)adv.voiceMaxSec);
+	fVoiceMaxSecControl->SetText(buf);
+	snprintf(buf, sizeof(buf), "%d", (int)adv.imageMaxDim);
+	fImageMaxDimControl->SetText(buf);
+	snprintf(buf, sizeof(buf), "%d", (int)adv.imageQuality);
+	fImageQualityControl->SetText(buf);
+	snprintf(buf, sizeof(buf), "%d", (int)adv.mediaMaxWidth);
+	fMediaMaxWidthControl->SetText(buf);
+	snprintf(buf, sizeof(buf), "%d", (int)adv.mediaMaxHeight);
+	fMediaMaxHeightControl->SetText(buf);
 
 	BLayoutBuilder::Group<>(parent, B_VERTICAL, B_USE_HALF_ITEM_SPACING)
 		.SetInsets(B_USE_WINDOW_INSETS)

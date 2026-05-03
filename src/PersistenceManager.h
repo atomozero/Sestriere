@@ -14,6 +14,23 @@
 #include "MqttClient.h"
 
 
+// Configurable advanced parameters (with defaults matching hardcoded values)
+struct AdvancedSettings {
+	int32		tileCacheMb;		// Default: 50
+	int32		dbRetentionDays;	// Default: 30
+	int32		voiceMaxSec;		// Default: 30
+	int32		imageMaxDim;		// Default: 192
+	int32		imageQuality;		// Default: 50
+	int32		mediaMaxWidth;		// Default: 250
+	int32		mediaMaxHeight;		// Default: 300
+
+	AdvancedSettings()
+		: tileCacheMb(50), dbRetentionDays(30), voiceMaxSec(30),
+		  imageMaxDim(192), imageQuality(50),
+		  mediaMaxWidth(250), mediaMaxHeight(300) {}
+};
+
+
 // Consolidates all settings file I/O into one place.
 // MainWindow retains the in-memory state but delegates read/write to this class.
 
@@ -45,6 +62,15 @@ public:
 	status_t				SaveContactGroups(const BMessage& groups);
 	status_t				LoadContactGroups(BMessage* outGroups);
 
+	// Advanced settings (configurable parameters)
+	status_t				SaveAdvancedSettings(const AdvancedSettings& s);
+	status_t				LoadAdvancedSettings(AdvancedSettings* out);
+
+	// In-memory cache of advanced settings (loaded once at startup)
+	const AdvancedSettings&	Advanced() const { return fAdvanced; }
+	void					SetAdvanced(const AdvancedSettings& s)
+								{ fAdvanced = s; }
+
 private:
 							PersistenceManager();
 
@@ -53,6 +79,7 @@ private:
 	status_t				_LoadMessage(BMessage* msg,
 								const char* filename);
 
+	AdvancedSettings		fAdvanced;
 	static PersistenceManager*	sInstance;
 };
 
