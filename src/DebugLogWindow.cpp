@@ -8,6 +8,7 @@
 #include "DebugLogWindow.h"
 
 #include <Button.h>
+#include <InterfaceDefs.h>
 #include <LayoutBuilder.h>
 #include <ScrollView.h>
 #include <TextView.h>
@@ -126,6 +127,60 @@ DebugLogWindow::QuitRequested()
 }
 
 
+// Color mapping for MeshCore protocol categories
+static rgb_color
+_ColorForPrefix(const char* prefix)
+{
+	if (prefix == NULL)
+		return ui_color(B_DOCUMENT_TEXT_COLOR);
+
+	// Errors and warnings — red/orange
+	if (strcmp(prefix, "ERROR") == 0 || strcmp(prefix, "ERR") == 0)
+		return (rgb_color){200, 40, 40, 255};
+	if (strcmp(prefix, "WARN") == 0 || strcmp(prefix, "WARNING") == 0)
+		return (rgb_color){200, 140, 0, 255};
+
+	// Protocol success — green
+	if (strcmp(prefix, "OK") == 0)
+		return (rgb_color){40, 160, 40, 255};
+
+	// Media transfers — purple/magenta
+	if (strcmp(prefix, "IMG") == 0 || strcmp(prefix, "VOICE") == 0
+		|| strcmp(prefix, "KEY") == 0)
+		return (rgb_color){140, 60, 180, 255};
+
+	// Network/routing — blue
+	if (strcmp(prefix, "TRACE") == 0 || strcmp(prefix, "PING") == 0
+		|| strcmp(prefix, "RAW") == 0 || strcmp(prefix, "CTRL") == 0)
+		return (rgb_color){40, 100, 200, 255};
+
+	// Messaging — teal
+	if (strcmp(prefix, "MSG") == 0 || strcmp(prefix, "CLI") == 0
+		|| strcmp(prefix, "SAR") == 0)
+		return (rgb_color){0, 140, 140, 255};
+
+	// MQTT — dark cyan
+	if (strcmp(prefix, "MQTT") == 0)
+		return (rgb_color){60, 120, 160, 255};
+
+	// Serial/hardware — gray
+	if (strcmp(prefix, "SERIAL") == 0 || strcmp(prefix, "TX") == 0
+		|| strcmp(prefix, "RX") == 0)
+		return (rgb_color){120, 120, 140, 255};
+
+	// Telemetry — orange
+	if (strcmp(prefix, "TELEMETRY") == 0)
+		return (rgb_color){200, 120, 40, 255};
+
+	// Debug — dim gray
+	if (strcmp(prefix, "DEBUG") == 0)
+		return (rgb_color){140, 140, 140, 255};
+
+	// INFO and default — standard text color
+	return ui_color(B_DOCUMENT_TEXT_COLOR);
+}
+
+
 void
 DebugLogWindow::LogMessage(const char* prefix, const char* text)
 {
@@ -139,9 +194,18 @@ DebugLogWindow::LogMessage(const char* prefix, const char* text)
 	BString line;
 	line.SetToFormat("[%s] %s: %s\n", timestamp, prefix, text);
 
-	// Append to log (must lock window first)
+	// Append to log with color based on prefix category
 	if (LockLooper()) {
-		fLogView->Insert(fLogView->TextLength(), line.String(), line.Length());
+		int32 insertPos = fLogView->TextLength();
+		fLogView->Insert(insertPos, line.String(), line.Length());
+
+		// Apply color to the newly inserted text
+		rgb_color color = _ColorForPrefix(prefix);
+		BFont font(be_fixed_font);
+		font.SetSize(10);
+		fLogView->SetFontAndColor(insertPos,
+			insertPos + line.Length(), &font, B_FONT_ALL, &color);
+
 		_PruneLog();
 		fLogView->ScrollToOffset(fLogView->TextLength());
 		UnlockLooper();
