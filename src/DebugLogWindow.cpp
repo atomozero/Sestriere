@@ -362,15 +362,65 @@ _ColorForCommand(uint8 cmd, bool isTx)
 }
 
 
+// Determine header size (bytes before payload) for known frame types
+static int
+_HeaderSize(uint8 cmd, bool isTx)
+{
+	if (isTx) {
+		switch (cmd) {
+			case CMD_SEND_TXT_MSG:			return 39; // [cmd][pubkey32][type][ts4][attempt]
+			case CMD_SEND_CHANNEL_TXT_MSG:	return 7;  // [cmd][chIdx][type][ts4]
+			case CMD_SEND_RAW_DATA:			return 2;  // [cmd][pathLen]
+			case CMD_SEND_LOGIN:			return 33; // [cmd][pubkey32]
+			case CMD_SET_ADVERT_NAME:		return 1;  // [cmd]
+			default: return -1;  // no split
+		}
+	}
+	switch (cmd) {
+		case RSP_CONTACT_MSG_RECV:		return 9;  // [cmd][pubkey6][chIdx][type]
+		case RSP_CONTACT_MSG_RECV_V3:	return 12; // [cmd][snr][?][?][pubkey6][chIdx][type]
+		case RSP_CHANNEL_MSG_RECV:		return 3;  // [cmd][chIdx][type]
+		case RSP_CHANNEL_MSG_RECV_V3:	return 6;  // [cmd][snr][?][?][chIdx][type]
+		case RSP_CONTACT:				return 1;  // [cmd] + struct
+		case RSP_SELF_INFO:				return 1;
+		case PUSH_ADVERT:				return 8;  // [cmd][type][pubkey6]
+		case PUSH_NEW_ADVERT:			return 8;
+		case PUSH_TRACE_DATA:			return 12; // [cmd][flags][pathLen][?][tag4][auth4]
+		case PUSH_RAW_DATA:				return 4;  // [cmd][snr][rssi][?]
+		case PUSH_LOG_RX_DATA:			return 1;
+		case PUSH_TELEMETRY_RESPONSE:	return 7;  // [cmd][pubkey6]
+		case PUSH_STATUS_RESPONSE:		return 7;
+		default: return -1;
+	}
+}
+
+
+// Try to extract printable ASCII from payload bytes
+static BString
+_ExtractAscii(const uint8* data, size_t length)
+{
+	BString result;
+	// Find first run of printable chars (at least 3)
+	for (size_t i = 0; i < length; i++) {
+		if (data[i] >= 0x20 && data[i] < 0x7F) {
+			result += (char)data[i];
+		} else if (result.Length() >= 3) {
+			break;
+		} else {
+			result = "";
+		}
+	}
+	if (result.Length() < 3)
+		return "";
+	return result;
+}
+
+
 void
 DebugLogWindow::LogHex(const char* prefix, const uint8* data, size_t length)
 {
-	BString hex = _FormatHex(data, length);
 	bool isTx = (prefix != NULL && strstr(prefix, "TX") != NULL);
 	const char* cmdName = (length > 0) ? _CommandName(data[0], isTx) : "";
-
-	BString line;
-	line.SetToFormat("%s [%zu]%s: %s", prefix, length, cmdName, hex.String());
 
 	// Get timestamp
 	time_t now = time(NULL);
@@ -379,26 +429,90 @@ DebugLogWindow::LogHex(const char* prefix, const uint8* data, size_t length)
 	char timestamp[16];
 	strftime(timestamp, sizeof(timestamp), "%H:%M:%S", tm);
 
-	BString fullLine;
-	fullLine.SetToFormat("[%s] %s: %s\n", timestamp, prefix, line.String());
+	if (!LockLooper())
+		return;
 
-	// Insert with command-specific color
-	if (LockLooper()) {
-		int32 insertPos = fLogView->TextLength();
-		fLogView->Insert(insertPos, fullLine.String(), fullLine.Length());
+	BFont font(be_fixed_font);
+	font.SetSize(10);
 
+	int headerSize = (length > 0) ? _HeaderSize(data[0], isTx) : -1;
+
+	if (headerSize < 0 || headerSize >= (int)length) {
+		// No split — single color for entire line
+		BString fullLine;
+		fullLine.SetToFormat("[%s] %s: %s [%zu]%s: %s\n",
+			timestamp, prefix, prefix, length, cmdName,
+			_FormatHex(data, length).String());
+
+		int32 pos = fLogView->TextLength();
+		fLogView->Insert(pos, fullLine.String(), fullLine.Length());
 		rgb_color color = (length > 0)
 			? _ColorForCommand(data[0], isTx)
 			: (rgb_color){120, 120, 140, 255};
-		BFont font(be_fixed_font);
-		font.SetSize(10);
-		fLogView->SetFontAndColor(insertPos,
-			insertPos + fullLine.Length(), &font, B_FONT_ALL, &color);
+		fLogView->SetFontAndColor(pos, pos + fullLine.Length(),
+			&font, B_FONT_ALL, &color);
+	} else {
+		// Multi-color: header | payload hex | ASCII decode
+		BString headerHex = _FormatHex(data, headerSize);
+		BString payloadHex = _FormatHex(data + headerSize,
+			length - headerSize);
+		BString ascii = _ExtractAscii(data + headerSize,
+			length - headerSize);
 
-		_PruneLog();
-		fLogView->ScrollToOffset(fLogView->TextLength());
-		UnlockLooper();
+		// Part 1: timestamp + direction + command name
+		BString part1;
+		part1.SetToFormat("[%s] %s: %s [%zu]%s: ",
+			timestamp, prefix, prefix, length, cmdName);
+
+		// Part 2: header hex bytes
+		BString part2(headerHex);
+
+		// Part 3: payload hex bytes
+		BString part3(payloadHex);
+
+		// Part 4: ASCII decode (if any)
+		BString part4;
+		if (ascii.Length() > 0)
+			part4.SetToFormat(" \"%s\"", ascii.String());
+		part4 << "\n";
+
+		rgb_color dimColor = {100, 100, 110, 255};
+		rgb_color cmdColor = _ColorForCommand(data[0], isTx);
+		rgb_color payloadColor;
+		// Brighter payload for incoming messages
+		if (!isTx) {
+			payloadColor = (rgb_color){220, 220, 240, 255};
+		} else {
+			payloadColor = (rgb_color){180, 190, 200, 255};
+		}
+		rgb_color asciiColor = {255, 200, 80, 255};  // gold for text
+
+		int32 pos = fLogView->TextLength();
+
+		// Insert all parts
+		fLogView->Insert(pos, part1.String(), part1.Length());
+		fLogView->SetFontAndColor(pos, pos + part1.Length(),
+			&font, B_FONT_ALL, &dimColor);
+		pos += part1.Length();
+
+		fLogView->Insert(pos, part2.String(), part2.Length());
+		fLogView->SetFontAndColor(pos, pos + part2.Length(),
+			&font, B_FONT_ALL, &cmdColor);
+		pos += part2.Length();
+
+		fLogView->Insert(pos, part3.String(), part3.Length());
+		fLogView->SetFontAndColor(pos, pos + part3.Length(),
+			&font, B_FONT_ALL, &payloadColor);
+		pos += part3.Length();
+
+		fLogView->Insert(pos, part4.String(), part4.Length());
+		fLogView->SetFontAndColor(pos, pos + part4.Length(),
+			&font, B_FONT_ALL, &asciiColor);
 	}
+
+	_PruneLog();
+	fLogView->ScrollToOffset(fLogView->TextLength());
+	UnlockLooper();
 }
 
 
