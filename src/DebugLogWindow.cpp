@@ -213,6 +213,155 @@ DebugLogWindow::LogMessage(const char* prefix, const char* text)
 }
 
 
+// Color for protocol command/response codes based on their function
+static rgb_color
+_ColorForCommand(uint8 cmd, bool isTx)
+{
+	if (isTx) {
+		// TX commands by category
+		switch (cmd) {
+			// Messaging — teal
+			case CMD_SEND_TXT_MSG:
+			case CMD_SEND_CHANNEL_TXT_MSG:
+			case CMD_SYNC_NEXT_MESSAGE:
+				return (rgb_color){0, 140, 140, 255};
+
+			// Network/routing — blue
+			case CMD_SEND_TRACE_PATH:
+			case CMD_RESET_PATH:
+			case CMD_SEND_RAW_DATA:
+			case CMD_SEND_SELF_ADVERT:
+			case CMD_SEND_ANON_REQ:
+			case CMD_SEND_PATH_DISCOVERY_REQ:
+				return (rgb_color){40, 100, 200, 255};
+
+			// Device config — orange
+			case CMD_SET_RADIO_PARAMS:
+			case CMD_SET_RADIO_TX_POWER:
+			case CMD_SET_ADVERT_NAME:
+			case CMD_SET_ADVERT_LATLON:
+			case CMD_SET_DEVICE_TIME:
+			case CMD_SET_DEVICE_PIN:
+			case CMD_SET_OTHER_PARAMS:
+			case CMD_SET_TUNING_PARAMS:
+			case CMD_SET_AUTO_ADD_CONFIG:
+			case CMD_SET_PATH_HASH_MODE:
+			case CMD_FACTORY_RESET:
+			case CMD_REBOOT:
+				return (rgb_color){200, 120, 40, 255};
+
+			// Contacts — green
+			case CMD_GET_CONTACTS:
+			case CMD_ADD_UPDATE_CONTACT:
+			case CMD_REMOVE_CONTACT:
+			case CMD_SHARE_CONTACT:
+			case CMD_EXPORT_CONTACT:
+			case CMD_IMPORT_CONTACT:
+				return (rgb_color){40, 160, 40, 255};
+
+			// Login/auth — purple
+			case CMD_SEND_LOGIN:
+			case CMD_LOGOUT:
+			case CMD_SEND_STATUS_REQ:
+			case CMD_SEND_TELEMETRY_REQ:
+			case CMD_SEND_CONTROL_DATA:
+				return (rgb_color){140, 60, 180, 255};
+
+			// Query/info — dim blue
+			case CMD_GET_BATT_AND_STORAGE:
+			case CMD_GET_STATS:
+			case CMD_DEVICE_QUERY:
+			case CMD_GET_DEVICE_TIME:
+			case CMD_GET_CHANNEL:
+			case CMD_SET_CHANNEL:
+			case CMD_GET_CUSTOM_VARS:
+			case CMD_SET_CUSTOM_VAR:
+			case CMD_GET_TUNING_PARAMS:
+			case CMD_GET_ADVERT_PATH:
+			case CMD_GET_ALLOWED_REPEAT_FREQ:
+			case CMD_GET_AUTO_ADD_CONFIG:
+				return (rgb_color){80, 130, 180, 255};
+
+			default:
+				return (rgb_color){120, 120, 140, 255};
+		}
+	}
+
+	// RX responses by category
+	switch (cmd) {
+		// Protocol status — green/red
+		case RSP_OK:
+			return (rgb_color){40, 160, 40, 255};
+		case RSP_ERR:
+		case RSP_DISABLED:
+			return (rgb_color){200, 40, 40, 255};
+
+		// Incoming messages — teal
+		case RSP_CONTACT_MSG_RECV:
+		case RSP_CONTACT_MSG_RECV_V3:
+		case RSP_CHANNEL_MSG_RECV:
+		case RSP_CHANNEL_MSG_RECV_V3:
+		case RSP_NO_MORE_MESSAGES:
+		case RSP_SENT:
+			return (rgb_color){0, 140, 140, 255};
+
+		// Contact data — green
+		case RSP_CONTACTS_START:
+		case RSP_CONTACT:
+		case RSP_END_OF_CONTACTS:
+		case RSP_EXPORT_CONTACT:
+			return (rgb_color){40, 160, 40, 255};
+
+		// Device info — orange
+		case RSP_SELF_INFO:
+		case RSP_DEVICE_INFO:
+		case RSP_BATT_AND_STORAGE:
+		case RSP_STATS:
+		case RSP_CURR_TIME:
+		case RSP_CHANNEL_INFO:
+		case RSP_TUNING_PARAMS:
+		case RSP_AUTO_ADD_CONFIG:
+		case RSP_ALLOWED_REPEAT_FREQ:
+		case RSP_CUSTOM_VARS:
+			return (rgb_color){200, 120, 40, 255};
+
+		// Push notifications — blue
+		case PUSH_ADVERT:
+		case PUSH_NEW_ADVERT:
+		case PUSH_PATH_UPDATED:
+		case PUSH_PATH_DISCOVERY:
+		case PUSH_TRACE_DATA:
+		case PUSH_RAW_DATA:
+		case PUSH_LOG_RX_DATA:
+			return (rgb_color){40, 100, 200, 255};
+
+		// Delivery confirmations — cyan
+		case PUSH_SEND_CONFIRMED:
+		case PUSH_MSG_WAITING:
+			return (rgb_color){0, 160, 160, 255};
+
+		// Login/auth — purple
+		case PUSH_LOGIN_SUCCESS:
+		case PUSH_LOGIN_FAIL:
+		case PUSH_STATUS_RESPONSE:
+		case PUSH_TELEMETRY_RESPONSE:
+		case PUSH_CONTROL_DATA:
+		case RSP_PRIVATE_KEY:
+		case RSP_SIGN_START:
+		case RSP_SIGNATURE:
+			return (rgb_color){140, 60, 180, 255};
+
+		// Contact changes
+		case PUSH_CONTACT_DELETED:
+		case PUSH_CONTACTS_FULL:
+			return (rgb_color){200, 100, 40, 255};
+
+		default:
+			return (rgb_color){120, 120, 140, 255};
+	}
+}
+
+
 void
 DebugLogWindow::LogHex(const char* prefix, const uint8* data, size_t length)
 {
@@ -222,7 +371,34 @@ DebugLogWindow::LogHex(const char* prefix, const uint8* data, size_t length)
 
 	BString line;
 	line.SetToFormat("%s [%zu]%s: %s", prefix, length, cmdName, hex.String());
-	LogMessage(prefix, line.String());
+
+	// Get timestamp
+	time_t now = time(NULL);
+	struct tm tmBuf;
+	struct tm* tm = localtime_r(&now, &tmBuf);
+	char timestamp[16];
+	strftime(timestamp, sizeof(timestamp), "%H:%M:%S", tm);
+
+	BString fullLine;
+	fullLine.SetToFormat("[%s] %s: %s\n", timestamp, prefix, line.String());
+
+	// Insert with command-specific color
+	if (LockLooper()) {
+		int32 insertPos = fLogView->TextLength();
+		fLogView->Insert(insertPos, fullLine.String(), fullLine.Length());
+
+		rgb_color color = (length > 0)
+			? _ColorForCommand(data[0], isTx)
+			: (rgb_color){120, 120, 140, 255};
+		BFont font(be_fixed_font);
+		font.SetSize(10);
+		fLogView->SetFontAndColor(insertPos,
+			insertPos + fullLine.Length(), &font, B_FONT_ALL, &color);
+
+		_PruneLog();
+		fLogView->ScrollToOffset(fLogView->TextLength());
+		UnlockLooper();
+	}
 }
 
 
