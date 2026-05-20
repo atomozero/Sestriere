@@ -151,7 +151,7 @@ ContactManager::Clear()
 void
 ContactManager::PubKeyToHex(const uint8* pubKey, char* outHex, size_t hexLen)
 {
-	size_t maxBytes = (hexLen - 1) / 2;
+	size_t maxBytes = (hexLen > 0) ? (hexLen - 1) / 2 : 0;
 	if (maxBytes > 32)
 		maxBytes = 32;
 	for (size_t i = 0; i < maxBytes; i++)

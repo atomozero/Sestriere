@@ -362,33 +362,37 @@ FrameParser::_ParseContact(const uint8* data, size_t length)
 void
 FrameParser::_ParseContactMsg(const uint8* data, size_t length, bool isV3)
 {
-	// V3: [0]=code [1]=snr [2]=pathLen [3]=txtType [4-35]=pubkey [36+]=text
-	// V2: [0]=code [1-32]=pubkey [33]=pathLen [34+]=text
+	// V3: [0]=code [1]=snr(Q6.2) [2-3]=reserved [4-9]=pubkey6 [10]=pathLen
+	//     [11]=txtType [12-15]=timestamp(LE) [16+]=text
+	// V2: [0]=code [1-6]=pubkey6 [7]=pathLen [8]=txtType
+	//     [9-12]=timestamp(LE) [13+]=text
 	BMessage msg(MSG_FRAME_CONTACT_MSG);
 	msg.AddBool("is_v3", isV3);
 
 	if (isV3) {
-		if (length < 37) return;
-		msg.AddInt8("snr", static_cast<int8>(data[1]));
-		msg.AddUInt8("path_len", data[2]);
-		msg.AddUInt8("txt_type", data[3]);
-		msg.AddData("pubkey", B_RAW_TYPE, data + 4, 32);
+		if (length < kV3DmMinLength) return;
+		msg.AddInt8("snr", static_cast<int8>(data[kV3DmSnrOffset]));
+		msg.AddData("pubkey", B_RAW_TYPE,
+			data + kV3DmSenderOffset, kPubKeyPrefixSize);
+		msg.AddUInt8("path_len", data[kV3DmPathLenOffset]);
+		msg.AddUInt8("txt_type", data[kV3DmTxtTypeOffset]);
+		msg.AddUInt32("timestamp", ReadLE32(data + kV3DmTimestampOffset));
 
-		size_t textOffset = 36;
-		size_t textLen = length - textOffset;
-		if (textLen > 0)
-			msg.AddData("text", B_RAW_TYPE, data + textOffset, textLen);
+		if (length > kV3DmTextOffset)
+			msg.AddData("text", B_RAW_TYPE,
+				data + kV3DmTextOffset, length - kV3DmTextOffset);
 	} else {
-		if (length < 34) return;
+		if (length < kV2DmMinLength) return;
 		msg.AddInt8("snr", 0);
-		msg.AddUInt8("path_len", data[33]);
-		msg.AddUInt8("txt_type", 0);
-		msg.AddData("pubkey", B_RAW_TYPE, data + 1, 32);
+		msg.AddData("pubkey", B_RAW_TYPE,
+			data + kV2DmSenderOffset, kPubKeyPrefixSize);
+		msg.AddUInt8("path_len", data[kV2DmPathLenOffset]);
+		msg.AddUInt8("txt_type", data[kV2DmTxtTypeOffset]);
+		msg.AddUInt32("timestamp", ReadLE32(data + kV2DmTimestampOffset));
 
-		size_t textOffset = 34;
-		size_t textLen = length - textOffset;
-		if (textLen > 0)
-			msg.AddData("text", B_RAW_TYPE, data + textOffset, textLen);
+		if (length > kV2DmTextOffset)
+			msg.AddData("text", B_RAW_TYPE,
+				data + kV2DmTextOffset, length - kV2DmTextOffset);
 	}
 
 	_PostToTarget(&msg, data, length);
@@ -398,33 +402,35 @@ FrameParser::_ParseContactMsg(const uint8* data, size_t length, bool isV3)
 void
 FrameParser::_ParseChannelMsg(const uint8* data, size_t length, bool isV3)
 {
-	// V3: [0]=code [1]=snr [2]=pathLen [3]=channelIdx [4-35]=senderPubkey [36+]=text
-	// V2: [0]=code [1-32]=senderPubkey [33]=channelIdx [34+]=text
+	// V3: [0]=code [1]=snr(Q6.2) [2-3]=reserved [4]=channelIdx
+	//     [5]=pathLen [6]=txtType [7-10]=timestamp(LE) [11+]=text
+	// V2: [0]=code [1]=channelIdx [2]=pathLen [3]=txtType
+	//     [4-7]=timestamp(LE) [8+]=text
 	BMessage msg(MSG_FRAME_CHANNEL_MSG);
 	msg.AddBool("is_v3", isV3);
 
 	if (isV3) {
-		if (length < 37) return;
-		msg.AddInt8("snr", static_cast<int8>(data[1]));
-		msg.AddUInt8("path_len", data[2]);
-		msg.AddUInt8("channel_idx", data[3]);
-		msg.AddData("pubkey", B_RAW_TYPE, data + 4, 32);
+		if (length < kV3ChMinLength) return;
+		msg.AddInt8("snr", static_cast<int8>(data[kV3ChSnrOffset]));
+		msg.AddUInt8("channel_idx", data[kV3ChChannelOffset]);
+		msg.AddUInt8("path_len", data[kV3ChPathLenOffset]);
+		msg.AddUInt8("txt_type", data[kV3ChTxtTypeOffset]);
+		msg.AddUInt32("timestamp", ReadLE32(data + kV3ChTimestampOffset));
 
-		size_t textOffset = 36;
-		size_t textLen = length - textOffset;
-		if (textLen > 0)
-			msg.AddData("text", B_RAW_TYPE, data + textOffset, textLen);
+		if (length > kV3ChTextOffset)
+			msg.AddData("text", B_RAW_TYPE,
+				data + kV3ChTextOffset, length - kV3ChTextOffset);
 	} else {
-		if (length < 35) return;
+		if (length < kV2ChMinLength) return;
 		msg.AddInt8("snr", 0);
-		msg.AddUInt8("path_len", 0);
-		msg.AddUInt8("channel_idx", data[33]);
-		msg.AddData("pubkey", B_RAW_TYPE, data + 1, 32);
+		msg.AddUInt8("channel_idx", data[kV2ChChannelOffset]);
+		msg.AddUInt8("path_len", data[kV2ChPathLenOffset]);
+		msg.AddUInt8("txt_type", data[kV2ChTxtTypeOffset]);
+		msg.AddUInt32("timestamp", ReadLE32(data + kV2ChTimestampOffset));
 
-		size_t textOffset = 34;
-		size_t textLen = length - textOffset;
-		if (textLen > 0)
-			msg.AddData("text", B_RAW_TYPE, data + textOffset, textLen);
+		if (length > kV2ChTextOffset)
+			msg.AddData("text", B_RAW_TYPE,
+				data + kV2ChTextOffset, length - kV2ChTextOffset);
 	}
 
 	_PostToTarget(&msg, data, length);

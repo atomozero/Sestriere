@@ -434,10 +434,8 @@ MainWindow::MainWindow()
 	_RefreshPorts();
 	fprintf(stderr, "[MainWindow] Ports refreshed\n");
 
-	// Load contacts from Haiku People files
-	fprintf(stderr, "[MainWindow] Loading people contacts...\n");
-	_LoadPeopleContacts();
-	fprintf(stderr, "[MainWindow] People contacts loaded\n");
+	// People contacts loaded only after connection (companion-specific).
+	// Do NOT load at startup — avoids showing contacts from other companions.
 
 	SetSizeLimits(500, B_SIZE_UNLIMITED, 350, B_SIZE_UNLIMITED);
 	CenterOnScreen();
@@ -721,6 +719,7 @@ MainWindow::_BuildUI()
 	fSendButton = new BButton("send", "Send",
 		new BMessage(MSG_SEND_MESSAGE));
 	fSendButton->SetEnabled(false);
+	fSendButton->SetToolTip("Send message (Enter)");
 
 	// Character counter (shows remaining chars)
 	fCharCounter = new BStringView("char_counter", "0/160");
@@ -732,6 +731,7 @@ MainWindow::_BuildUI()
 		fCharCounter->SetFont(&counterFont);
 	}
 	fCharCounter->SetHighUIColor(B_PANEL_TEXT_COLOR);
+	fCharCounter->SetToolTip("Characters used / maximum");
 
 	fMessageInput->SetModificationMessage(new BMessage(MSG_INPUT_MODIFIED));
 
@@ -740,12 +740,14 @@ MainWindow::_BuildUI()
 		new BMessage(MSG_SELECT_IMAGE));
 	fAttachButton->SetEnabled(false);
 	fAttachButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 20));
+	fAttachButton->SetToolTip("Attach and send image");
 
 	// GIF button
 	fGifButton = new BButton("gif", "GIF",
 		new BMessage(MSG_SELECT_GIF));
 	fGifButton->SetEnabled(false);
 	fGifButton->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 20));
+	fGifButton->SetToolTip("Send animated GIF");
 
 	// Img/GIF stacked vertically
 	BView* mediaButtons = new BView("media_btns", 0);
@@ -781,6 +783,7 @@ MainWindow::_BuildUI()
 	fSearchCloseButton = new BButton("close_search", "\xC3\x97",
 		new BMessage(MSG_SEARCH_CLOSE));
 	fSearchCloseButton->SetExplicitSize(BSize(24, 24));
+	fSearchCloseButton->SetToolTip("Close search (Escape)");
 	BLayoutBuilder::Group<>(fSearchBar, B_HORIZONTAL, B_USE_SMALL_SPACING)
 		.SetInsets(4, 2, 4, 2)
 		.Add(fMsgSearchField, 1.0)
@@ -794,24 +797,32 @@ MainWindow::_BuildUI()
 	// Row 1: query/action buttons
 	fAdminVersionBtn = new BButton("admin_ver", "Version",
 		new BMessage(kMsgAdminVersion));
+	fAdminVersionBtn->SetToolTip("Query firmware version");
 	fAdminNeighborsBtn = new BButton("admin_nbr", "Neighbors",
 		new BMessage(kMsgAdminNeighbors));
+	fAdminNeighborsBtn->SetToolTip("List neighbor nodes");
 	fAdminClockBtn = new BButton("admin_clk", "Clock",
 		new BMessage(kMsgAdminClock));
+	fAdminClockBtn->SetToolTip("Query device clock");
 	fAdminClearStatsBtn = new BButton("admin_cls", "Clear Stats",
 		new BMessage(kMsgAdminClearStats));
+	fAdminClearStatsBtn->SetToolTip("Reset traffic statistics");
 	fAdminRebootBtn = new BButton("admin_reb", "Reboot",
 		new BMessage(kMsgAdminReboot));
+	fAdminRebootBtn->SetToolTip("Reboot the repeater");
 	fAdminFactoryResetBtn = new BButton("admin_frs", "Factory Reset",
 		new BMessage(kMsgAdminFactoryReset));
+	fAdminFactoryResetBtn->SetToolTip("Erase all settings and reset");
 
 	// Row 2: name/password fields
 	fAdminNameField = new BTextControl("admin_name", "Name:", "", NULL);
 	fAdminSetNameBtn = new BButton("admin_sn", "Set",
 		new BMessage(kMsgAdminSetName));
+	fAdminSetNameBtn->SetToolTip("Set repeater name");
 	fAdminPwdField = new BTextControl("admin_pwd", "Pwd:", "", NULL);
 	fAdminSetPwdBtn = new BButton("admin_sp", "Set",
 		new BMessage(kMsgAdminSetPwd));
+	fAdminSetPwdBtn->SetToolTip("Set repeater password");
 
 	BLayoutBuilder::Group<>(fAdminToolbar, B_VERTICAL, 1)
 		.SetInsets(B_USE_SMALL_SPACING, 2, B_USE_SMALL_SPACING, 2)
@@ -838,6 +849,7 @@ MainWindow::_BuildUI()
 	// Chat panel (header + search bar + messages + admin toolbar + input)
 	BView* chatPanel = new BView("chat_panel", 0);
 	chatPanel->SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
+	chatPanel->SetExplicitMinSize(BSize(200, B_SIZE_UNSET));
 	BLayoutBuilder::Group<>(chatPanel, B_VERTICAL, 0)
 		.Add(fChatHeader)
 		.Add(fSearchBar)
@@ -1315,10 +1327,12 @@ MainWindow::MessageReceived(BMessage* message)
 				alert->ResizeTo(alert->Bounds().Width(),
 					alert->Bounds().Height() + 30);
 			}
+			// Copy text before Go() — Go() destroys alert and all children
+			BString inputText(input->Text());
 			int32 result = alert->Go();
-			if (result == 1 && input->Text()[0] != '\0') {
+			if (result == 1 && inputText.Length() > 0) {
 				BString tcpPort;
-				tcpPort.SetToFormat("tcp:%s", input->Text());
+				tcpPort.SetToFormat("tcp:%s", inputText.String());
 				fSelectedPort = tcpPort;
 				_Connect();
 			}
@@ -3854,9 +3868,11 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 
 		case MSG_IMAGE_SEND_NEXT:
-			BMessenger(fMediaHandler, this).SendMessage(
-				new BMessage(MSG_MEDIA_SEND_NEXT_IMG));
+		{
+			BMessage fwd(MSG_MEDIA_SEND_NEXT_IMG);
+			BMessenger(fMediaHandler, this).SendMessage(&fwd);
 			break;
+		}
 
 		case MSG_IMAGE_FETCH_REQ:
 		{
@@ -3955,9 +3971,11 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 
 		case MSG_VOICE_SEND_NEXT:
-			BMessenger(fMediaHandler, this).SendMessage(
-				new BMessage(MSG_MEDIA_SEND_NEXT_VOICE));
+		{
+			BMessage fwd(MSG_MEDIA_SEND_NEXT_VOICE);
+			BMessenger(fMediaHandler, this).SendMessage(&fwd);
 			break;
+		}
 
 		case MSG_VOICE_PLAY_REQ:
 		{
@@ -7427,10 +7445,9 @@ MainWindow::_HandlePushLoginResult(const uint8* data, size_t length)
 
 			// Start admin auto-refresh timer (15s)
 			delete fAdminRefreshTimer;
-			fAdminRefreshTimer = NULL;
+			BMessage adminTickMsg(MSG_ADMIN_REFRESH_TICK);
 			fAdminRefreshTimer = new BMessageRunner(this,
-				new BMessage(MSG_ADMIN_REFRESH_TICK),
-				kAdminRefreshInterval);
+				&adminTickMsg, kAdminRefreshInterval);
 		}
 	}
 }
@@ -9036,8 +9053,9 @@ MainWindow::_ExportGPX(const char* path)
 		name.ReplaceAll(">", "&gt;");
 		name.ReplaceAll("\"", "&quot;");
 
-		gpx.SetToFormat("%s  <wpt lat=\"%.7f\" lon=\"%.7f\">\n",
-			gpx.String(), lat, lon);
+		BString wptTag;
+		wptTag.SetToFormat("  <wpt lat=\"%.7f\" lon=\"%.7f\">\n", lat, lon);
+		gpx << wptTag;
 		gpx << "    <name>" << name << "</name>\n";
 		gpx << "    <type>" << typeStr << "</type>\n";
 

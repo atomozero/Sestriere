@@ -8,6 +8,7 @@
 #ifndef _UTILS_H
 #define _UTILS_H
 
+#include <GraphicsDefs.h>
 #include <SupportDefs.h>
 
 #include <cstdio>
@@ -194,6 +195,18 @@ BatteryPercent(uint16 millivolts, BatteryChemistry chemistry = BATTERY_LIPO)
 		return 100;
 	return ((int)millivolts - range.minMv) * 100
 		/ (range.maxMv - range.minMv);
+}
+
+
+// Choose contrasting text color (white or black) for a given background.
+// Uses perceived luminance (ITU-R BT.601).
+static inline rgb_color
+ContrastTextColor(rgb_color bg)
+{
+	int luminance = (int)(0.299f * bg.red + 0.587f * bg.green + 0.114f * bg.blue);
+	if (luminance > 150)
+		return (rgb_color){0, 0, 0, 255};
+	return (rgb_color){255, 255, 255, 255};
 }
 
 

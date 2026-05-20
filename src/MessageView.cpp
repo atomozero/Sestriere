@@ -20,6 +20,7 @@
 #include "GiphyClient.h"
 #include "ImageSession.h"
 #include "SarMarker.h"
+#include "Utils.h"
 #include "VoiceSession.h"
 
 
@@ -136,8 +137,8 @@ MessageView::MessageView(const ChatMessage& message, const char* senderName)
 	fGifCurrentFrame(0),
 	fGifLastAdvance(0),
 	fGifLoadState(0),
-	fBaselineOffset(0),
-	fReactions(message.reactions)
+	fReactions(message.reactions),
+	fBaselineOffset(0)
 {
 	memcpy(fPubKeyPrefix, message.pubKeyPrefix, sizeof(fPubKeyPrefix));
 
@@ -1015,7 +1016,7 @@ MessageView::_DrawImageBubble(BView* owner, BRect frame)
 		else
 			fragText.SetToFormat("%d/%d fragments",
 				(int)fImageReceivedFragments, (int)fImageTotalFragments);
-		owner->SetHighColor(255, 255, 255);
+		owner->SetHighColor(ContrastTextColor((rgb_color){80, 80, 80, 255}));
 		float tw = owner->StringWidth(fragText.String());
 		owner->DrawString(fragText.String(),
 			BPoint(contentLeft + (imgW - tw) / 2, barY + 18));
@@ -1525,7 +1526,7 @@ MessageView::_DrawGifBubble(BView* owner, BRect frame)
 		rgb_color badgeBg = {0, 0, 0, 180};
 		owner->SetHighColor(badgeBg);
 		owner->FillRoundRect(badgeRect, 3, 3);
-		owner->SetHighColor((rgb_color){255, 255, 255, 255});
+		owner->SetHighColor(ContrastTextColor(badgeBg));
 		font_height bfh;
 		badgeFont.GetHeight(&bfh);
 		owner->DrawString("GIF",
