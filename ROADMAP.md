@@ -1,7 +1,7 @@
 # Sestriere — Roadmap
 
 Analisi dello stato attuale e piano di sviluppo futuro.
-Ultimo aggiornamento: marzo 2026 (v2.0-dev)
+Ultimo aggiornamento: maggio 2026 (v2.2-dev)
 
 ---
 
@@ -453,34 +453,98 @@ Tutti i bug segnalati risolti. Release beta1 distribuita ai tester il 2026-04-24
 | B16 | — | Bug | Sestriere.rdef version out of sync | DONE |
 | B17 | — | Bug | Password cap 15 vs 16 | DONE |
 
-### Sprint 6 — Feature request + hardening (v2.2)
+### Sprint 6 — Feature request + hardening (v2.2) — COMPLETATO
 
-| ID | Issue | Tipo | Descrizione | Difficoltà | Priorità |
-|----|-------|------|-------------|------------|----------|
-| S14 | [#15](https://github.com/atomozero/Sestriere/issues/15) | Feature | Gestione region radio mancante | Media | Media |
-| S15 | [#16](https://github.com/atomozero/Sestriere/issues/16) | Feature | Comando "Imposta percorso" mancante | Media | Media |
-| G5 | — | Proto | Verificare se 0x88 è ancora supportato | Bassa | Bassa |
-| G6 | — | Proto | Channel commands non documentati — monitorare | Bassa | Bassa |
-| T1 | — | Test | Test voice/image codec (round-trip) | Bassa | Bassa |
-| T2 | — | Test | Test SerialHandler read/write (PTY pair) | Bassa | Bassa |
-| T3 | — | Test | Test health score MissionControl | Bassa | Bassa |
+| ID | Issue | Tipo | Descrizione | Stato |
+|----|-------|------|-------------|-------|
+| S14 | [#15](https://github.com/atomozero/Sestriere/issues/15) | Feature | Gestione region radio | DONE — auto-detect preset da RSP_SELF_INFO, persistenza in device.settings |
+| S15 | [#16](https://github.com/atomozero/Sestriere/issues/16) | Feature | Comando "Imposta percorso" | N/A — CMD_SET_PATH non esiste nel protocollo MeshCore. Reset Path + Trace Route già nel context menu |
+| G5 | — | Proto | Verificare se 0x88 è ancora supportato | DONE — confermato attivo (radio log mode) |
+| G6 | — | Proto | Channel commands non documentati | Monitorare — funzionano correttamente |
+| T1 | — | Test | Test voice/image codec (round-trip) | DONE — test_media_codec (5 test) |
+| T2 | — | Test | Test SerialHandler read/write | DONE — test_serial_framing (6 test) |
+| T3 | — | Test | Test health score MissionControl | DONE — test_health_score (5 test) |
+
+### Sprint 7 — Architettura e qualità (v2.2) — COMPLETATO
+
+**Decomposizione MainWindow** (da 10.312 a ~9.350 righe):
+
+| Componente | Righe | Stato |
+|------------|-------|-------|
+| FrameParser | 940 | Fully wired — tutti i frame V3 passano da qui |
+| MediaHandler | 1051 | Fully wired — invio/ricezione/envelope/purge |
+| ContactManager | 210 | Fully wired — O(1) HashMap, 51 accessi migrati |
+| PersistenceManager | 428 | Fully wired — MQTT/device/UI/advanced settings |
+| MicIconView | 121 | Estratto da MainWindow.cpp |
+
+**Nuovi comandi protocollo**:
+- CMD_LOGOUT (29) — disconnetti da repeater/room con UI context menu
+- CMD_SEND_PATH_DISCOVERY_REQ (52) — path discovery attivo con UI
+- CMD_SEND_CHANNEL_DATA (62) — datagrammi binari su canale
+- CMD_EXPORT/IMPORT_PRIVATE_KEY (23/24) — backup/restore identità
+
+**Bug fix critici**:
+- Fix use-after-free in TCP connect dialog (alert->Go() distruggeva BTextControl)
+- Fix 3 BMessage memory leak (new BMessage in SendMessage/BMessageRunner)
+- Fix FrameParser V3 DM/channel offsets (pubkey 6 byte, non 32)
+- Fix SMAZ retry: messaggi ritrasmessi ora usano testo compresso
+- Fix size_t underflow in ContactManager::PubKeyToHex
+
+**Performance**:
+- Chat pagination: carica 50 messaggi alla volta, scroll-back lazy load
+- Contact HashMap O(1): lookup per pubkey prefix via unordered_map
+- DB index ottimizzato: composito (contact_key, companion_key, timestamp)
+- GPX export: fix quadratic string building
+
+**Qualità DB**:
+- PRAGMA quick_check(1) all'avvio
+- PRAGMA optimize per query planner
+- Rilevamento SQLITE_FULL (disk pieno)
+
+**GUI**:
+- Debug Log colorato per categoria MeshCore (20 prefissi)
+- Debug Log hex multi-colore: header/payload/ASCII con zone distinte
+- Theme-aware: ContrastTextColor() su tutti i badge/avatar (7 file)
+- Tooltip su 14+ pulsanti
+- Troncamento nomi lunghi in ChatHeader/ContactInfoPanel
+- LoginWindow Enter key, chat panel min size
+- Advanced settings tab (7 parametri configurabili)
+- 0 compiler warning (fix MessageView member init order)
+
+**Test**: da 66 a 70 test (+4: frame_parser, media_codec, serial_framing, health_score)
 
 ---
 
-## Valori hardcoded da rendere configurabili
+### Sprint 8 — Prossimi obiettivi (v2.3)
 
+| ID | Tipo | Descrizione | Difficoltà | Priorità |
+|----|------|-------------|------------|----------|
+| R1 | Refactor | Estrarre DeliveryManager (~300 righe retry/timeout) | Alta | Media |
+| R2 | Resilienza | Image/voice transfer resume su disconnect | Media | Media |
+| R3 | Test | Fix 7 test skippati (build failures) | Bassa | Bassa |
+| R4 | UI | Colori hardcoded in MapView/NetworkMapWindow (30+) | Bassa | Bassa |
+
+---
+
+## Valori hardcoded — ora configurabili
+
+I seguenti parametri sono configurabili dal tab "Advanced" in Settings (persistiti in `advanced.settings`):
+
+| Parametro | Default | Dove |
+|-----------|---------|------|
+| Tile cache max | 50 MB | TileCache.h / AdvancedSettings |
+| Retention messaggi DB | 30 giorni | DatabaseManager.cpp / AdvancedSettings |
+| Durata max voice | 30 secondi | VoiceSession.h / AdvancedSettings |
+| WebP quality | 50 | ImageCodec.h / AdvancedSettings |
+| Immagine max dim | 192 px | ImageCodec.h / AdvancedSettings |
+| Media display max | 250×300 px | ChatView / AdvancedSettings |
+
+Non ancora configurabili:
 | Parametro | Valore | Dove |
 |-----------|--------|------|
-| Tile cache max | 50 MB | TileCache.h: kMaxDiskCacheBytes |
-| Retention messaggi DB | 30 giorni | DatabaseManager.cpp |
-| Durata max voice | 30 secondi | VoiceSession.h: kMaxVoiceRecordSeconds |
-| Finestra SNR chart | 24 ore | SNRChartView.cpp |
-| WebP quality | 50 | ImageCodec.h |
-| Immagine max dim | 192 px | ImageCodec.h |
-| Media display max | 250x300 px | ChatView |
 | MQTT publish interval | ~10 secondi | MqttClient.cpp |
 | Memory tile cache | 32 tiles | TileCache.h |
-| Pruning SNR history | 30 giorni | DatabaseManager.cpp |
+| Finestra SNR chart | 24 ore | SNRChartView.cpp |
 
 ---
 
