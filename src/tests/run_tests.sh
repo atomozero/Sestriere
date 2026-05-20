@@ -30,15 +30,31 @@ for src in test_*.cpp; do
 	case "$SQLITE_TESTS" in
 		*"$name"*) LIBS="-lsqlite3" ;;
 	esac
+	# Tests requiring -lbe (Haiku API)
+	BE_TESTS="test_frame_parser test_media_codec test_compat test_contact_groups test_database_thread_safety test_mqtt_thread_safety test_mute_logic"
+	# Tests requiring DatabaseManager.o
+	DB_OBJ_TESTS="test_contact_groups test_mute_logic"
+	case "$DB_OBJ_TESTS" in
+		*"$name"*)
+			LIBS="$LIBS -lsqlite3"
+			OBJS="$OBJS ../objects.x86_64-cc13-debug/DatabaseManager.o"
+			;;
+	esac
+	case "$BE_TESTS" in
+		*"$name"*) LIBS="$LIBS -lbe" ;;
+	esac
 	case "$name" in
 		test_frame_parser)
-			LIBS="-lbe"
 			OBJS="../objects.x86_64-cc13-debug/FrameParser.o"
 			;;
 		test_media_codec)
-			LIBS="-lbe"
 			OBJS="../objects.x86_64-cc13-debug/ImageSession.o ../objects.x86_64-cc13-debug/VoiceSession.o"
 			;;
+		test_wal_fallback)
+			LIBS="$LIBS -lsqlite3"
+			;;
+		# test_channel_psk requires SHA256.h which doesn't exist
+		# in this project — kept as skip
 	esac
 
 	# Build

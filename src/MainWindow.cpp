@@ -94,6 +94,7 @@
 
 
 #include "ContactManager.h"
+#include "DeliveryManager.h"
 #include "FrameParser.h"
 #include "MediaHandler.h"
 #include "MicIconView.h"
@@ -406,6 +407,8 @@ MainWindow::MainWindow()
 	fMediaHandler = new MediaHandler(this, fProtocol, fAudioEngine);
 	AddHandler(fMediaHandler);
 	fContactManager = new ContactManager();
+	fDeliveryManager = new DeliveryManager(this, fProtocol, fContactManager);
+	AddHandler(fDeliveryManager);
 
 	// MQTT client is created lazily when needed
 	fprintf(stderr, "[MainWindow] MQTT will be initialized on demand\n");

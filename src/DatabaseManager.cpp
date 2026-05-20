@@ -1672,7 +1672,10 @@ DatabaseManager::_CreateTables()
 		"  text TEXT NOT NULL,"
 		"  path_len INTEGER DEFAULT 255,"
 		"  snr INTEGER DEFAULT 0,"
-		"  txt_type INTEGER DEFAULT 0"
+		"  txt_type INTEGER DEFAULT 0,"
+		"  delivery_status INTEGER DEFAULT 1,"
+		"  round_trip_ms INTEGER DEFAULT 0,"
+		"  companion_key TEXT DEFAULT ''"
 		")");
 	if (!ok)
 		return false;

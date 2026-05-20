@@ -11,6 +11,7 @@ SRCS = \
 	FrameParser.cpp \
 	MediaHandler.cpp \
 	ContactManager.cpp \
+	DeliveryManager.cpp \
 	PersistenceManager.cpp \
 	AddChannelWindow.cpp \
 	Community.cpp \

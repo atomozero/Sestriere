@@ -22,6 +22,7 @@ class BFilePanel;
 
 class AudioEngine;
 class ContactManager;
+class DeliveryManager;
 class FrameParser;
 class MediaHandler;
 
@@ -264,6 +265,7 @@ private:
 			FrameParser*	fFrameParser;
 			MediaHandler*	fMediaHandler;
 			ContactManager*	fContactManager;
+			DeliveryManager* fDeliveryManager;
 
 			// Menu bar and status bar
 			BMenuBar*		fMenuBar;
