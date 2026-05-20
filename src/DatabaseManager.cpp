@@ -48,7 +48,8 @@ DatabaseManager::DatabaseManager()
 	:
 	fDB(NULL),
 	fLock("DatabaseManager"),
-	fDirectory("")
+	fDirectory(""),
+	fDiskFull(false)
 {
 	fCompanionKey[0] = '\0';
 }
@@ -132,6 +133,26 @@ DatabaseManager::Open(const char* directory)
 	if (_IsEmpty())
 		_MigrateFromTextFile(directory);
 
+	// Quick integrity check (limited to first error)
+	{
+		sqlite3_stmt* stmt;
+		if (sqlite3_prepare_v2(fDB, "PRAGMA quick_check(1)", -1,
+			&stmt, NULL) == SQLITE_OK) {
+			if (sqlite3_step(stmt) == SQLITE_ROW) {
+				const char* result = reinterpret_cast<const char*>(
+					sqlite3_column_text(stmt, 0));
+				if (result != NULL && strcmp(result, "ok") != 0) {
+					fprintf(stderr, "[DatabaseManager] WARNING: "
+						"integrity check failed: %s\n", result);
+				}
+			}
+			sqlite3_finalize(stmt);
+		}
+	}
+
+	// Optimize query planner statistics
+	_Execute("PRAGMA optimize");
+
 	// Prune old SNR data (older than 30 days)
 	PruneOldData(30);
 	// Prune old topology edges (older than 30 days)
@@ -210,6 +231,11 @@ DatabaseManager::InsertMessage(const char* contactKeyHex,
 
 	rc = sqlite3_step(stmt);
 	sqlite3_finalize(stmt);
+
+	if (rc == SQLITE_FULL) {
+		fprintf(stderr, "[DatabaseManager] DISK FULL — cannot save message\n");
+		fDiskFull = true;
+	}
 
 	return rc == SQLITE_DONE;
 }
@@ -1654,7 +1680,7 @@ DatabaseManager::_CreateTables()
 	// Index for fast contact message lookup
 	ok = _Execute(
 		"CREATE INDEX IF NOT EXISTS idx_messages_contact "
-		"ON messages (contact_key, channel, timestamp)");
+		"ON messages (contact_key, companion_key, timestamp)");
 	if (!ok)
 		return false;
 

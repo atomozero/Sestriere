@@ -48,6 +48,18 @@ ContactInfo*
 ContactManager::FindByPrefix(const uint8* prefix, size_t prefixLen) const
 {
 	BAutolock lock(fLock);
+
+	// Use O(1) hashmap for standard 6-byte prefix lookups
+	if (prefixLen == kPubKeyPrefixSize && !fPrefixIndex.empty()) {
+		char hex[13];
+		PubKeyToHex(prefix, hex, sizeof(hex));
+		auto it = fPrefixIndex.find(std::string(hex, 12));
+		if (it != fPrefixIndex.end())
+			return it->second;
+		return NULL;
+	}
+
+	// Fallback to linear scan for non-standard prefix lengths
 	for (int32 i = 0; i < fContacts.CountItems(); i++) {
 		ContactInfo* c = fContacts.ItemAt(i);
 		if (memcmp(c->publicKey, prefix, prefixLen) == 0)
@@ -103,6 +115,8 @@ ContactManager::EndSync()
 	fSyncing = false;
 	// Clear old contacts — they've been replaced
 	fOldContacts.MakeEmpty(true);
+	// Rebuild O(1) lookup index
+	RebuildIndex();
 }
 
 
@@ -167,4 +181,19 @@ ContactManager::PubKeyPrefix(const uint8* pubKey)
 	char hex[13];
 	PubKeyToHex(pubKey, hex, sizeof(hex));
 	return BString(hex);
+}
+
+
+void
+ContactManager::RebuildIndex()
+{
+	fPrefixIndex.clear();
+	for (int32 i = 0; i < fContacts.CountItems(); i++) {
+		ContactInfo* c = fContacts.ItemAt(i);
+		if (c != NULL) {
+			char hex[13];
+			PubKeyToHex(c->publicKey, hex, sizeof(hex));
+			fPrefixIndex[std::string(hex, 12)] = c;
+		}
+	}
 }

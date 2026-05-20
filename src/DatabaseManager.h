@@ -44,6 +44,7 @@ public:
 			bool			Open(const char* directory);
 			void			Close();
 			bool			IsOpen() const { return fDB != NULL; }
+			bool			IsDiskFull() const { return fDiskFull; }
 
 			// Message persistence
 			bool			InsertMessage(const char* contactKeyHex,
@@ -163,6 +164,7 @@ private:
 			BLocker			fLock;
 			BString			fDirectory;
 			char			fCompanionKey[13];  // 12 hex + null
+			bool			fDiskFull;
 };
 
 #endif // _DATABASEMANAGER_H

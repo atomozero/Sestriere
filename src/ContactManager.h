@@ -11,6 +11,9 @@
 #include <Locker.h>
 #include <String.h>
 
+#include <unordered_map>
+#include <string>
+
 #include "Types.h"
 
 
@@ -53,11 +56,17 @@ public:
 	bool					Lock() { return fLock.Lock(); }
 	void					Unlock() { fLock.Unlock(); }
 
+	// Rebuild the O(1) lookup index after bulk changes (EndSync)
+	void					RebuildIndex();
+
 private:
 	mutable BLocker			fLock;
 	OwningObjectList<ContactInfo>	fContacts;
 	OwningObjectList<ContactInfo>	fOldContacts;
 	bool					fSyncing;
+
+	// O(1) lookup by 12-char hex prefix string
+	std::unordered_map<std::string, ContactInfo*>	fPrefixIndex;
 };
 
 
