@@ -437,13 +437,11 @@ private:
 			// Contact groups
 			OwningObjectList<BString>	fGroupNames;
 
-			// Voice/Image (sessions owned by MediaHandler)
-			VoiceSessionManager*	fVoiceSessions;  // non-owning
+			// Voice/Image (sessions fully owned by MediaHandler)
 			AudioEngine*	fAudioEngine;
 			MicIconView*	fVoiceButton;
 
 			// Image sharing UI
-			ImageSessionManager*	fImageSessions;  // non-owning
 			BFilePanel*		fImageOpenPanel;
 			BFilePanel*		fImageSavePanel;
 			const BBitmap*	fSaveBitmap;

@@ -341,10 +341,8 @@ MainWindow::MainWindow()
 	fTxPackets(0),
 	fRxPackets(0),
 	fDeviceUptime(0),
-	fVoiceSessions(NULL),
 	fAudioEngine(NULL),
 	fVoiceButton(NULL),
-	fImageSessions(NULL),
 	fImageOpenPanel(NULL),
 	fImageSavePanel(NULL),
 	fSaveBitmap(NULL),
@@ -407,8 +405,6 @@ MainWindow::MainWindow()
 	AddHandler(fFrameParser);
 	fMediaHandler = new MediaHandler(this, fProtocol, fAudioEngine);
 	AddHandler(fMediaHandler);
-	fImageSessions = fMediaHandler->ImageSessions();
-	fVoiceSessions = fMediaHandler->VoiceSessions();
 	fContactManager = new ContactManager();
 
 	// MQTT client is created lazily when needed
@@ -3886,8 +3882,7 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 
 		case MSG_IMAGE_EXPIRE:
-			if (fImageSessions != NULL)
-				fImageSessions->PurgeExpired();
+			fMediaHandler->PurgeExpiredImages();
 			break;
 
 		case MSG_IMAGE_SAVE_REQ:
@@ -4017,8 +4012,7 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 
 		case MSG_VOICE_EXPIRE:
-			if (fVoiceSessions != NULL)
-				fVoiceSessions->PurgeExpired();
+			fMediaHandler->PurgeExpiredVoice();
 			break;
 
 		// --- GIF sharing ---
@@ -6347,7 +6341,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 	// Check for VE2 voice envelope — create incoming session
 	if (VoiceSessionManager::IsVoiceEnvelope(text)) {
 		VoiceSession* voiceSession =
-			fVoiceSessions->CreateFromEnvelope(text);
+			fMediaHandler->CreateVoiceFromEnvelope(text);
 		if (voiceSession != NULL) {
 			_LogMessage("VOICE", BString().SetToFormat(
 				"Received voice envelope: session %08x, %lds, %d fragments",
@@ -6358,7 +6352,7 @@ MainWindow::_HandleContactMsgRecv(const uint8* data, size_t length, bool isV3)
 	}
 	// Check for IE2 image envelope — auto-fetch fragments
 	else if (ImageSessionManager::IsImageEnvelope(text)) {
-		ImageSession* imgSession = fImageSessions->CreateFromEnvelope(text);
+		ImageSession* imgSession = fMediaHandler->CreateImageFromEnvelope(text);
 		if (imgSession != NULL) {
 			_LogMessage("IMG", BString().SetToFormat(
 				"Received image envelope: session %08x, %dx%d, %d fragments",
@@ -6656,7 +6650,7 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 	// Check for VE2 voice envelope
 	if (VoiceSessionManager::IsVoiceEnvelope(messageText)) {
 		VoiceSession* voiceSession =
-			fVoiceSessions->CreateFromEnvelope(messageText);
+			fMediaHandler->CreateVoiceFromEnvelope(messageText);
 		if (voiceSession != NULL) {
 			_LogMessage("VOICE", BString().SetToFormat(
 				"Received channel voice envelope: session %08x",
@@ -6666,7 +6660,7 @@ MainWindow::_HandleChannelMsgRecv(const uint8* data, size_t length, bool isV3)
 	// Check for IE2 image envelope — auto-fetch fragments
 	else if (ImageSessionManager::IsImageEnvelope(messageText)) {
 		ImageSession* imgSession =
-			fImageSessions->CreateFromEnvelope(messageText);
+			fMediaHandler->CreateImageFromEnvelope(messageText);
 		if (imgSession != NULL) {
 			_LogMessage("IMG", BString().SetToFormat(
 				"Received channel image envelope: session %08x",
@@ -9387,7 +9381,7 @@ MainWindow::_GifDownloadThread(void* data)
 void
 MainWindow::_StartImageFetch(uint32 sessionId)
 {
-	ImageSession* session = fImageSessions->FindSession(sessionId);
+	ImageSession* session = fMediaHandler->ImageSessions()->FindSession(sessionId);
 	if (session == NULL)
 		return;
 
@@ -9425,7 +9419,7 @@ MainWindow::_StartImageFetch(uint32 sessionId)
 void
 MainWindow::_UpdateImageMessageView(uint32 sid)
 {
-	ImageSession* session = fImageSessions->FindSession(sid);
+	ImageSession* session = fMediaHandler->ImageSessions()->FindSession(sid);
 	if (session == NULL)
 		return;
 
@@ -9448,7 +9442,7 @@ MainWindow::_UpdateImageMessageView(uint32 sid)
 void
 MainWindow::_UpdateVoiceMessageView(uint32 sid)
 {
-	VoiceSession* session = fVoiceSessions->FindSession(sid);
+	VoiceSession* session = fMediaHandler->VoiceSessions()->FindSession(sid);
 	if (session == NULL)
 		return;
 

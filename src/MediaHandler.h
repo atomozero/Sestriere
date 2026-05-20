@@ -57,9 +57,19 @@ public:
 
 	virtual void			MessageReceived(BMessage* message);
 
-	// Access to session managers (MainWindow still needs these for UI)
+	// Access to session managers (MainWindow uses for UI lookup)
 	ImageSessionManager*	ImageSessions() const { return fImageSessions; }
 	VoiceSessionManager*	VoiceSessions() const { return fVoiceSessions; }
+
+	// Session lifecycle (centralized in MediaHandler)
+	void					PurgeExpiredImages()
+								{ fImageSessions->PurgeExpired(); }
+	void					PurgeExpiredVoice()
+								{ fVoiceSessions->PurgeExpired(); }
+	ImageSession*			CreateImageFromEnvelope(const char* text)
+								{ return fImageSessions->CreateFromEnvelope(text); }
+	VoiceSession*			CreateVoiceFromEnvelope(const char* text)
+								{ return fVoiceSessions->CreateFromEnvelope(text); }
 
 	// State queries
 	bool					IsRecording() const { return fRecordingVoice; }
