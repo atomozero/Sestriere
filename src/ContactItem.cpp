@@ -18,6 +18,7 @@
 #include <ctime>
 
 #include "Constants.h"
+#include "Utils.h"
 
 // Layout constants
 static const float kItemHeight = 52.0f;
@@ -55,7 +56,7 @@ static inline rgb_color ChannelColor()
 	return ui_color(B_CONTROL_HIGHLIGHT_COLOR);
 }
 static const rgb_color& kBadgeColor = kStatusOnline;  // Accent teal
-static const rgb_color kBadgeTextColor = {255, 255, 255, 255};
+// Badge text: use ContrastTextColor() at draw time
 
 
 ContactItem::ContactItem(const ContactInfo& contact)
@@ -225,7 +226,7 @@ ContactItem::DrawItem(BView* owner, BRect frame, bool complete)
 		owner->FillRoundRect(badgeRect, 3, 3);
 
 		// Badge text
-		owner->SetHighColor(255, 255, 255);
+		owner->SetHighColor(ContrastTextColor(badgeBg));
 		owner->DrawString(badge,
 			BPoint(badgeX + 3, badgeY2 + smallFh.ascent));
 	}
@@ -268,7 +269,7 @@ ContactItem::DrawItem(BView* owner, BRect frame, bool complete)
 		owner->SetHighColor(kBadgeColor);
 		owner->FillEllipse(badgeRect);
 
-		owner->SetHighColor(kBadgeTextColor);
+		owner->SetHighColor(ContrastTextColor(kBadgeColor));
 		BFont badgeFont;
 		owner->GetFont(&badgeFont);
 		badgeFont.SetSize(be_plain_font->Size() * kFontScaleSmall);
@@ -368,8 +369,8 @@ ContactItem::_DrawAvatar(BView* owner, BRect rect)
 		}
 	}
 
-	// Draw initials
-	owner->SetHighColor(255, 255, 255);
+	// Draw initials (contrast against avatar background)
+	owner->SetHighColor(ContrastTextColor(avatarColor));
 	BFont font;
 	owner->GetFont(&font);
 	font.SetSize(kAvatarSize * 0.45f);

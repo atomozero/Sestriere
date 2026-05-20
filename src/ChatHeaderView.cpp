@@ -121,7 +121,10 @@ ChatHeaderView::Draw(BRect updateRect)
 	nameFont.GetHeight(&nameFh);
 
 	SetHighColor(fIsChannel ? ChannelColor() : NameColor());
-	DrawString(fDisplayName.String(),
+	BString truncName(fDisplayName);
+	float maxNameWidth = bounds.Width() - textLeft - kMargin;
+	nameFont.TruncateString(&truncName, B_TRUNCATE_END, maxNameWidth);
+	DrawString(truncName.String(),
 		BPoint(textLeft, bounds.top + kMargin + nameFh.ascent));
 
 	// Console mode badge
@@ -337,8 +340,8 @@ ChatHeaderView::_DrawAvatar(BRect rect)
 		initials = "?";
 	}
 
-	// Draw initials
-	SetHighColor(255, 255, 255);
+	// Draw initials (contrast against avatar background)
+	SetHighColor(ContrastTextColor(avatarColor));
 	BFont font;
 	GetFont(&font);
 	font.SetSize(kAvatarSize * 0.45f);

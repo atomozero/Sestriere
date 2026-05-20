@@ -274,9 +274,7 @@ enum {
 
 	// Settings & UI
 	MSG_PORT_SELECTED = 'psel',
-	MSG_PRESET_SELECTED = 'pres',
 	MSG_APPLY_SETTINGS = 'aply',
-	MSG_REFRESH_PORTS = 'rfpt',
 	MSG_CLEAR_LOG = 'clog',
 	MSG_SET_NAME = 'snam',
 	MSG_SET_TUNING_PARAMS = 'stun',
@@ -288,8 +286,6 @@ enum {
 	MSG_SYNC_CONTACTS = 'sync',
 	MSG_CONTACT_SELECTED = 'csel',
 	MSG_SEND_MESSAGE = 'smsg',
-	MSG_CONTACT_ADDED = 'cadd',
-	MSG_MESSAGE_RECEIVED = 'mrec',
 	MSG_SEND_ADVERT = 'advt',
 	MSG_DEVICE_QUERY = 'dqry',
 	MSG_GET_BATTERY = 'batt',
@@ -313,11 +309,6 @@ enum {
 	// Packet Analyzer
 	MSG_SHOW_PACKET_ANALYZER = 'pkan',
 	MSG_PACKET_CAPTURED = 'pkcp',
-	MSG_PACKET_CAPTURE_START = 'pcst',
-	MSG_PACKET_CAPTURE_STOP = 'pcsp',
-	MSG_PACKET_CAPTURE_CLEAR = 'pccl',
-	MSG_PACKET_EXPORT_CSV = 'pxcv',
-	MSG_PACKET_FILTER_CHANGED = 'pfch',
 
 	// MQTT
 	MSG_MQTT_TOGGLE = 'mqtg',
@@ -388,7 +379,6 @@ enum {
 	// SAR Markers
 	MSG_SAR_MARKER = 'sarm',
 	MSG_SEND_SAR_MARKER = 'ssrm',
-	MSG_SAR_TYPE_CHOSEN = 'srty',
 
 	// Image sharing
 	MSG_SELECT_IMAGE = 'imgs',
@@ -468,6 +458,8 @@ const rgb_color kColorGood = {80, 180, 80, 255};        // Green
 const rgb_color kColorFair = {200, 170, 50, 255};       // Yellow
 const rgb_color kColorPoor = {210, 120, 50, 255};       // Orange
 const rgb_color kColorBad = {200, 60, 60, 255};         // Red
+const rgb_color kColorTxLed = {100, 180, 255, 255};    // Blue (TX indicator)
+const rgb_color kColorRxLed = {255, 160, 40, 255};     // Orange (RX indicator)
 
 // Node type badge colors
 const rgb_color kTypeBadgeChat = {79, 195, 247, 255};       // Light Blue

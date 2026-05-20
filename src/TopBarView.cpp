@@ -334,7 +334,7 @@ TopBarView::_DrawMqttToggle(BRect rect)
 		// Green filled pill
 		SetHighColor(kColorGood);
 		FillRoundRect(rect, 4, 4);
-		SetHighColor(255, 255, 255, 255);
+		SetHighColor(ContrastTextColor(kColorGood));
 	} else if (fMqttEnabled) {
 		// Outlined pill (enabled but not connected)
 		rgb_color outline = tint_color(bg, B_DARKEN_3_TINT);
@@ -519,11 +519,7 @@ TopBarView::Draw(BRect updateRect)
 	fUptimeRect = BRect();
 
 	// Connection status dot
-	if (fConnected) {
-		SetHighColor(80, 180, 80, 255);
-	} else {
-		SetHighColor(200, 60, 60, 255);
-	}
+	SetHighColor(fConnected ? kColorGood : kColorBad);
 	BRect dotRect(x, iconY - 3, x + 6, iconY + 3);
 	FillEllipse(dotRect);
 	fConnectionDotRect.Set(x - 2, 0, x + 8, bounds.bottom);
@@ -548,7 +544,7 @@ TopBarView::Draw(BRect updateRect)
 
 		// TX LED (blue)
 		if (txOn)
-			SetHighColor(100, 180, 255, 255);
+			SetHighColor(kColorTxLed);
 		else
 			SetHighColor(ledOff);
 		BRect txDot(x, iconY - 3.5f, x + 7, iconY + 3.5f);
@@ -560,9 +556,9 @@ TopBarView::Draw(BRect updateRect)
 		DrawString("R", BPoint(x, textY));
 		x += ledFont.StringWidth("R") + 2;
 
-		// RX LED (orange)
+		// RX LED
 		if (rxOn)
-			SetHighColor(255, 160, 40, 255);
+			SetHighColor(kColorRxLed);
 		else
 			SetHighColor(ledOff);
 		BRect rxDot(x, iconY - 3.5f, x + 7, iconY + 3.5f);
@@ -631,14 +627,20 @@ TopBarView::Draw(BRect updateRect)
 	fRepeaterRect = BRect();
 	if (fConnected && fNearestRepeaterDist >= 0
 		&& rx > leftEdge + 120) {
+		// Truncate repeater name to max 12 chars to prevent overlap
+		BString repName(fNearestRepeaterName);
+		if (repName.Length() > 12) {
+			repName.Truncate(11);
+			repName << "\xE2\x80\xA6";  // ellipsis
+		}
 		char repStr[48];
 		if (fNearestRepeaterDist < 1.0f) {
 			snprintf(repStr, sizeof(repStr), "\xC2\xBB%s %dm",
-				fNearestRepeaterName.String(),
+				repName.String(),
 				(int)(fNearestRepeaterDist * 1000));
 		} else {
 			snprintf(repStr, sizeof(repStr), "\xC2\xBB%s %.1fkm",
-				fNearestRepeaterName.String(),
+				repName.String(),
 				fNearestRepeaterDist);
 		}
 		float w = StringWidth(repStr);

@@ -17,6 +17,11 @@
 #include <String.h>
 #include <Window.h>
 
+#include "Constants.h"
+#include "Utils.h"
+
+// Use project-wide status colors from Constants.h (kColorGood/kColorBad)
+
 #include <cstdio>
 #include <cstring>
 
@@ -26,8 +31,7 @@ static const char* kAppSignature = "application/x-vnd.Sestriere";
 static const uint32 kMsgSendAdvert = 'advt';
 
 // Battery percentage (LiPo: 3.0V-4.2V) — mirrors Constants.h
-static const uint16 kBattMinMv = 3000;
-static const uint16 kBattRangeMv = 1200;
+// Battery constants from Constants.h
 
 static inline int
 _BatteryPercent(uint16 millivolts)
@@ -145,12 +149,13 @@ DeskbarReplicant::Draw(BRect /*updateRect*/)
 
 	// Draw unread count badge
 	if (fUnreadCount > 0) {
-		SetHighColor(220, 40, 40);
+		rgb_color badgeColor = {220, 40, 40, 255};
+		SetHighColor(badgeColor);
 		BRect badge(bounds.right - 7, bounds.top,
 			bounds.right, bounds.top + 7);
 		FillEllipse(badge);
 
-		SetHighColor(255, 255, 255);
+		SetHighColor(ContrastTextColor(badgeColor));
 		char countStr[4];
 		if (fUnreadCount > 9)
 			strlcpy(countStr, "+", sizeof(countStr));
@@ -275,9 +280,10 @@ DeskbarReplicant::_DrawIcon(BRect bounds)
 	} else {
 		// Fallback: simple circle
 		if (fConnected)
-			SetHighColor(0, 150, 0);
+			SetHighColor(kColorGood);
 		else
-			SetHighColor(150, 150, 150);
+			SetHighColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR),
+				B_DARKEN_2_TINT));
 
 		BRect circle = bounds.InsetByCopy(2, 2);
 		FillEllipse(circle);

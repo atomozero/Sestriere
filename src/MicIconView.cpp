@@ -8,7 +8,10 @@
 #include "MicIconView.h"
 
 #include <Font.h>
+#include <InterfaceDefs.h>
 #include <Window.h>
+
+#include "Constants.h"
 
 
 MicIconView::MicIconView(BMessage* clickMsg)
@@ -45,7 +48,7 @@ MicIconView::Draw(BRect updateRect)
 
 	if (fEnabled) {
 		if (fRecording)
-			SetHighColor(200, 40, 40);
+			SetHighColor(kColorBad);  // red when recording
 		else
 			SetHighUIColor(B_PANEL_TEXT_COLOR);
 	} else {

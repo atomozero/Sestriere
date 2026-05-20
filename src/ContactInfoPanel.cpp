@@ -190,11 +190,17 @@ ContactInfoPanel::Draw(BRect updateRect)
 		SetHighColor(TextColor());
 	}
 
-	float nameWidth = StringWidth(displayName);
+	BString truncDisplayName(displayName);
+	BFont currentFont;
+	GetFont(&currentFont);
+	currentFont.TruncateString(&truncDisplayName, B_TRUNCATE_END,
+		contentWidth);
+	float nameWidth = StringWidth(truncDisplayName.String());
 	float nameX = x + (contentWidth - nameWidth) / 2;
 	if (nameX < x)
 		nameX = x;
-	DrawString(displayName, BPoint(nameX, y + nameFh.ascent));
+	DrawString(truncDisplayName.String(),
+		BPoint(nameX, y + nameFh.ascent));
 	y += nameFh.ascent + nameFh.descent + 4;
 
 	// === Type badge (centered) ===
@@ -219,8 +225,8 @@ ContactInfoPanel::Draw(BRect updateRect)
 		BRect badgeRect(badgeX, y, badgeX + badgeW, y + badgeH);
 		FillRoundRect(badgeRect, 4, 4);
 
-		// Badge text
-		SetHighColor(255, 255, 255);
+		// Badge text (contrast against badge color)
+		SetHighColor(ContrastTextColor(TypeBadgeColor(fContact->type)));
 		DrawString(typeName,
 			BPoint(badgeX + 6, y + 2 + smallFh.ascent));
 		y += badgeH + kMargin;
@@ -482,8 +488,8 @@ ContactInfoPanel::_DrawAvatar(BRect rect)
 		initials = "?";
 	}
 
-	// Draw initials
-	SetHighColor(255, 255, 255);
+	// Draw initials (contrast against avatar background)
+	SetHighColor(ContrastTextColor(avatarColor));
 	BFont font;
 	GetFont(&font);
 	font.SetSize(kAvatarSize * 0.4f);
