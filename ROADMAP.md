@@ -515,14 +515,39 @@ Tutti i bug segnalati risolti. Release beta1 distribuita ai tester il 2026-04-24
 
 ---
 
-### Sprint 8 — Prossimi obiettivi (v2.3)
+### Sprint 8 — Robustezza e test (v2.3) — COMPLETATO
+
+| ID | Tipo | Descrizione | Stato |
+|----|------|-------------|-------|
+| R1 | Refactor | Estrarre DeliveryManager | DONE — BHandler con coda, retry, timeout prediction, drain outbox |
+| R2 | Resilienza | Image/voice transfer resume su disconnect | DONE (parziale) — sessioni sopravvivono in memoria al disconnect; persistenza DB per resume post-riavvio app deferred |
+| R3 | Test | Fix 7 test skippati (build failures) | DONE — 6 su 7 recuperati. Fix DB schema (companion_key nel CREATE TABLE), run_tests.sh con -lbe/-lsqlite3/DatabaseManager.o. Solo test_channel_psk rimane skip (SHA256.h non nel progetto) |
+| R4 | UI | Colori hardcoded in MapView/NetworkMapWindow | N/A — colori di rendering su sfondo scuro fisso, non colori UI. 26 costanti già definite |
+
+**Componenti estratti** (totale 8):
+
+| Componente | Righe | Ruolo |
+|------------|-------|-------|
+| FrameParser | 940 | Decodifica frame binari V3 → BMessage |
+| MediaHandler | 1051 | Protocollo image/voice/GIF transfer |
+| ContactManager | 210 | Storage contatti con O(1) HashMap lookup |
+| PersistenceManager | 428 | I/O settings (MQTT, device, UI, advanced) |
+| DeliveryManager | 350 | Coda messaggi, retry, timeout, drain outbox |
+| MicIconView | 121 | BView microphone push-to-talk |
+| ContrastTextColor | — | Helper theme-aware per testo su sfondi colorati |
+
+**Test**: da 70 a 76 pass (+6 recuperati), 1 skip
+
+---
+
+### Sprint 9 — Prossimi obiettivi (v2.4)
 
 | ID | Tipo | Descrizione | Difficoltà | Priorità |
 |----|------|-------------|------------|----------|
-| R1 | Refactor | Estrarre DeliveryManager (~300 righe retry/timeout) | Alta | Media |
-| R2 | Resilienza | Image/voice transfer resume su disconnect | Media | Media |
-| R3 | Test | Fix 7 test skippati (build failures) | Bassa | Bassa |
-| R4 | UI | Colori hardcoded in MapView/NetworkMapWindow (30+) | Bassa | Bassa |
+| P1 | Resilienza | Persistenza sessioni media su DB per resume post-riavvio | Alta | Media |
+| P2 | Refactor | Wire DeliveryManager in MainWindow (sostituire metodi legacy) | Media | Media |
+| P3 | UX | Notifica BAlert su disco pieno (IsDiskFull()) | Bassa | Bassa |
+| P4 | Test | Creare test_channel_psk senza dipendenza SHA256.h | Bassa | Bassa |
 
 ---
 
