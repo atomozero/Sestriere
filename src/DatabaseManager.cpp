@@ -308,6 +308,93 @@ DatabaseManager::LoadMessages(const char* contactKeyHex,
 
 
 int32
+DatabaseManager::LoadMessagesPage(const char* contactKeyHex,
+	OwningObjectList<ChatMessage>& outMessages, int32 limit, int32 offset)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL)
+		return 0;
+
+	// Load most recent messages first (DESC), then reverse for display order.
+	// Using subquery to get correct ASC ordering with LIMIT/OFFSET from end.
+	const char* sql =
+		"SELECT timestamp, outgoing, channel, sender_key, text, path_len, "
+		"snr, txt_type, delivery_status, round_trip_ms "
+		"FROM messages WHERE contact_key = ? AND companion_key = ? "
+		"ORDER BY timestamp DESC LIMIT ? OFFSET ?";
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
+	if (rc != SQLITE_OK)
+		return 0;
+
+	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_text(stmt, 2, fCompanionKey, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_int(stmt, 3, limit);
+	sqlite3_bind_int(stmt, 4, offset);
+
+	// Collect in reverse order (DESC from DB) into temp list
+	OwningObjectList<ChatMessage> temp(true);
+	while (sqlite3_step(stmt) == SQLITE_ROW) {
+		ChatMessage* msg = new ChatMessage();
+		msg->timestamp = static_cast<uint32>(sqlite3_column_int(stmt, 0));
+		msg->isOutgoing = sqlite3_column_int(stmt, 1) != 0;
+		msg->isChannel = sqlite3_column_int(stmt, 2) != 0;
+		const char* senderHex =
+			reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+		if (senderHex != NULL)
+			ParseHexPrefix(msg->pubKeyPrefix, senderHex);
+		const char* text =
+			reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+		if (text != NULL)
+			strlcpy(msg->text, text, sizeof(msg->text));
+		msg->pathLen = static_cast<uint8>(sqlite3_column_int(stmt, 5));
+		msg->snr = static_cast<int8>(sqlite3_column_int(stmt, 6));
+		msg->txtType = static_cast<uint8>(sqlite3_column_int(stmt, 7));
+		msg->deliveryStatus = static_cast<uint8>(sqlite3_column_int(stmt, 8));
+		msg->roundTripMs = static_cast<uint32>(sqlite3_column_int(stmt, 9));
+		temp.AddItem(msg);
+	}
+	sqlite3_finalize(stmt);
+
+	// Reverse into output (oldest first for display)
+	int32 count = temp.CountItems();
+	for (int32 i = count - 1; i >= 0; i--) {
+		ChatMessage* msg = temp.RemoveItemAt(i);
+		outMessages.AddItem(msg);
+	}
+	return count;
+}
+
+
+int32
+DatabaseManager::CountMessages(const char* contactKeyHex)
+{
+	BAutolock lock(fLock);
+	if (fDB == NULL)
+		return 0;
+
+	const char* sql =
+		"SELECT COUNT(*) FROM messages "
+		"WHERE contact_key = ? AND companion_key = ?";
+
+	sqlite3_stmt* stmt;
+	int rc = sqlite3_prepare_v2(fDB, sql, -1, &stmt, NULL);
+	if (rc != SQLITE_OK)
+		return 0;
+
+	sqlite3_bind_text(stmt, 1, contactKeyHex, -1, SQLITE_TRANSIENT);
+	sqlite3_bind_text(stmt, 2, fCompanionKey, -1, SQLITE_TRANSIENT);
+
+	int32 count = 0;
+	if (sqlite3_step(stmt) == SQLITE_ROW)
+		count = sqlite3_column_int(stmt, 0);
+	sqlite3_finalize(stmt);
+	return count;
+}
+
+
+int32
 DatabaseManager::LoadChannelMessages(OwningObjectList<ChatMessage>& outMessages)
 {
 	BAutolock lock(fLock);

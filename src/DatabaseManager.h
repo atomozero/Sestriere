@@ -50,6 +50,10 @@ public:
 								const ChatMessage& message);
 			int32			LoadMessages(const char* contactKeyHex,
 								OwningObjectList<ChatMessage>& outMessages);
+			int32			LoadMessagesPage(const char* contactKeyHex,
+								OwningObjectList<ChatMessage>& outMessages,
+								int32 limit, int32 offset = 0);
+			int32			CountMessages(const char* contactKeyHex);
 			int32			LoadChannelMessages(
 								OwningObjectList<ChatMessage>& outMessages);
 

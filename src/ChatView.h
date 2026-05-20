@@ -24,12 +24,15 @@ public:
 
 	virtual void			AttachedToWindow();
 	virtual void			FrameResized(float newWidth, float newHeight);
+	virtual void			ScrollTo(BPoint where);
 	virtual void			MouseDown(BPoint where);
 	virtual bool			InitiateDrag(BPoint point, int32 index,
 								bool wasSelected);
 	virtual void			MessageReceived(BMessage* message);
 
 			void			AddMessage(const ChatMessage& message,
+								const char* senderName = NULL);
+			void			PrependMessage(const ChatMessage& message,
 								const char* senderName = NULL);
 			void			UpdateDeliveryStatus(int32 index, uint8 status,
 								uint32 rtt = 0, uint8 retryCount = 0);
@@ -51,12 +54,21 @@ public:
 
 			void			ScrollToBottom();
 
+			// Pagination
+			bool			HasOlderMessages() const
+								{ return fHasOlderMessages; }
+			void			LoadOlderMessages();
+
 private:
 			void			_LoadCachedImage(MessageView* item);
 			void			_LoadCachedGif(MessageView* item);
+			void			_AddMessageItem(const ChatMessage& msg,
+								const char* senderName, int32 insertAt = -1);
 
 			ContactInfo*	fCurrentContact;
 			BString			fCurrentContactName;
+			int32			fLoadedOffset;
+			bool			fHasOlderMessages;
 			BString			fSelfName;
 			BMessageRunner*	fGifAnimateRunner;
 

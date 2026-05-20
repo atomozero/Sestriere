@@ -42,6 +42,8 @@ ChatView::ChatView(const char* name)
 	BListView(name, B_SINGLE_SELECTION_LIST),
 	fCurrentContact(NULL),
 	fCurrentContactName(""),
+	fLoadedOffset(0),
+	fHasOlderMessages(false),
 	fGifAnimateRunner(NULL),
 	fCurrentMessages(20)
 {
@@ -61,6 +63,17 @@ ChatView::AttachedToWindow()
 
 	// Light gray background for chat area
 	SetViewColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_1_TINT));
+}
+
+
+void
+ChatView::ScrollTo(BPoint where)
+{
+	BListView::ScrollTo(where);
+
+	// When user scrolls to top, auto-load older messages
+	if (where.y <= 1.0f && fHasOlderMessages && Window() != NULL)
+		Window()->PostMessage(MSG_LOAD_OLDER_MESSAGES);
 }
 
 
@@ -467,6 +480,20 @@ ChatView::AddMessage(const ChatMessage& message, const char* senderName)
 
 
 void
+ChatView::PrependMessage(const ChatMessage& message, const char* senderName)
+{
+	MessageView* item = new MessageView(message, senderName);
+
+	if (item->IsImageMessage())
+		_LoadCachedImage(item);
+	if (item->IsGifMessage())
+		_LoadCachedGif(item);
+
+	AddItem(item, 0);  // Insert at top
+}
+
+
+void
 ChatView::SetSelfName(const char* name)
 {
 	fSelfName = (name != NULL) ? name : "";
@@ -533,6 +560,8 @@ void
 ChatView::SetCurrentContact(ContactInfo* contact)
 {
 	fCurrentContact = contact;
+	fLoadedOffset = 0;
+	fHasOlderMessages = false;
 	if (contact != NULL)
 		fCurrentContactName = contact->name;
 	else
@@ -542,45 +571,18 @@ ChatView::SetCurrentContact(ContactInfo* contact)
 	ClearMessages();
 
 	if (contact != NULL) {
-		// Load messages from contact's history
-		for (int32 i = 0; i < contact->messages.CountItems(); i++) {
+		int32 totalMessages = contact->messages.CountItems();
+		int32 startIdx = (totalMessages > kMessagePageSize)
+			? (totalMessages - kMessagePageSize) : 0;
+		fLoadedOffset = startIdx;
+		fHasOlderMessages = (startIdx > 0);
+
+		for (int32 i = startIdx; i < totalMessages; i++) {
 			ChatMessage* msg = contact->messages.ItemAt(i);
 			if (msg != NULL) {
-				const char* senderName = msg->isOutgoing ? "Me" : contact->name;
-				MessageView* item = new MessageView(*msg, senderName);
-
-				// Detect @[selfName] mention
-				if (!msg->isOutgoing && fSelfName.Length() > 0) {
-					BString mention;
-					mention.SetToFormat("@[%s]", fSelfName.String());
-					if (BString(msg->text).IFindFirst(mention) >= 0)
-						item->SetMention(true);
-				}
-
-				// Load saved image from DB if this is an IE2 message
-				if (item->IsImageMessage())
-					_LoadCachedImage(item);
-
-				// Load cached GIF if this is a GIF message
-				if (item->IsGifMessage())
-					_LoadCachedGif(item);
-
-				AddItem(item);
-
-				// Trigger download for GIF messages not found in cache
-				if (item->IsGifMessage() && item->GifLoadState() == 0
-					&& Window() != NULL) {
-					item->SetGifLoadState(1);  // loading
-					BMessage dlMsg(MSG_GIF_DOWNLOAD_REQ);
-					dlMsg.AddString("gif_id", item->GifId());
-					dlMsg.AddInt32("item_index",
-						CountItems() - 1);
-					Window()->PostMessage(&dlMsg);
-				}
-
-				// Request emoji downloads for regular text messages
-				if (!item->IsGifMessage() && !item->IsImageMessage())
-					EmojiRenderer::RequestEmoji(msg->text, this);
+				const char* senderName = msg->isOutgoing
+					? "Me" : contact->name;
+				_AddMessageItem(*msg, senderName);
 			}
 		}
 		ScrollToBottom();
@@ -595,6 +597,85 @@ ChatView::SetCurrentContact(ContactInfo* contact)
 			}
 		}
 	}
+}
+
+
+void
+ChatView::LoadOlderMessages()
+{
+	if (fCurrentContact == NULL || !fHasOlderMessages)
+		return;
+
+	int32 endIdx = fLoadedOffset;
+	int32 startIdx = (endIdx > kMessagePageSize)
+		? (endIdx - kMessagePageSize) : 0;
+	fLoadedOffset = startIdx;
+	fHasOlderMessages = (startIdx > 0);
+
+	// Prepend older messages (oldest first = insert at top)
+	int32 inserted = 0;
+	for (int32 i = startIdx; i < endIdx; i++) {
+		ChatMessage* msg = fCurrentContact->messages.ItemAt(i);
+		if (msg != NULL) {
+			const char* senderName = msg->isOutgoing
+				? "Me" : fCurrentContactName.String();
+			_AddMessageItem(*msg, senderName, inserted);
+			inserted++;
+		}
+	}
+
+	// Keep scroll position stable (offset by inserted items)
+	if (inserted > 0) {
+		BFont font;
+		GetFont(&font);
+		float totalHeight = 0;
+		for (int32 i = 0; i < inserted; i++) {
+			BListItem* item = ItemAt(i);
+			if (item != NULL)
+				totalHeight += item->Height() + 1;
+		}
+		ScrollBy(0, totalHeight);
+	}
+}
+
+
+// Shared helper for creating and adding a MessageView
+void
+ChatView::_AddMessageItem(const ChatMessage& msg, const char* senderName,
+	int32 insertAt)
+{
+	MessageView* item = new MessageView(msg, senderName);
+
+	// Detect @[selfName] mention
+	if (!msg.isOutgoing && fSelfName.Length() > 0) {
+		BString mention;
+		mention.SetToFormat("@[%s]", fSelfName.String());
+		if (BString(msg.text).IFindFirst(mention) >= 0)
+			item->SetMention(true);
+	}
+
+	if (item->IsImageMessage())
+		_LoadCachedImage(item);
+	if (item->IsGifMessage())
+		_LoadCachedGif(item);
+
+	if (insertAt >= 0)
+		AddItem(item, insertAt);
+	else
+		AddItem(item);
+
+	// Trigger GIF download if not cached
+	if (item->IsGifMessage() && item->GifLoadState() == 0
+		&& Window() != NULL) {
+		item->SetGifLoadState(1);
+		BMessage dlMsg(MSG_GIF_DOWNLOAD_REQ);
+		dlMsg.AddString("gif_id", item->GifId());
+		dlMsg.AddInt32("item_index", IndexOf(item));
+		Window()->PostMessage(&dlMsg);
+	}
+
+	if (!item->IsGifMessage() && !item->IsImageMessage())
+		EmojiRenderer::RequestEmoji(msg.text, this);
 }
 
 

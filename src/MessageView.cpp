@@ -98,6 +98,7 @@ static const float kSarBorderWidth = 3.0f;
 MessageView::MessageView(const ChatMessage& message, const char* senderName)
 	:
 	BListItem(),
+	fReactions(message.reactions),
 	fText(message.text),
 	fSenderName(senderName != NULL ? senderName : ""),
 	fTimestamp(message.timestamp),
@@ -137,7 +138,6 @@ MessageView::MessageView(const ChatMessage& message, const char* senderName)
 	fGifCurrentFrame(0),
 	fGifLastAdvance(0),
 	fGifLoadState(0),
-	fReactions(message.reactions),
 	fBaselineOffset(0)
 {
 	memcpy(fPubKeyPrefix, message.pubKeyPrefix, sizeof(fPubKeyPrefix));

@@ -4141,6 +4141,11 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case MSG_LOAD_OLDER_MESSAGES:
+			if (fChatView->HasOlderMessages())
+				fChatView->LoadOlderMessages();
+			break;
+
 		default:
 			// Route FrameParser messages to the legacy handler bridge
 			if (message->what >= 'fp00' && message->what <= 'fp99')
@@ -4309,10 +4314,13 @@ MainWindow::_SelectContact(int32 index)
 		fGifButton->SetEnabled(fConnected);
 		fVoiceButton->SetEnabled(fConnected && fAudioEngine != NULL);
 
-		// Load channel message history
+		// Load channel message history (last page only)
 		fChatView->ClearMessages();
 		if (ch != NULL) {
-			for (int32 mi = 0; mi < ch->messages.CountItems(); mi++) {
+			int32 total = ch->messages.CountItems();
+			int32 startIdx = (total > kMessagePageSize)
+				? (total - kMessagePageSize) : 0;
+			for (int32 mi = startIdx; mi < total; mi++) {
 				ChatMessage* msg = ch->messages.ItemAt(mi);
 				if (msg != NULL) {
 					const char* senderName = msg->isOutgoing ? "Me" : "Channel";

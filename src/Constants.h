@@ -182,6 +182,7 @@ const uint8 TXT_TYPE_SIGNED_PLAIN = 2;
 
 // Contact hex key buffer sizes
 const size_t kContactHexSize = 13;    // 6-byte prefix as hex (12 chars + null)
+const int32 kMessagePageSize = 50;    // Messages loaded per page (pagination)
 const size_t kPubKeyHexSize = 65;     // 32-byte key as hex (64 chars + null)
 
 // RSP_CONTACT frame (148 bytes total)
@@ -356,6 +357,7 @@ enum {
 	MSG_CONTACT_LOGOUT = 'clgt',
 	MSG_PATH_DISCOVERY = 'pdsc',
 	MSG_EXPORT_KEY = 'expk',
+	MSG_LOAD_OLDER_MESSAGES = 'ldol',
 
 	// Raw serial data (non-protocol text from device)
 	MSG_RAW_SERIAL_DATA = 'raws',
