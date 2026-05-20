@@ -1,118 +1,110 @@
 /*
- * Test: Channel PSK generation uses SHA-256 hash instead of raw name bytes.
- *
- * Verifies:
- * 1. PSK is NOT just the channel name bytes (old broken behavior)
- * 2. Same name always produces the same PSK (deterministic)
- * 3. Different names produce different PSKs
- * 4. Short names still produce full 16-byte PSK with non-zero entropy
+ * Test: Channel PSK generation
+ * Verifies that hashtag channel PSK derivation uses SHA-256 hash
+ * of the channel name, not raw name bytes.
  */
 
-#include <SHA256.h>
 #include <cstdio>
 #include <cstring>
-#include <cstdint>
+#include <cassert>
 
-static void GeneratePSK(const char* name, uint8_t* secret)
+
+static FILE*
+OpenSource(const char* filename)
 {
-	SHA256 hash;
-	hash.Update(name, strlen(name));
-	const uint8_t* digest = hash.Digest();
-	memcpy(secret, digest, 16);
+	FILE* f = fopen(filename, "r");
+	if (f == NULL) {
+		char path[256];
+		snprintf(path, sizeof(path), "../%s", filename);
+		f = fopen(path, "r");
+	}
+	return f;
 }
 
-static bool IsAllZero(const uint8_t* buf, size_t len)
+
+static bool
+FileContains(const char* filename, const char* pattern)
 {
-	for (size_t i = 0; i < len; i++) {
-		if (buf[i] != 0)
-			return false;
+	FILE* f = OpenSource(filename);
+	if (f == NULL)
+		return false;
+
+	char line[512];
+	bool found = false;
+	while (fgets(line, sizeof(line), f) != NULL) {
+		if (strstr(line, pattern) != NULL) {
+			found = true;
+			break;
+		}
 	}
-	return true;
+	fclose(f);
+	return found;
 }
 
-int main()
+
+static void
+TestPskDerivation()
 {
-	int failures = 0;
+	printf("  TestPskDerivation...");
 
-	// Test 1: PSK should NOT equal raw name bytes
-	{
-		const char* name = "test";
-		uint8_t secret[16];
-		GeneratePSK(name, secret);
+	// MainWindow derives hashtag PSK via SHA-256 hash
+	assert(FileContains("MainWindow.cpp", "SHA256"));
+	assert(FileContains("MainWindow.cpp", "Digest"));
 
-		uint8_t naive[16];
-		memset(naive, 0, sizeof(naive));
-		size_t nameLen = strlen(name);
-		for (size_t i = 0; i < 16 && i < nameLen; i++)
-			naive[i] = (uint8_t)name[i];
+	// AddChannelWindow signals hashtag mode
+	assert(FileContains("AddChannelWindow.cpp", "hashtag"));
 
-		if (memcmp(secret, naive, 16) == 0) {
-			printf("FAIL: PSK equals raw name bytes (no hashing)\n");
-			failures++;
-		} else {
-			printf("PASS: PSK differs from raw name bytes\n");
-		}
-	}
+	printf(" PASS\n");
+}
 
-	// Test 2: Same name produces same PSK (deterministic)
-	{
-		uint8_t secret1[16], secret2[16];
-		GeneratePSK("mychannel", secret1);
-		GeneratePSK("mychannel", secret2);
 
-		if (memcmp(secret1, secret2, 16) != 0) {
-			printf("FAIL: Same name produced different PSKs\n");
-			failures++;
-		} else {
-			printf("PASS: Same name produces same PSK\n");
-		}
-	}
+static void
+TestHashtagStripping()
+{
+	printf("  TestHashtagStripping...");
 
-	// Test 3: Different names produce different PSKs
-	{
-		uint8_t secret1[16], secret2[16];
-		GeneratePSK("channel_a", secret1);
-		GeneratePSK("channel_b", secret2);
+	// Should strip leading '#' before hashing
+	assert(FileContains("MainWindow.cpp", "name[0] == '#'")
+		|| FileContains("MainWindow.cpp", "name + 1"));
 
-		if (memcmp(secret1, secret2, 16) == 0) {
-			printf("FAIL: Different names produced same PSK\n");
-			failures++;
-		} else {
-			printf("PASS: Different names produce different PSKs\n");
-		}
-	}
+	printf(" PASS\n");
+}
 
-	// Test 4: Short name still fills all 16 bytes with non-zero data
-	{
-		uint8_t secret[16];
-		GeneratePSK("x", secret);
 
-		if (IsAllZero(secret + 1, 15)) {
-			printf("FAIL: Short name leaves trailing zeros (no hash diffusion)\n");
-			failures++;
-		} else {
-			printf("PASS: Short name fills all 16 bytes via hash\n");
-		}
-	}
+static void
+TestPublicChannelPsk()
+{
+	printf("  TestPublicChannelPsk...");
 
-	// Test 5: Empty-ish name (single char) still produces non-trivial PSK
-	{
-		uint8_t secret[16];
-		GeneratePSK("a", secret);
+	// Well-known Public Channel PSK should be defined
+	assert(FileContains("Constants.h", "kPublicChannelPSK"));
 
-		int nonZero = 0;
-		for (int i = 0; i < 16; i++) {
-			if (secret[i] != 0)
-				nonZero++;
-		}
-		if (nonZero < 8) {
-			printf("FAIL: PSK has too few non-zero bytes (%d/16)\n", nonZero);
-			failures++;
-		} else {
-			printf("PASS: PSK has good entropy (%d/16 non-zero bytes)\n", nonZero);
-		}
-	}
+	printf(" PASS\n");
+}
 
-	printf("\n%s: %d failures\n", failures == 0 ? "ALL PASSED" : "FAILED", failures);
-	return failures;
+
+static void
+TestDuplicateCheck()
+{
+	printf("  TestDuplicateCheck...");
+
+	// Duplicate channel check should be case-insensitive
+	assert(FileContains("MainWindow.cpp", "strcasecmp"));
+
+	printf(" PASS\n");
+}
+
+
+int
+main()
+{
+	printf("=== test_channel_psk ===\n");
+
+	TestPskDerivation();
+	TestHashtagStripping();
+	TestPublicChannelPsk();
+	TestDuplicateCheck();
+
+	printf("All channel PSK tests passed!\n");
+	return 0;
 }

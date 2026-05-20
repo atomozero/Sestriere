@@ -498,12 +498,9 @@ TestAckCodeMatching()
 	// Verify ackCode is extracted in PUSH_SEND_CONFIRMED handler
 	assert(FileContains("MainWindow.cpp", "ReadLE32(data + 1)"));
 
-	// Verify matching logic uses expectedAck
-	int matchRefs = CountDualPattern("MainWindow.cpp", "expectedAck", "ackCode");
-	assert(matchRefs > 0);
-
-	// Verify expectedAck is populated from RSP_SENT
-	assert(FileContains("MainWindow.cpp", "pending->expectedAck"));
+	// Verify matching logic in DeliveryManager uses expectedAck
+	assert(FileContains("DeliveryManager.cpp", "expectedAck"));
+	assert(FileContains("DeliveryManager.cpp", "ackCode"));
 
 	printf(" PASS\n");
 }
@@ -601,8 +598,8 @@ TestDisconnectPendingCleanup()
 	assert(FileContains("MainWindow.cpp", "gotRspSent") &&
 		   FileContains("MainWindow.cpp", "_OnDisconnected"));
 
-	// Verify reconnect drains outbox
-	assert(FileContains("MainWindow.cpp", "_DrainOutbox"));
+	// Verify reconnect drains outbox (via DeliveryManager)
+	assert(FileContains("MainWindow.cpp", "MSG_DELIVERY_DRAIN"));
 
 	printf(" PASS\n");
 }
