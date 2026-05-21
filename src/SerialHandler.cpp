@@ -209,17 +209,12 @@ SerialHandler::Connect(const char* portName)
 			return B_ERROR;
 		}
 
-		// Set DTR and RTS signals for ESP32-based devices
-		int modemFlags;
-		if (ioctl(fSerialFd, TIOCMGET, &modemFlags) == 0) {
-			modemFlags |= TIOCM_DTR | TIOCM_RTS;
-			ioctl(fSerialFd, TIOCMSET, &modemFlags);
-		}
-
+		// Do NOT toggle DTR/RTS — on ESP32-S3 (Heltec v3.2) the DTR
+		// transition resets the chip via the auto-reset circuit, causing
+		// the device to reboot every time we connect.  The firmware is
+		// already running; we just need to open the port and talk.
 		tcflush(fSerialFd, TCIOFLUSH);
-		// Wait for USB-to-UART bridges (CP210x, CH340) to stabilize
-		// after DTR/RTS toggle.  100ms was too short for some devices.
-		snooze(250000);
+		snooze(100000);  // 100ms for CP210x/CH340 to stabilize
 	}
 
 	fPortName = portName;
