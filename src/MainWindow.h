@@ -379,6 +379,7 @@ private:
 			BMessageRunner*	fAdminRefreshTimer;
 			BMessageRunner*	fTelemetryPollTimer;
 			BMessageRunner*	fHandshakeTimer;
+			int32			fHandshakeRetries;
 
 			// Cached stats for status bar
 			uint8			fBatteryType;	// BatteryChemistry enum

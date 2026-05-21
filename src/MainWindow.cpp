@@ -334,6 +334,7 @@ MainWindow::MainWindow()
 	fAdminRefreshTimer(NULL),
 	fTelemetryPollTimer(NULL),
 	fHandshakeTimer(NULL),
+	fHandshakeRetries(0),
 	fBatteryType(BATTERY_LIPO),
 	fBatteryMv(0),
 	fLastRssi(0),
@@ -1828,15 +1829,28 @@ MainWindow::MessageReceived(BMessage* message)
 			fHandshakeTimer = NULL;
 
 			if (fConnected && !fHasDeviceInfo) {
-				_LogMessage("WARNING",
-					"Device not responding — this may not be a MeshCore Companion Radio");
+				if (fHandshakeRetries < 2) {
+					// Retry APP_START — device may need extra time after USB reset
+					fHandshakeRetries++;
+					_LogMessage("INFO", BString().SetToFormat(
+						"Retrying handshake (attempt %d/3)...",
+						(int)(fHandshakeRetries + 1)));
+					fProtocol->SendAppStart();
+					BMessage timerMsg(MSG_HANDSHAKE_TIMEOUT);
+					fHandshakeTimer = new BMessageRunner(
+						BMessenger(this), &timerMsg, 3000000, 1);
+				} else {
+					_LogMessage("WARNING",
+						"Device not responding — this may not be a "
+						"MeshCore Companion Radio");
 
-				// Stop the stats refresh timer to avoid flooding a non-companion device
-				delete fStatsRefreshTimer;
-				fStatsRefreshTimer = NULL;
+					// Stop the stats refresh timer
+					delete fStatsRefreshTimer;
+					fStatsRefreshTimer = NULL;
 
-				// Switch to raw mode so '>' in CLI prompts isn't parsed as frame marker
-				fSerialHandler->SetRawMode(true);
+					// Switch to raw mode
+					fSerialHandler->SetRawMode(true);
+				}
 			}
 			break;
 		}
@@ -7920,7 +7934,9 @@ MainWindow::_OnConnected(BMessage* message)
 	BMessage initMsg(MSG_POST_CONNECT_INIT);
 	BMessageRunner::StartSending(this, &initMsg, 100000, 1);  // 100ms, once
 
-	// Start handshake timeout — if device doesn't respond within 5s, warn user
+	// Start handshake timeout — if device doesn't respond within 5s,
+	// retry APP_START up to 2 more times before giving up
+	fHandshakeRetries = 0;
 	delete fHandshakeTimer;
 	fHandshakeTimer = NULL;
 	BMessage hsMsg(MSG_HANDSHAKE_TIMEOUT);
