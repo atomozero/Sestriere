@@ -94,7 +94,10 @@ ChatHeaderView::Draw(BRect updateRect)
 		font_height fh;
 		font.GetHeight(&fh);
 
-		DrawString(fDisplayName.String(),
+		BString placeholderTrunc(fDisplayName);
+		font.TruncateString(&placeholderTrunc, B_TRUNCATE_END,
+			bounds.Width() - kMargin * 2);
+		DrawString(placeholderTrunc.String(),
 			BPoint(kMargin, bounds.top + (bounds.Height() + fh.ascent - fh.descent) / 2));
 		return;
 	}
