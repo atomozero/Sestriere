@@ -925,16 +925,24 @@ NetworkMapView::BuildEdgesFromOutPaths(
 		const uint8* prevPrefix = selfPrefix;
 		bool prevIsSelf = true;
 
+		// Track unresolved-hop count to detect chains spanning gaps
+		int unresolvedRun = 0;
 		for (int32 h = 0; h < pathLen; h++) {
 			// Match 1-byte hash to a known node
 			MapNode* hopNode = _MatchHopToContact(&contact->outPath[h], 1);
-			if (hopNode == NULL)
-				continue;  // Unknown hop — skip
+			if (hopNode == NULL) {
+				// Unknown hop — track but don't reset prev; the next
+				// resolvable hop will connect to prev across the gap.
+				unresolvedRun++;
+				continue;
+			}
 
 			// Don't create self→self edge if hop resolves to the contact itself
 			if (memcmp(hopNode->pubKeyPrefix, contact->publicKey,
-					kPubKeyPrefixSize) == 0)
+					kPubKeyPrefixSize) == 0) {
+				unresolvedRun = 0;
 				continue;
+			}
 
 			TopologyEdge* edge = new TopologyEdge();
 			if (prevIsSelf)
@@ -970,6 +978,7 @@ NetworkMapView::BuildEdgesFromOutPaths(
 
 			prevPrefix = hopNode->pubKeyPrefix;
 			prevIsSelf = false;
+			unresolvedRun = 0;
 		}
 
 		// Final edge: last hop → contact
@@ -1403,6 +1412,8 @@ NetworkMapView::_DrawNode(const MapNode& node)
 		radius = kMaxDrawnRadius;
 	rgb_color fillColor = _ColorForNode(node);
 	bool isRepeater = (node.nodeType == NODE_REPEATER);
+	bool isRoom = (node.nodeType == NODE_ROOM);
+	bool isHub = isRepeater || isRoom;
 
 	// Apply opacity based on last seen
 	float opacity = _OpacityForNode(node);
