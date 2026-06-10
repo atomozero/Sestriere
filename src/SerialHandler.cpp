@@ -274,6 +274,14 @@ SerialHandler::Disconnect()
 		BAutolock lock(fLock);
 		// Now safe to close — read thread is no longer using the fd
 		if (fSerialFd >= 0) {
+			// Workaround for Haiku usb_serial CP210x kernel panic:
+			// flush pending I/O and give the driver a moment to stabilize
+			// before close() to avoid use-after-free in tty_close_cookie().
+			// See haiku-patches/usb_serial_cp210x_fix.patch for kernel fix.
+			if (!fIsTcp) {
+				tcflush(fSerialFd, TCIOFLUSH);
+				snooze(50000);  // 50ms — let driver drain internal buffers
+			}
 			close(fSerialFd);
 			fSerialFd = -1;
 		}
