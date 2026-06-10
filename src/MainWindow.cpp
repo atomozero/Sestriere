@@ -331,6 +331,8 @@ MainWindow::MainWindow()
 	fAutoConnectTimer(NULL),
 	fStatsRefreshTimer(NULL),
 	fAutoSyncRunner(NULL),
+	fAutoTraceTimer(NULL),
+	fAutoTraceIndex(0),
 	fAdminRefreshTimer(NULL),
 	fTelemetryPollTimer(NULL),
 	fHandshakeTimer(NULL),
@@ -475,6 +477,7 @@ MainWindow::~MainWindow()
 	delete fAutoConnectTimer;
 	delete fStatsRefreshTimer;
 	delete fAutoSyncRunner;
+	delete fAutoTraceTimer;
 	delete fHandshakeTimer;
 	delete fPingTimeoutRunner;
 	delete fDeliveryCheckTimer;
@@ -1296,6 +1299,8 @@ MainWindow::MessageReceived(BMessage* message)
 				fNetworkMapWindow->UpdateFromContacts(&fContactManager->Contacts());
 				fNetworkMapWindow->UnlockLooper();
 			}
+			// Start background path discovery for unknown routes
+			PostMessage(MSG_AUTO_TRACE_START);
 			break;
 		}
 
@@ -2184,6 +2189,66 @@ MainWindow::MessageReceived(BMessage* message)
 			BMessage nextMsg(MSG_PING_ALL_NEXT);
 			nextMsg.AddInt32("index", 0);
 			PostMessage(&nextMsg);
+			break;
+		}
+
+		case MSG_AUTO_TRACE_START:
+		{
+			// Start background path discovery for contacts with unknown
+			// routing. Triggered when NetworkMapWindow opens.
+			if (fAutoTraceTimer != NULL)
+				break;  // Already running
+			fAutoTraceIndex = 0;
+			BMessage tick(MSG_AUTO_TRACE_TICK);
+			fAutoTraceTimer = new BMessageRunner(BMessenger(this),
+				&tick, 15000000, -1);  // every 15 seconds
+			_LogMessage("TRACE", "Auto-trace started for Network Map");
+			break;
+		}
+
+		case MSG_AUTO_TRACE_STOP:
+		{
+			delete fAutoTraceTimer;
+			fAutoTraceTimer = NULL;
+			_LogMessage("TRACE", "Auto-trace stopped");
+			break;
+		}
+
+		case MSG_AUTO_TRACE_TICK:
+		{
+			if (!fConnected || fNetworkMapWindow == NULL) {
+				delete fAutoTraceTimer;
+				fAutoTraceTimer = NULL;
+				break;
+			}
+
+			// Find next repeater/room with unknown path (outPathLen < 0)
+			int32 count = fContactManager->Contacts().CountItems();
+			ContactInfo* target = NULL;
+			int32 scanned = 0;
+			while (scanned < count) {
+				if (fAutoTraceIndex >= count)
+					fAutoTraceIndex = 0;
+				ContactInfo* c = fContactManager->Contacts().ItemAt(
+					fAutoTraceIndex++);
+				scanned++;
+				// Only trace repeaters and rooms (network infrastructure)
+				if (c != NULL && c->isValid
+					&& (c->type == 2 || c->type == 3)
+					&& c->outPathLen < 0) {
+					target = c;
+					break;
+				}
+			}
+
+			if (target != NULL) {
+				if (fProtocol->SendTracePath(target) == B_OK) {
+					_LogMessage("TRACE", BString().SetToFormat(
+						"Auto-trace: %s", target->name));
+				}
+			}
+			// If no targets remain, keep timer running — new contacts may
+			// be added later. Loop wraps naturally.
 			break;
 		}
 

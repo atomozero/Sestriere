@@ -357,6 +357,9 @@ enum {
 	MSG_CONTACT_LOGOUT = 'clgt',
 	MSG_PATH_DISCOVERY = 'pdsc',
 	MSG_EXPORT_KEY = 'expk',
+	MSG_AUTO_TRACE_START = 'ats0',
+	MSG_AUTO_TRACE_STOP = 'ats1',
+	MSG_AUTO_TRACE_TICK = 'atst',
 	MSG_LOAD_OLDER_MESSAGES = 'ldol',
 
 	// Raw serial data (non-protocol text from device)

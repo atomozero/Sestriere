@@ -376,6 +376,8 @@ private:
 			BMessageRunner*	fAutoConnectTimer;
 			BMessageRunner*	fStatsRefreshTimer;
 			BMessageRunner*	fAutoSyncRunner;
+			BMessageRunner*	fAutoTraceTimer;
+			int32			fAutoTraceIndex;
 			BMessageRunner*	fAdminRefreshTimer;
 			BMessageRunner*	fTelemetryPollTimer;
 			BMessageRunner*	fHandshakeTimer;

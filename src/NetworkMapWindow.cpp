@@ -2954,6 +2954,9 @@ bool
 NetworkMapWindow::QuitRequested()
 {
 	Hide();
+	// Notify MainWindow to stop background auto-trace
+	if (fParent != NULL)
+		fParent->PostMessage(MSG_AUTO_TRACE_STOP);
 	return false;
 }
 
