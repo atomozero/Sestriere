@@ -1,0 +1,139 @@
+From: Sestriere Contributors
+Subject: [PATCH] usb_serial: Fix queue_interrupt called on bulk endpoint for CP210x/FTDI
+
+The Silicon (CP210x) and FTDI drivers incorrectly call SetControlPipe()
+with a bulk endpoint handle. This causes SerialDevice::Open() to call
+queue_interrupt() on a bulk endpoint, which fails with:
+  "failed to queue initial interrupt"
+  "input thread: failed to clear halt feature"
+
+The CP210x and FTDI chips don't have an interrupt endpoint - they only
+have bulk IN/OUT endpoints. Only ACM devices have a proper interrupt
+endpoint on the CDC Communication interface.
+
+This patch adds a fHasInterruptEndpoint flag to SerialDevice that is
+set to true only when a real interrupt endpoint is found. The
+queue_interrupt() call in Open() is now conditional on this flag.
+
+Fixes: Silicon Labs CP210x devices (including Heltec LoRa32 V3.2)
+Fixes: FTDI devices
+
+---
+ src/add-ons/kernel/drivers/ports/usb_serial/ACM.cpp          |  1 +
+ src/add-ons/kernel/drivers/ports/usb_serial/FTDI.cpp         |  2 --
+ src/add-ons/kernel/drivers/ports/usb_serial/SerialDevice.cpp | 12 ++++++++----
+ src/add-ons/kernel/drivers/ports/usb_serial/SerialDevice.h   |  4 ++++
+ src/add-ons/kernel/drivers/ports/usb_serial/Silicon.cpp      |  2 --
+ 5 files changed, 13 insertions(+), 8 deletions(-)
+
+diff --git a/src/add-ons/kernel/drivers/ports/usb_serial/SerialDevice.h b/src/add-ons/kernel/drivers/ports/usb_serial/SerialDevice.h
+index abcd123..efgh456 100644
+--- a/src/add-ons/kernel/drivers/ports/usb_serial/SerialDevice.h
++++ b/src/add-ons/kernel/drivers/ports/usb_serial/SerialDevice.h
+@@ -43,6 +43,8 @@ public:
+ 		void					SetControlPipe(usb_pipe handle);
+ 		usb_pipe				ControlPipe() { return fControlPipe; };
+
++		void					SetHasInterruptEndpoint(bool has) { fHasInterruptEndpoint = has; };
++
+ 		void					SetReadPipe(usb_pipe handle);
+ 		usb_pipe				ReadPipe() { return fReadPipe; };
+
+@@ -113,6 +115,7 @@ private:
+ 		/* communication pipes */
+ 		usb_pipe				fControlPipe;
++		bool					fHasInterruptEndpoint;
+ 		usb_pipe				fReadPipe;
+ 		usb_pipe				fWritePipe;
+
+diff --git a/src/add-ons/kernel/drivers/ports/usb_serial/SerialDevice.cpp b/src/add-ons/kernel/drivers/ports/usb_serial/SerialDevice.cpp
+index abcd123..efgh456 100644
+--- a/src/add-ons/kernel/drivers/ports/usb_serial/SerialDevice.cpp
++++ b/src/add-ons/kernel/drivers/ports/usb_serial/SerialDevice.cpp
+@@ -35,6 +35,7 @@ SerialDevice::SerialDevice(usb_device device, uint16 vendorID,
+ 		fDeviceOpen(false),
+ 		fDeviceRemoved(false),
+ 		fControlPipe(0),
++		fHasInterruptEndpoint(false),
+ 		fReadPipe(0),
+ 		fWritePipe(0),
+ 		fBufferArea(-1),
+@@ -346,10 +347,13 @@ SerialDevice::Open(uint32 flags)
+ 	fControlOut = USB_CDC_CONTROL_SIGNAL_STATE_DTR
+ 		| USB_CDC_CONTROL_SIGNAL_STATE_RTS;
+ 	SetControlLineState(fControlOut);
+
+-	status = gUSBModule->queue_interrupt(fControlPipe, fInterruptBuffer, fInterruptBufferSize,
+-		_InterruptCallbackFunction, this);
+-	if (status < B_OK)
+-		TRACE_ALWAYS("failed to queue initial interrupt\n");
++	// Only queue interrupt if we have a real interrupt endpoint
++	if (fHasInterruptEndpoint && fControlPipe != 0) {
++		status = gUSBModule->queue_interrupt(fControlPipe, fInterruptBuffer,
++			fInterruptBufferSize, _InterruptCallbackFunction, this);
++		if (status < B_OK)
++			TRACE_ALWAYS("failed to queue initial interrupt\n");
++	}
+
+ 	// set our config (will propagate to the slave config as well in SetModes()
+ 	gTTYModule->tty_control(fSystemTTYCookie, TCSETA, &fTTYConfig,
+diff --git a/src/add-ons/kernel/drivers/ports/usb_serial/ACM.cpp b/src/add-ons/kernel/drivers/ports/usb_serial/ACM.cpp
+index abcd123..efgh456 100644
+--- a/src/add-ons/kernel/drivers/ports/usb_serial/ACM.cpp
++++ b/src/add-ons/kernel/drivers/ports/usb_serial/ACM.cpp
+@@ -88,6 +88,7 @@ ACMDevice::AddDevice(const usb_configuration_info *config)
+ 		if ((descriptor->interface_class == USB_CDC_COMMUNICATION_INTERFACE_CLASS
+ 			|| descriptor->interface_class == USB_CDC_DATA_INTERFACE_CLASS)
+ 			&& interface->endpoint_count >= 1) {
+ 			SetControlPipe(interface->endpoint[0].handle);
++			SetHasInterruptEndpoint(true);
+ 			SetInterruptBufferSize(interface->endpoint[0].descr->max_packet_size);
+ 		} else {
+ 			TRACE("Indicated command interface doesn't fit our needs!\n");
+diff --git a/src/add-ons/kernel/drivers/ports/usb_serial/Silicon.cpp b/src/add-ons/kernel/drivers/ports/usb_serial/Silicon.cpp
+index abcd123..efgh456 100644
+--- a/src/add-ons/kernel/drivers/ports/usb_serial/Silicon.cpp
++++ b/src/add-ons/kernel/drivers/ports/usb_serial/Silicon.cpp
+@@ -38,8 +38,6 @@ SiliconDevice::AddDevice(const usb_configuration_info *config)
+ 				} else {
+ 					if (endpoint->descr->endpoint_address) {
+-						SetControlPipe(endpoint->handle);
+ 						SetWritePipe(endpoint->handle);
+-						pipesSet += 2;
++						pipesSet += 1;
+ 						if (pipesSet >= 2)
+ 							break;
+ 					}
+@@ -47,7 +45,7 @@ SiliconDevice::AddDevice(const usb_configuration_info *config)
+ 			}
+ 		}
+
+-		if (pipesSet >= 3) {
++		if (pipesSet >= 2) {
+ 			status = B_OK;
+ 		}
+ 	}
+diff --git a/src/add-ons/kernel/drivers/ports/usb_serial/FTDI.cpp b/src/add-ons/kernel/drivers/ports/usb_serial/FTDI.cpp
+index abcd123..efgh456 100644
+--- a/src/add-ons/kernel/drivers/ports/usb_serial/FTDI.cpp
++++ b/src/add-ons/kernel/drivers/ports/usb_serial/FTDI.cpp
+@@ -42,8 +42,6 @@ FTDIDevice::AddDevice(const usb_configuration_info *config)
+ 				} else {
+ 					if (endpoint->descr->endpoint_address) {
+-						SetControlPipe(endpoint->handle);
+ 						SetWritePipe(endpoint->handle);
+-						pipesSet += 2;
++						pipesSet += 1;
+ 						if (pipesSet >= 2)
+ 							break;
+ 					}
+@@ -51,7 +49,7 @@ FTDIDevice::AddDevice(const usb_configuration_info *config)
+ 			}
+ 		}
+
+-		if (pipesSet >= 3) {
++		if (pipesSet >= 2) {
+ 			if (ProductID() == 0x8372) // AU100AX
+ 				fHeaderLength = 1;
+ 			else
+--

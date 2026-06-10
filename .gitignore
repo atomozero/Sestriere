@@ -1,0 +1,28 @@
+# Build artifacts
+objects.*/
+release/
+*.o
+*.a
+*.so
+
+# Compiled test binaries (sources stay tracked)
+src/tests/test_*
+!src/tests/test_*.cpp
+!src/tests/test_*.h
+src/tests/a.out
+
+# Editor / IDE
+.claude/
+*.swp
+*~
+.DS_Store
+
+# Old build outputs
+*.bin.old
+
+# Debug reports
+Sestriere-*.report
+
+# Release archives (use archive/ instead)
+*.zip
+archive/
