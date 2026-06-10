@@ -654,12 +654,15 @@ MainWindow::_BuildUI()
 	fShowChats = new BCheckBox("show_chats", "Chat",
 		new BMessage(MSG_TYPE_FILTER));
 	fShowChats->SetValue(B_CONTROL_ON);
+	fShowChats->SetToolTip("Show peer-to-peer chat contacts");
 	fShowRepeaters = new BCheckBox("show_repeaters", "Repeater",
 		new BMessage(MSG_TYPE_FILTER));
 	fShowRepeaters->SetValue(B_CONTROL_ON);
+	fShowRepeaters->SetToolTip("Show repeater nodes");
 	fShowRooms = new BCheckBox("show_rooms", "Room",
 		new BMessage(MSG_TYPE_FILTER));
 	fShowRooms->SetValue(B_CONTROL_ON);
+	fShowRooms->SetToolTip("Show room servers (group chat)");
 
 	fContactList = new ContactListView("contacts");
 	fContactList->SetSelectionMessage(new BMessage(MSG_CONTACT_SELECTED));
@@ -669,6 +672,7 @@ MainWindow::_BuildUI()
 
 	// Device info label at sidebar footer
 	fSidebarDeviceLabel = new BStringView("device_label", "");
+	fSidebarDeviceLabel->SetToolTip("Connected device name and firmware");
 	BFont smallFont(be_plain_font);
 	smallFont.SetSize(smallFont.Size() * 0.85f);
 	fSidebarDeviceLabel->SetFont(&smallFont);

@@ -149,7 +149,7 @@ DeskbarReplicant::Draw(BRect /*updateRect*/)
 
 	// Draw unread count badge
 	if (fUnreadCount > 0) {
-		rgb_color badgeColor = {220, 40, 40, 255};
+		rgb_color badgeColor = kColorBad;
 		SetHighColor(badgeColor);
 		BRect badge(bounds.right - 7, bounds.top,
 			bounds.right, bounds.top + 7);
