@@ -2730,10 +2730,24 @@ MapNode*
 NetworkMapView::_MatchHopToContact(const uint8* hopPrefix,
 	size_t prefixLen) const
 {
-	// Match a hop's 4-byte (or 1-byte) prefix against known contacts
+	// Match a hop's 4-byte (or 1-byte) prefix against known contacts.
+	// For 1-byte hashes (from outPath), prefer repeaters since they are
+	// the only nodes that can act as routing hops in the mesh.
 	if (prefixLen == 0)
 		return NULL;
 
+	// First pass: look for a repeater match (most likely hop type)
+	if (prefixLen == 1) {
+		for (int32 i = 0; i < fNodes.CountItems(); i++) {
+			MapNode* node = fNodes.ItemAt(i);
+			if (node == NULL || node->nodeType != NODE_REPEATER)
+				continue;
+			if (memcmp(node->pubKeyPrefix, hopPrefix, 1) == 0)
+				return node;
+		}
+	}
+
+	// Fallback: any node matching the prefix
 	for (int32 i = 0; i < fNodes.CountItems(); i++) {
 		MapNode* node = fNodes.ItemAt(i);
 		if (node == NULL)
