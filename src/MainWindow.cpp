@@ -8807,8 +8807,19 @@ MainWindow::_SaveContactAsPerson(ContactInfo* contact)
 	char hexPrefix[kContactHexSize];
 	FormatContactKey(hexPrefix, contact->publicKey);
 
+	// Sanitize contact name for filesystem: replace path separators
+	BString safeName(contact->name);
+	safeName.ReplaceAll('/', '_');
+	safeName.ReplaceAll('\\', '_');
+	// Strip leading/trailing whitespace and dots
+	safeName.Trim();
+	while (safeName.StartsWith(".") || safeName.StartsWith(" "))
+		safeName.Remove(0, 1);
+	if (safeName.IsEmpty())
+		safeName.SetTo(hexPrefix);
+
 	BString filePath = peoplePath;
-	filePath << "/" << contact->name;
+	filePath << "/" << safeName;
 
 	// Create the Person file
 	BFile file(filePath.String(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
