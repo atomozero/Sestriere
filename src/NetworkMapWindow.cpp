@@ -323,11 +323,13 @@ NetworkMapView::Draw(BRect updateRect)
 		}
 
 		if (!hasEdge) {
-			if (node->hops <= 1) {
-				// Direct contact — draw solid connection to center
+			if (node->hops == 0) {
+				// Direct contact (0 hops) — draw solid connection
 				_DrawConnection(fCenter, node->position, node);
 			} else {
-				// Multi-hop but path unknown — draw faint "?" indicator
+				// Either multi-hop or unknown path (0xFF) — draw dashed
+				// "?" indicator. Without outPath data we cannot determine
+				// the intermediate repeaters, so don't fake a direct edge.
 				_DrawUnknownPath(fCenter, node->position, node);
 			}
 		}
@@ -511,7 +513,12 @@ NetworkMapView::SetNodes(const OwningObjectList<ContactInfo>* contacts)
 		memcpy(node->pubKeyPrefix, contact->publicKey, kPubKeyPrefixSize);
 		strlcpy(node->name, contact->name, sizeof(node->name));
 		node->nodeType = contact->type;  // 1=CHAT, 2=REPEATER, 3=ROOM
-		node->hops = (contact->outPathLen >= 0) ? contact->outPathLen : 1;
+		// outPathLen: -1 = unknown path, 0 = direct, >0 = multi-hop
+		// Preserve unknown as 0xFF so we can distinguish from "direct"
+		if (contact->outPathLen < 0)
+			node->hops = 0xFF;   // unknown path
+		else
+			node->hops = contact->outPathLen;
 		node->lastSeen = contact->lastSeen;
 
 		// Extract last known SNR from most recent incoming message

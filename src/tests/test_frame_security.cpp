@@ -222,7 +222,7 @@ TestContactFrameValidation()
 	assert(FileContains("Constants.h", "kContactFrameSize = 148"));
 	assert(FileContains("MainWindow.cpp", "nameBuf[kContactNameSize] = '\\0'"));
 	assert(FileContains("MainWindow.cpp", "kContactOutPathMaxSize"));
-	assert(FileContains("MainWindow.cpp", "pathBytes > 0"));
+	assert(FileContains("MainWindow.cpp", "contact->outPathLen > 0"));
 	printf(" PASS\n");
 }
 

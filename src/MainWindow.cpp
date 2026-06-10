@@ -5735,11 +5735,19 @@ MainWindow::_HandleContact(const uint8* data, size_t length)
 	memcpy(contact->publicKey, data + kContactPubKeyOffset, kPubKeySize);
 	contact->type = data[kContactTypeOffset];
 	contact->flags = data[kContactFlagsOffset];
-	contact->outPathLen = (int8)data[kContactPathLenOffset];
 	{
-		int pathBytes = contact->outPathLen;  // 1 byte per hop hash
-		if (pathBytes > 0 && pathBytes <= (int)kContactOutPathMaxSize)
-			memcpy(contact->outPath, data + kContactOutPathOffset, pathBytes);
+		int8 rawPathLen = (int8)data[kContactPathLenOffset];
+		// Valid path lengths: -1 (direct/unknown) or 0..16 (hop count).
+		// Larger values (e.g. 0x40 seen in firmware) are sentinels meaning
+		// "path data not available" — treat as unknown.
+		if (rawPathLen < 0 || rawPathLen > (int8)kContactOutPathMaxSize)
+			contact->outPathLen = -1;
+		else
+			contact->outPathLen = rawPathLen;
+
+		if (contact->outPathLen > 0)
+			memcpy(contact->outPath, data + kContactOutPathOffset,
+				contact->outPathLen);
 	}
 	{
 		char nameBuf[kContactNameSize + 1];
