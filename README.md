@@ -1,338 +1,117 @@
-# Sestriere
+# Sestriere for Haiku
 
-> Native MeshCore LoRa mesh client for Haiku OS
+Native Haiku client for the MeshCore LoRa mesh network: send messages, voice clips, images, and GIFs over LoRa with any device running MeshCore, without internet and without third-party servers.
 
-## Overview
+![Sestriere on Haiku](img/screenshot01.png)
 
-**Sestriere** is a 100% native Haiku OS application that serves as a MeshCore client, communicating with LoRa devices (Heltec v3.2, T-Deck, etc.) via USB serial.
+If Sestriere for Haiku saves you time, consider supporting development: [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-atomozero-yellow?logo=buymeacoffee)](https://buymeacoffee.com/atomozero)
 
-The name recalls the Venetian *sestieri* -- interconnected districts like nodes in a mesh network.
-
-## Screenshots
-
-### Main Window — Chat with GIF, Emoji & Images
-3-panel layout with contact sidebar, chat area showing GIF animations, emoji rendering, image sharing, and SNR-annotated bubbles, plus contact info panel with SNR history chart.
-
-![Main Window](img/screenshot01.png?v=1.8)
-
-### Network Map
-Force-directed topology with SNR-colored links, animated flow dots, hop count badges, link quality legend, and full mesh discovery.
-
-![Network Map](img/screenshot02.png?v=1.8)
-
-### Geographic Map with OSM Tiles
-GPS node positions on real OpenStreetMap tiles with offline cache, dashed hop connections, and zoom/pan controls.
-
-![Geographic Map](img/screenshot03.png?v=1.8)
-
-### Packet Analyzer
-Wireshark-style real-time capture with color-coded packet types, decoded detail view, hex dump, SNR trend chart, and desktop notifications.
-
-![Packet Analyzer](img/screenshot04.png?v=1.8)
-
-### Mission Control Dashboard
-Unified dashboard with device status, radio health, network health score arc, SNR/RSSI trend chart, packet rate histogram, mini topology, session timeline, and live activity feed.
-
-![Mission Control](img/screenshot05.png?v=1.8)
 
 ## Features
 
-### Core
-- **Native Haiku UI** -- Built entirely with Haiku's Be API, fully theme-aware via `ui_color()`
-- **USB Serial Communication** -- POSIX-based serial with DTR/RTS support for ESP32 devices
-- **SQLite Database** -- Persistent message storage, SNR history, telemetry data
-- **Desktop Notifications** -- System notifications for new messages
+* Native Haiku GUI built entirely with BeAPI
+* Full MeshCore Companion Radio Protocol V3 support (94/94 codes)
+* Direct messages with SMAZ compression and end-to-end encryption
+* Channels, repeaters, and rooms unified in a single sidebar
+* Multi-companion support: switch USB devices without losing data
+* Image sharing via color WebP with auto-fetch of missing fragments
+* Voice messages with Codec2 encoding (30s push-to-talk)
+* Animated GIFs via GIPHY, compatible with meshcore-open
+* Emoji reactions compatible with meshcore-open
+* SAR markers for search-and-rescue, shown in chat and on the map
+* Network topology map with SNR-colored links and animated packet flow
+* Geographic OSM map with 50MB tile cache and bulk area download
+* Line-of-Sight analysis with Fresnel zone and earth curvature
+* Mission Control dashboard with health arc, trends, and timeline
+* MQTT bridge to publish status and packets to external brokers
+* Packet Analyzer with color-coded protocol frame breakdown
+* Telemetry dashboard with time ranges from 1m to 7d
+* Admin login on repeaters and rooms with concurrent sessions
+* Color-coded debug log split by command semantics
+* Localized for international use
+* No external dependencies beyond Haiku system libraries, SQLite,
+  Mosquitto, libcurl, giflib, and Codec2
 
-### Messaging
-- **Telegram-style Chat** -- 3-panel layout: contact sidebar, chat area, info panel
-- **Chat Bubbles** -- Color-coded with timestamps, SNR indicators, delivery status
-- **Direct & Channel Messages** -- Private messages and public broadcast channel
-- **SMAZ Compression** -- Automatic dictionary compression for direct messages (30-50% smaller), compatible with meshcore-open (`s:` prefix); public channels always send plaintext so stock MeshCore clients can read them
-- **Offline Message Queue** -- Compose messages while disconnected, automatic delivery on reconnect
-- **Message Deletion** -- Delete individual messages or clear entire chat history per contact/channel
-- **Delivery Retry** -- Exponential backoff retry (15s/30s/60s) with protocol-level attempt deduplication and 30-second late-ACK grace period
-- **Message Search** -- Full-text search across chat history (Cmd+F)
-- **Auto-growing Input** -- Multi-line input (1-4 lines), Enter to send, Shift+Enter for newline
-- **Contact Management** -- Search, incremental sync, export/import, right-click context menu
-- **Contact Type Filters** -- Sidebar checkboxes to show/hide Chat, Repeater, and Room contacts (persistent)
-- **Message Reactions** -- Emoji reactions on messages, compatible with meshcore-open (`r:HASH:INDEX` format)
-- **@Mention Replies** -- Double-click a message to reply with @[nickname] mention highlighting
-- **Ping with Feedback** -- Round-trip time measurement with results shown directly in chat
-- **Channel Management** -- Create private channels with random PSK, join existing channels with custom PSK, add Public channel with well-known key
-- **Communities** -- Create and join communities with shared secret (HMAC-SHA256 PSK derivation), clipboard-based sharing compatible with meshcore-open
-- **GIF Sharing** -- GIPHY-powered animated GIF picker, compatible with meshcore-open (`g:ID` format)
-- **Emoji Rendering** -- Unicode emoji displayed as PNG sprites with transparent alpha compositing
-- **Image Sharing** -- LoRa color WebP image transfer with chunked encoding, auto-fetch, and chat integration
-- **Voice Messages** -- Push-to-talk Codec2 voice messages, compatible with meshcore-sar
-- **SAR Markers** -- Search and rescue marker parsing, display in chat and geographic map
+## Quick start
 
-### Visualization
-- **Network Map** -- Force-directed topology with SNR-colored links, animated flow dots, trace route visualization, auto-trace, full mesh discovery, and edge persistence
-- **Geographic Map** -- Lat/lon map with Google Maps-style zoom levels (Z2-Z18), pan, grid, compass, scale bar, hop-count colored connections, OSM tile overlay with 50 MB LRU disk cache, and bulk area download for offline use
-- **Telemetry Dashboard** -- Battery, storage, radio stats graphs with time ranges up to 7 days, CSV export, card-based dashboard layout
-- **Mission Control** -- Unified dashboard: health score arc, SNR/RSSI trend, packet rate histogram, mini topology, session timeline, activity feed, and alert banners
-- **Line-of-Sight Analysis** -- Terrain profile between two nodes with Fresnel zone, earth curvature, and elevation data from Open-Meteo API
+### Connect a LoRa device
 
-### Radio Analysis
-- **Packet Analyzer** -- Wireshark-style real-time analyzer with color-coded packet types, decoded detail view, hex dump, SNR trend chart, contact heatmap, delta-t timing, CSV export
-- **Statistics Window** -- Core/radio/packet stats with auto-refresh
-- **Airtime Display** -- TX/RX airtime counters in the top bar from radio stats
-- **Nearest Repeater** -- GPS-based distance to nearest repeater shown in the top bar
-- **Trace Path** -- Graphical route visualization with node cards, colored avatars, arrows, and SNR-colored pills between hops
+Plug a Heltec v3.2, T-Deck, or any MeshCore-compatible LoRa board via
+USB. Sestriere auto-detects the serial port and connects with three
+retry attempts.
 
-### Device Control
-- **Settings** -- Node name, location, TX power, 12 radio presets (frequency, bandwidth, SF, CR), client-repeat mode, custom variables, tuning parameters, BLE PIN
-- **Repeater Admin** -- Remote administration of repeaters/rooms after login with contextual toolbar in chat area (stats, contacts, reboot, factory reset), simultaneous multi-repeater sessions
-- **Battery & Storage Monitoring** -- Real-time voltage and storage status with LiPo/LiFePO4/NMC chemistry curves
-- **Serial Monitor** -- Terminal-style CLI interaction for repeater/standalone devices
-- **Multi-Companion** -- DB partitioned per companion radio, clean state reset on disconnect, seamless switching between different radios
+For Silicon Labs CP210x chips you may need a patched USB serial driver,
+see [`docs/HAIKU_USB_SERIAL_FIX.md`](docs/HAIKU_USB_SERIAL_FIX.md).
 
-### MQTT Integration
-- **MQTT Bridge** -- Relay messages to MQTT broker (meshcoreitalia.it)
-- **MQTT Log** -- Timestamped connection events and publish reports
-- **Auto-reconnect** -- Exponential backoff (5s to 60s)
+### Send a message
 
-## Requirements
-
-- Haiku OS R1/beta5 or later
-- MeshCore-compatible LoRa device with USB Serial Companion firmware
-- USB cable
-
-### Dependencies
-
-```bash
-pkgman install mosquitto_devel sqlite_devel curl_devel giflib_devel
 ```
-
-Codec2 must be built from source (not packaged for Haiku):
-```bash
-git clone https://github.com/drowe67/codec2.git ~/codec2
-cd ~/codec2 && mkdir build && cd build
-cmake .. -DCMAKE_INSTALL_PREFIX=/boot/system/non-packaged -DBUILD_SHARED_LIBS=OFF
-make -j4 && make install
-```
-
-### USB Serial Driver Note
-
-For Silicon Labs CP210x devices (like Heltec LoRa32 v3.2), you may need the patched USB serial driver. See `docs/HAIKU_USB_SERIAL_FIX.md` for details.
-
-## Building
-
-```bash
 cd src
-make
+make -j4
 ./objects.x86_64-cc13-debug/Sestriere
 ```
 
-### Release Build
+The main window shows three panels: contacts on the left, chat in the
+middle, info panel on the right. Pick a contact and type. Voice clips,
+GIFs, and images go through the buttons next to the input field.
 
-```bash
+### Channels
+
+Public channel auto-joins with the well-known PSK. Add custom channels
+from the **Channels** menu: choose **Create private** (random PSK),
+**Join private** (paste hex PSK), or **Join hashtag** (PSK derived from
+SHA-256 of the name).
+
+### Admin login
+
+Right-click a repeater or room contact and choose **Login**. The admin
+toolbar appears in the chat header, with quick buttons for version,
+neighbors, clock, clear stats, reboot, and factory reset.
+
+## Build
+
+Dependencies (install via `pkgman`):
+
+```
+pkgman install mosquitto_devel sqlite_devel curl_devel giflib_devel
+```
+
+Codec2 must be built from source to `/boot/system/non-packaged`.
+
+Main app:
+
+```
 cd src
-make OBJ_DIR=release OPTIMIZE=FULL
+make -j4              # debug build → objects.x86_64-cc13-debug/Sestriere
+make OBJ_DIR=release OPTIMIZE=FULL   # release build
 ```
 
-### Companion Apps
-
-Sestriere is distributed with two companion apps:
-
-**Fake Radio** — MeshCore radio simulator for testing without hardware:
-```bash
-cd fake_radio
-make
-./objects.x86_64-cc13-debug/FakeRadio
-```
-Creates a virtual serial port (PTY). Connect Sestriere to the printed device path (e.g., `/dev/tt/p5`). The simulator handles the full V3 handshake, creates a test contact, and sends a message every 10 seconds with varying SNR.
-
-**Repeater Monitor** — Standalone repeater log analyzer with serial terminal:
-```bash
-cd repeater_monitor
-make
-./objects.x86_64-cc13-debug/RepeaterMonitor
-```
-Connects directly to repeaters via USB serial (raw text mode) or loads saved log files. Provides structured log analysis with sortable packet table, per-node statistics, and signal quality graphs.
-
-## Usage
-
-1. Connect your MeshCore device via USB
-2. Launch Sestriere
-3. Select the serial port (typically `/dev/ports/usb0`)
-4. Wait for contact sync to complete
-5. Select a contact or Public channel to start messaging
-
-### Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| Cmd+O | Connect |
-| Cmd+D | Disconnect |
-| Cmd+R | Sync Contacts |
-| Cmd+B | Toggle sidebar |
-| Cmd+I | Toggle info panel |
-| Cmd+F | Search messages |
-| Cmd+M | Network Map |
-| Cmd+G | Geographic Map |
-| Cmd+L | Debug Log |
-| Cmd+S | Statistics |
-| Cmd+Y | Telemetry |
-| Cmd+Shift+P | Packet Analyzer |
-| Cmd+Shift+D | Mission Control |
-| Cmd+Shift+M | MQTT Log |
-
-## Supported Hardware
-
-- Heltec LoRa32 v3/v3.2
-- LilyGO T-Deck
-- LilyGO T-Beam
-- RAK WisBlock
-- Other MeshCore-compatible devices with USB Serial Companion firmware
-
-## Protocol
-
-Sestriere implements the [MeshCore Companion Radio Protocol](https://github.com/ripplebiz/MeshCore/wiki/Companion-Radio-Protocol) (V3):
-
-- Frame format: `[marker][len_lo][len_hi][payload...]`
-- Inbound marker (App -> Radio): `<` (0x3C)
-- Outbound marker (Radio -> App): `>` (0x3E)
-- All multi-byte values are Little Endian
-- Default baud rate: 115200 8N1
-
-Sestriere implements 100% of the V3 specification (94/94 codes): 45 commands, 26 responses, 17 push notifications, and 6 error codes. V2 responses (0x07, 0x08) are also supported for backwards compatibility. Protocol features include incremental contact sync (`since` parameter), message retry with `attempt` field (0-3), ackCode-based delivery confirmation, client-repeat mode, path hash mode (V10+), and signed message support (`TXT_TYPE_SIGNED_PLAIN`).
-
-## Project Structure
+Companion apps (radio simulator and repeater log analyzer):
 
 ```
-Sestriere/
-├── README.md                       # This file
-├── docs/                           # Documentation
-│   ├── MANUAL.md                   # User manual
-│   ├── ROADMAP.md                  # Development roadmap and feature status
-│   ├── HAIKU_USB_SERIAL_FIX.md     # USB driver patch docs
-│   ├── changelog/                  # Per-version changelogs
-│   └── archive/                    # Historical planning docs
-├── fake_radio/                     # Fake Radio — radio simulator (standalone app)
-│   ├── FakeRadio.cpp               # BApplication + GUI + V3 protocol simulator
-│   ├── FakeRadio.rdef              # App resources and icon
-│   └── Makefile
-├── repeater_monitor/               # Repeater Monitor — log analyzer (standalone app)
-│   ├── RepMonApp.cpp               # BApplication entry point
-│   ├── RepMonWindow.cpp/h          # Main window (serial connect, log loading)
-│   ├── RepMonConstants.h           # Minimal constants
-│   ├── RepeaterMonitorView.cpp/h   # Structured repeater log viewer
-│   ├── SerialHandler.cpp/h         # POSIX serial I/O
-│   ├── SerialMonitorWindow.cpp/h   # Terminal-style serial CLI
-│   ├── RepMon.rdef                 # App resources and icon
-│   └── Makefile
-├── img/                            # Screenshots
-├── src/                            # Sestriere source code
-│   ├── Makefile                    # Build system
-│   ├── Sestriere.cpp               # BApplication entry point
-│   ├── MainWindow.cpp/h            # Main window (UI + event routing)
-│   ├── ProtocolHandler.cpp/h       # Protocol parsing (extracted from MainWindow)
-│   ├── SerialHandler.cpp/h         # POSIX serial I/O (BLooper)
-│   ├── DatabaseManager.cpp/h       # SQLite database (messages, SNR, telemetry, groups)
-│   ├── ChatView.cpp/h              # Telegram-style message display
-│   ├── ChatHeaderView.cpp/h        # Chat header with contact info
-│   ├── MessageView.cpp/h           # Chat bubble rendering
-│   ├── ContactItem.cpp/h           # Contact list item with status dots & groups
-│   ├── ContactInfoPanel.cpp/h      # Right-side contact detail panel
-│   ├── SNRChartView.cpp/h          # SNR history chart
-│   ├── AddChannelWindow.cpp/h      # Channel creation/join dialog (PSK modes)
-│   ├── TopBarView.cpp/h            # Unified top bar (icons + status)
-│   ├── GrowingTextView.cpp/h       # Auto-growing multi-line input
-│   ├── SettingsWindow.cpp/h        # Device, Radio, MQTT, Channels & Variables settings
-│   ├── StatsWindow.cpp/h           # Device statistics display
-│   ├── MapView.cpp/h               # Geographic map with zoom/pan/grid
-│   ├── NetworkMapWindow.cpp/h      # Force-directed network topology
-│   ├── TelemetryWindow.cpp/h       # Sensor dashboard with graphs + CSV
-│   ├── PacketAnalyzerWindow.cpp/h  # Wireshark-style packet analyzer
-│   ├── MissionControlWindow.cpp/h  # Unified mission control dashboard
-│   ├── TracePathWindow.cpp/h       # Route tracing visualization
-│   ├── LoginWindow.cpp/h           # Repeater/Room authentication
-│   ├── ContactExportWindow.cpp/h   # Contact import/export via clipboard
-│   ├── ProfileWindow.cpp/h         # Profile export/import (JSON)
-│   ├── SerialMonitorWindow.cpp/h   # Terminal-style serial CLI monitor
-│   ├── DebugLogWindow.cpp/h        # Raw protocol debug log
-│   ├── MqttClient.cpp/h            # MQTT bridge integration
-│   ├── MqttLogWindow.cpp/h         # MQTT event log
-│   ├── NotificationManager.cpp/h   # Desktop notifications
-│   ├── DeskbarReplicant.cpp/h      # Deskbar tray integration
-│   ├── GiphyClient.cpp/h           # GIPHY API client (search, trending, download)
-│   ├── GifPickerWindow.cpp/h       # Animated GIF picker grid window
-│   ├── EmojiRenderer.cpp/h         # Unicode emoji PNG sprite rendering
-│   ├── ImageCodec.cpp/h            # Image compression (color WebP) / decompression + GIF frame decode
-│   ├── ImageSession.cpp/h          # LoRa chunked image transfer session
-│   ├── VoiceSession.cpp/h          # Voice message session management
-│   ├── VoiceCodec.cpp/h            # Codec2 encode/decode wrapper
-│   ├── AudioEngine.cpp/h           # Audio recording and playback (BSoundPlayer)
-│   ├── Community.cpp/h              # Community model with HMAC-SHA256 PSK derivation
-│   ├── Reactions.h                  # Message reactions (meshcore-open compatible, header-only)
-│   ├── Smaz.h                      # SMAZ short string compression (header-only)
-│   ├── SarMarker.cpp/h             # SAR marker parsing (meshcore-sar protocol)
-│   ├── ElevationService.cpp/h      # Open-Meteo elevation API client
-│   ├── LoSAnalysis.h               # Line-of-Sight math library (header-only)
-│   ├── LoSWindow.cpp/h             # Line-of-Sight terrain profile window
-│   ├── TileCache.cpp/h             # OSM map tile download and cache (50 MB LRU disk limit)
-│   ├── CoastlineData.cpp/h         # Coastline polygon data for geographic map
-│   ├── Types.h                     # Protocol structures & radio presets
-│   ├── Constants.h                 # Application constants & thresholds
-│   ├── Compat.h                    # BObjectList API compatibility
-│   └── Utils.h                     # Shared utilities (FormatUptime, ParseHex, etc.)
-└── haiku-patches/                  # USB driver patches
+cd fake_radio && make -j4
+cd repeater_monitor && make -j4
 ```
 
-## Architecture
+Tests:
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   Sestriere (BApplication)           │
-└─────────────────────────────────────────────────────┘
-                          │
-    ┌─────────────────────┴─────────────────────┐
-    │                                           │
-    ▼                                           ▼
-┌──────────────────┐                  ┌─────────────────────┐
-│  MainWindow      │◄─── BMessage ───►│  SerialHandler      │
-│  (BWindow)       │                  │  (BLooper + Thread)  │
-└──────────────────┘                  └─────────────────────┘
-        │                                       │
-        ├─ TopBarView (icons + status)          ▼
-        ├─ ContactList (sidebar)      ┌─────────────────────┐
-        ├─ ChatView (message bubbles) │  POSIX Serial       │
-        ├─ ContactInfoPanel (right)   │  (DTR/RTS enabled)  │
-        ├─ DatabaseManager (SQLite)   └─────────────────────┘
-        │                                       │
-        ├─ SettingsWindow                       ▼
-        ├─ NetworkMapWindow           ┌─────────────────────┐
-        ├─ MapView (Geographic)       │ MeshCore Device     │
-        ├─ TelemetryWindow            │ (Heltec, T-Deck)    │
-        ├─ PacketAnalyzerWindow       └─────────────────────┘
-        ├─ MissionControlWindow
-        ├─ StatsWindow
-        ├─ TracePathWindow
-        ├─ LoginWindow
-        ├─ MqttClient (bridge)
-        ├─ MqttLogWindow
-        ├─ SerialMonitorWindow
-        ├─ ProfileWindow
-        └─ LoSWindow (Line-of-Sight)
+cd src/tests
+./run_tests.sh        # runs all tests
+./run_tests.sh phase  # filter by name pattern
 ```
 
-## License
+## Documentation
 
-MIT License -- See LICENSE file for details.
+- [`docs/MANUAL.md`](docs/MANUAL.md) — user manual
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — feature status and development plan
+- [`docs/HAIKU_USB_SERIAL_FIX.md`](docs/HAIKU_USB_SERIAL_FIX.md) — USB driver patch
+- [`docs/changelog/`](docs/changelog/) — per-version changelogs
 
-## Author
+## Be careful
 
-Created by **Andrea Bernardi**.
+> **Developer's Note**: This software may contain traces of peanuts and LLM. It has been developed with passion for the Haiku platform and the MeshCore community.
 
-## Acknowledgments
+## Support
 
-- [MeshCore](https://github.com/meshcore-dev/MeshCore) -- The mesh networking firmware
-- [Haiku OS](https://www.haiku-os.org/) -- The operating system
-- [Haiku API](https://api.haiku-os.org/) -- Native API documentation
-
-## References
-
-- [MeshCore Companion Radio Protocol](https://github.com/meshcore-dev/MeshCore/wiki/Companion-Radio-Protocol)
-- [SMAZ compression](https://github.com/antirez/smaz) -- Short string compression used for LoRa messages
-- [Haiku Coding Guidelines](https://www.haiku-os.org/development/coding-guidelines/)
+If you find this project useful, you can buy me a coffee: [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-atomozero-yellow?logo=buymeacoffee)](https://buymeacoffee.com/atomozero)
