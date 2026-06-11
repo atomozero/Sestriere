@@ -17,6 +17,10 @@ src/tests/a.out
 *~
 .DS_Store
 
+# Local-only AI assistant guidance (not for distribution)
+CLAUDE.md
+src/CLAUDE.md
+
 # Old build outputs
 *.bin.old
 

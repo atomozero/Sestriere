@@ -114,7 +114,7 @@ make -j4 && make install
 
 ### USB Serial Driver Note
 
-For Silicon Labs CP210x devices (like Heltec LoRa32 v3.2), you may need the patched USB serial driver. See `HAIKU_USB_SERIAL_FIX.md` for details.
+For Silicon Labs CP210x devices (like Heltec LoRa32 v3.2), you may need the patched USB serial driver. See `docs/HAIKU_USB_SERIAL_FIX.md` for details.
 
 ## Building
 
@@ -203,7 +203,12 @@ Sestriere implements 100% of the V3 specification (94/94 codes): 45 commands, 26
 ```
 Sestriere/
 ├── README.md                       # This file
-├── HAIKU_USB_SERIAL_FIX.md         # USB driver patch docs
+├── docs/                           # Documentation
+│   ├── MANUAL.md                   # User manual
+│   ├── ROADMAP.md                  # Development roadmap and feature status
+│   ├── HAIKU_USB_SERIAL_FIX.md     # USB driver patch docs
+│   ├── changelog/                  # Per-version changelogs
+│   └── archive/                    # Historical planning docs
 ├── fake_radio/                     # Fake Radio — radio simulator (standalone app)
 │   ├── FakeRadio.cpp               # BApplication + GUI + V3 protocol simulator
 │   ├── FakeRadio.rdef              # App resources and icon
