@@ -938,10 +938,32 @@ NetworkMapView::BuildEdgesFromOutPaths(
 			// Match 1-byte hash to a known node
 			MapNode* hopNode = _MatchHopToContact(&contact->outPath[h], 1);
 			if (hopNode == NULL) {
-				// Unknown hop — track but don't reset prev; the next
-				// resolvable hop will connect to prev across the gap.
+				// Unknown hop — create a ghost node so the chain stays
+				// connected and visible. Use the hop byte as the first byte
+				// of a synthetic prefix (rest zero) so it gets a stable id.
+				uint8 ghostPrefix[kPubKeyPrefixSize];
+				memset(ghostPrefix, 0, sizeof(ghostPrefix));
+				ghostPrefix[0] = contact->outPath[h];
+				// Use byte at position 1 (or pathLen offset) to disambiguate
+				// ghost nodes that share the same hop hash.
+				ghostPrefix[1] = (uint8)(0xF0 | (h & 0x0F));
+
+				MapNode* ghost = _FindNodeByPrefix(ghostPrefix);
+				if (ghost == NULL) {
+					ghost = new MapNode();
+					memcpy(ghost->pubKeyPrefix, ghostPrefix, kPubKeyPrefixSize);
+					snprintf(ghost->name, sizeof(ghost->name),
+						"?%02X", contact->outPath[h]);
+					ghost->nodeType = NODE_REPEATER;  // assume hop is repeater
+					ghost->hops = h + 1;
+					ghost->lastSeen = now;
+					ghost->status = STATUS_AWAY;
+					ghost->isGhost = true;
+					ghost->position = fCenter;
+					fNodes.AddItem(ghost);
+				}
+				hopNode = ghost;
 				unresolvedRun++;
-				continue;
 			}
 
 			// Don't create self→self edge if hop resolves to the contact itself
@@ -1182,14 +1204,18 @@ NetworkMapView::_CalculatePositions()
 			continue;
 
 		MapNode* relay = _FindRelayForNode(node);
-		if (relay != NULL && node->hops <= 1) {
-			// Trace discovered this node goes through a relay, not direct
+		if (relay != NULL && (node->hops <= 1 || node->hops == 0xFF)) {
+			// Trace discovered this node goes through a relay, not direct.
+			// Also promote unknown-path (0xFF) nodes if a relay was found.
 			node->hops = 2;
 		}
 	}
 
 	// First pass: separate nodes into rings
-	BObjectList<MapNode> ring1(10);  // Direct
+	// Note: hops==0xFF means "unknown path" (outPathLen=-1, no advert seen yet).
+	// Treat unknown as ring1 (direct) until path discovery proves otherwise,
+	// rather than dumping them in ring3 where they look like distant nodes.
+	BObjectList<MapNode> ring1(10);  // Direct (0-1 hops) or unknown
 	BObjectList<MapNode> ring2(10);  // 2-hop
 	BObjectList<MapNode> ring3(10);  // 3+ hop
 
@@ -1202,7 +1228,7 @@ NetworkMapView::_CalculatePositions()
 		if (_IsNodeHidden(*node))
 			continue;
 
-		if (node->hops <= 1)
+		if (node->hops == 0xFF || node->hops <= 1)
 			ring1.AddItem(node);
 		else if (node->hops == 2)
 			ring2.AddItem(node);
@@ -1237,6 +1263,15 @@ NetworkMapView::_CalculatePositions()
 			node->position = fCenter;
 	}
 
+	// Count Ring 2 nodes without a relay for fallback spread
+	int32 ring2NoRelay = 0;
+	for (int32 i = 0; i < ring2.CountItems(); i++) {
+		MapNode* n = ring2.ItemAt(i);
+		if (n != NULL && !n->pinned && _FindRelayForNode(n) == NULL)
+			ring2NoRelay++;
+	}
+	int32 ring2NoRelayIdx = 0;
+
 	// Position Ring 2: 2-hop contacts clustered near their relay
 	for (int32 i = 0; i < ring2.CountItems(); i++) {
 		MapNode* node = ring2.ItemAt(i);
@@ -1261,8 +1296,11 @@ NetworkMapView::_CalculatePositions()
 			node->targetPosition.x = fCenter.x + cosf(angle) * distance;
 			node->targetPosition.y = fCenter.y + sinf(angle) * distance;
 		} else {
-			// No relay found — use standard positioning
-			float angle = baseAngle + i * 0.4f;
+			// No relay found — distribute evenly around the ring as fallback
+			float step = (ring2NoRelay > 0)
+				? (2.0f * M_PI / ring2NoRelay) : 0;
+			float angle = baseAngle + ring2NoRelayIdx * step;
+			ring2NoRelayIdx++;
 			float distance = kRing2Distance * fZoom;
 
 			node->targetPosition.x = fCenter.x + cosf(angle) * distance;
@@ -1272,6 +1310,15 @@ NetworkMapView::_CalculatePositions()
 		if (node->position.x == 0 && node->position.y == 0)
 			node->position = fCenter;
 	}
+
+	// Count Ring 3 nodes without a relay for fallback spread
+	int32 ring3NoRelay = 0;
+	for (int32 i = 0; i < ring3.CountItems(); i++) {
+		MapNode* n = ring3.ItemAt(i);
+		if (n != NULL && !n->pinned && _FindRelayForNode(n) == NULL)
+			ring3NoRelay++;
+	}
+	int32 ring3NoRelayIdx = 0;
 
 	// Position Ring 3: 3+ hop contacts
 	for (int32 i = 0; i < ring3.CountItems(); i++) {
@@ -1294,7 +1341,11 @@ NetworkMapView::_CalculatePositions()
 			node->targetPosition.x = fCenter.x + cosf(angle) * distance;
 			node->targetPosition.y = fCenter.y + sinf(angle) * distance;
 		} else {
-			float angle = baseAngle + i * 0.5f;
+			// No relay — distribute evenly around the ring
+			float step = (ring3NoRelay > 0)
+				? (2.0f * M_PI / ring3NoRelay) : 0;
+			float angle = baseAngle + ring3NoRelayIdx * step;
+			ring3NoRelayIdx++;
 			float distance = kRing3Distance * fZoom;
 
 			node->targetPosition.x = fCenter.x + cosf(angle) * distance;
@@ -1414,6 +1465,26 @@ NetworkMapView::_DrawSelfNode()
 void
 NetworkMapView::_DrawNode(const MapNode& node)
 {
+	// Ghost nodes: render as small semi-transparent dashed circle with "?"
+	if (node.isGhost) {
+		float gRadius = 10.0f * fZoom;
+		rgb_color gColor = {140, 140, 160, 140};
+		SetHighColor(gColor);
+		SetPenSize(1.0f);
+		StrokeEllipse(node.position, gRadius, gRadius);
+		// Draw "?" inside
+		BFont font(be_plain_font);
+		font.SetSize(10.0f * fZoom);
+		SetFont(&font);
+		font_height fh;
+		font.GetHeight(&fh);
+		float tw = font.StringWidth(node.name);
+		DrawString(node.name,
+			BPoint(node.position.x - tw / 2,
+				node.position.y + fh.ascent / 2 - 2));
+		return;
+	}
+
 	float radius = _RadiusForNode(node) * fZoom;
 	if (radius > kMaxDrawnRadius)
 		radius = kMaxDrawnRadius;
@@ -2505,52 +2576,65 @@ void
 NetworkMapView::_DrawStats()
 {
 	BRect bounds = Bounds();
-	(void)bounds;  // Unused for now
+	(void)bounds;
 
-	// Draw node count and stats
 	BFont font;
 	GetFont(&font);
 	font.SetSize(10);
 	SetFont(&font);
 
-	int32 total = fNodes.CountItems();
+	int32 total = 0;
 	int32 online = 0;
 	int32 repeaters = 0;
+	int32 ghosts = 0;
 	int32 hidden = 0;
+	int32 multiHop = 0;
+	int32 unknownPath = 0;
 	for (int32 i = 0; i < fNodes.CountItems(); i++) {
 		MapNode* node = fNodes.ItemAt(i);
 		if (node == NULL)
 			continue;
+		if (node->isGhost) {
+			ghosts++;
+			continue;  // ghost nodes excluded from "total"
+		}
+		total++;
 		if (node->status == STATUS_ONLINE)
 			online++;
 		if (node->nodeType == NODE_REPEATER)
 			repeaters++;
 		if (_IsNodeHidden(*node))
 			hidden++;
+		if (node->hops > 1 && node->hops != 0xFF)
+			multiHop++;
+		if (node->hops == 0xFF)
+			unknownPath++;
 	}
 
 	int32 edges = fEdges.CountItems();
-
-	char stats[160];
-	if (hidden > 0) {
-		snprintf(stats, sizeof(stats),
-			"Nodes: %d (%d online, %d hidden)",
-			(int)total, (int)online, (int)hidden);
-	} else if (edges > 0) {
-		snprintf(stats, sizeof(stats),
-			"Nodes: %d (%d online, %d repeaters) \xe2\x80\x94 %d edges",
-			(int)total, (int)online, (int)repeaters, (int)edges);
-	} else if (repeaters > 0) {
-		snprintf(stats, sizeof(stats),
-			"Nodes: %d total, %d online, %d repeaters",
-			(int)total, (int)online, (int)repeaters);
-	} else {
-		snprintf(stats, sizeof(stats),
-			"Nodes: %d total, %d online", (int)total, (int)online);
+	int32 traceEdges = 0;
+	for (int32 i = 0; i < edges; i++) {
+		TopologyEdge* e = fEdges.ItemAt(i);
+		if (e != NULL && !e->ambiguous)
+			traceEdges++;
 	}
 
+	// Compose multi-line stats
+	char line1[160];
+	snprintf(line1, sizeof(line1),
+		"Nodes: %d (%d online, %d repeaters, %d multi-hop, %d unknown)",
+		(int)total, (int)online, (int)repeaters,
+		(int)multiHop, (int)unknownPath);
+
+	char line2[160];
+	snprintf(line2, sizeof(line2),
+		"Edges: %d (%d trace, %d outPath)  Ghosts: %d  Hidden: %d",
+		(int)edges, (int)traceEdges, (int)(edges - traceEdges),
+		(int)ghosts, (int)hidden);
+
 	SetHighColor(kLabelColor);
-	DrawString(stats, BPoint(10, 20));
+	DrawString(line1, BPoint(10, 20));
+	DrawString(line2, BPoint(10, 34));
 }
 
 
@@ -2751,31 +2835,44 @@ NetworkMapView::_MatchHopToContact(const uint8* hopPrefix,
 	// Match a hop's 4-byte (or 1-byte) prefix against known contacts.
 	// For 1-byte hashes (from outPath), prefer repeaters since they are
 	// the only nodes that can act as routing hops in the mesh.
+	// When multiple matches exist (hash collision), prefer the most recently
+	// seen one — it's most likely the live routing hop.
 	if (prefixLen == 0)
 		return NULL;
 
-	// First pass: look for a repeater match (most likely hop type)
+	MapNode* bestRepeater = NULL;
+	MapNode* bestAny = NULL;
+
+	// First pass: look for repeater matches (most likely hop type)
 	if (prefixLen == 1) {
 		for (int32 i = 0; i < fNodes.CountItems(); i++) {
 			MapNode* node = fNodes.ItemAt(i);
 			if (node == NULL || node->nodeType != NODE_REPEATER)
 				continue;
-			if (memcmp(node->pubKeyPrefix, hopPrefix, 1) == 0)
-				return node;
+			if (node->isGhost)
+				continue;  // don't match ghost as a real hop
+			if (memcmp(node->pubKeyPrefix, hopPrefix, 1) != 0)
+				continue;
+			if (bestRepeater == NULL
+				|| node->lastSeen > bestRepeater->lastSeen)
+				bestRepeater = node;
 		}
+		if (bestRepeater != NULL)
+			return bestRepeater;
 	}
 
-	// Fallback: any node matching the prefix
+	// Fallback: any (non-ghost) node matching the prefix, prefer recent
 	for (int32 i = 0; i < fNodes.CountItems(); i++) {
 		MapNode* node = fNodes.ItemAt(i);
-		if (node == NULL)
+		if (node == NULL || node->isGhost)
 			continue;
-
-		if (memcmp(node->pubKeyPrefix, hopPrefix, prefixLen) == 0)
-			return node;
+		if (memcmp(node->pubKeyPrefix, hopPrefix, prefixLen) != 0)
+			continue;
+		if (bestAny == NULL || node->lastSeen > bestAny->lastSeen)
+			bestAny = node;
 	}
 
-	return NULL;
+	return bestAny;
 }
 
 
