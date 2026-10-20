@@ -84,6 +84,7 @@
 #include "SerialHandler.h"
 #include "SettingsWindow.h"
 #include "StatsWindow.h"
+#include "TcpConnectWindow.h"
 #include "TelemetryWindow.h"
 #include "TopBarView.h"
 #include "TracePathWindow.h"
@@ -1364,28 +1365,19 @@ MainWindow::MessageReceived(BMessage* message)
 
 		case MSG_TCP_CONNECT:
 		{
-			// Prompt for host:port via simple text input
-			BString prompt("Enter TCP address (host:port):");
-			BTextControl* input = new BTextControl("tcp_addr",
-				"", "192.168.1.100:4403", NULL);
-			input->SetModificationMessage(NULL);
-			BAlert* alert = new BAlert("TCP Connection",
-				"Enter the TCP address of the MeshCore device:",
-				"Cancel", "Connect");
-			alert->SetType(B_INFO_ALERT);
-			// Add the text control to the alert
-			BView* panel = alert->Panel();
-			if (panel != NULL) {
-				input->ResizeTo(200, 24);
-				input->MoveTo(20, 30);
-				panel->AddChild(input);
-				alert->ResizeTo(alert->Bounds().Width(),
-					alert->Bounds().Height() + 30);
-			}
-			int32 result = alert->Go();
-			if (result == 1 && input->Text()[0] != '\0') {
+			// Ask for host:port; the dialog answers with
+			// MSG_TCP_ADDRESS_ENTERED
+			TcpConnectWindow* window = new TcpConnectWindow(this);
+			window->Show();
+			break;
+		}
+
+		case MSG_TCP_ADDRESS_ENTERED:
+		{
+			const char* address;
+			if (message->FindString("address", &address) == B_OK) {
 				BString tcpPort;
-				tcpPort.SetToFormat("tcp:%s", input->Text());
+				tcpPort.SetToFormat("tcp:%s", address);
 				fSelectedPort = tcpPort;
 				_Connect();
 			}

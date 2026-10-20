@@ -425,6 +425,7 @@ enum {
 
 	// TCP connection
 	MSG_TCP_CONNECT = 'tcpc',
+	MSG_TCP_ADDRESS_ENTERED = 'tcpa',
 
 	// Channel management
 	MSG_ADD_CHANNEL = 'achn',
